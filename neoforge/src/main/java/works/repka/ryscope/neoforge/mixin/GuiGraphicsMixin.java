@@ -27,6 +27,11 @@ public abstract class GuiGraphicsMixin {
         return RecipeRestyle.shader(shader, true);
     }
 
+    @ModifyVariable(method = "fill(Lnet/minecraft/client/renderer/RenderType;IIIIII)V", at = @At("HEAD"), argsOnly = true, ordinal = 5, require = 0)
+    private int ryscope$fillColor(int color) {
+        return RecipeRestyle.fill(color);
+    }
+
     @ModifyVariable(method = "drawString(Lnet/minecraft/client/gui/Font;Ljava/lang/String;FFIZ)I", at = @At("HEAD"), argsOnly = true, ordinal = 0, require = 0)
     private int ryscope$textColor(int color) {
         return RecipeRestyle.text(color);

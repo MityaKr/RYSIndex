@@ -16,6 +16,7 @@ public final class RecipeRestyle {
     private static ShaderInstance colored;
     private static boolean active;
     private static int textColor;
+    private static int[] anchors = new int[0];
 
     private RecipeRestyle() {}
 
@@ -31,7 +32,7 @@ public final class RecipeRestyle {
     public static boolean begin(Theme theme) {
         if (!Config.get().restyleRecipes || theme.beveled() || plain == null || colored == null) return false;
         // опорные оттенки серого у Minecraft: контур, тёмная грань слота, слот, фон окна, светлая грань
-        int[] anchors = {theme.c("slot.border"), theme.c("slot.border"), theme.c("slot.bg"), theme.c("card.bg"), theme.c("card.border")};
+        anchors = new int[] {theme.c("slot.border"), theme.c("slot.border"), theme.c("slot.bg"), theme.c("card.bg"), theme.c("card.border")};
         for (ShaderInstance shader : new ShaderInstance[] {plain, colored}) {
             for (int i = 0; i < anchors.length; i++) {
                 int c = anchors[i];
@@ -51,6 +52,32 @@ public final class RecipeRestyle {
         if (!active) return original;
         ShaderInstance replacement = withColor ? colored : plain;
         return replacement == null ? original : () -> replacement;
+    }
+
+    /**
+     * Сплошная серая заливка мода: те же опорные оттенки, что в шейдере. Полупрозрачные заливки
+     * (подсветка слота под курсором) остаются как есть.
+     */
+    public static int fill(int argb) {
+        if (!active || (argb >>> 24) < 200) return argb;
+        int r = (argb >> 16) & 255, g = (argb >> 8) & 255, b = argb & 255;
+        if (Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) >= 23) return argb;
+        float l = (r + g + b) / 765f;
+        if (l < 0.216f) return mix(anchors[0], anchors[1], l / 0.216f);
+        if (l < 0.545f) return mix(anchors[1], anchors[2], (l - 0.216f) / 0.329f);
+        if (l < 0.776f) return mix(anchors[2], anchors[3], (l - 0.545f) / 0.231f);
+        // светлая панель мода становится фоном карточки, к цвету рамки уходят только почти белые грани
+        if (l < 0.95f) return anchors[3];
+        return mix(anchors[3], anchors[4], (l - 0.95f) / 0.05f);
+    }
+
+    private static int mix(int from, int to, float t) {
+        int out = 0;
+        for (int shift = 0; shift < 32; shift += 8) {
+            int a = (from >>> shift) & 255, b = (to >>> shift) & 255;
+            out |= Math.round(a + (b - a) * t) << shift;
+        }
+        return out;
     }
 
     /** Тёмный бесцветный текст становится цветом текста темы, цветной не меняется. */

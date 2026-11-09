@@ -1229,8 +1229,9 @@ final class AutoTest {
         }, 6);
         shot("jeiscroll_after_drag");
         step("jeiscroll: result", () -> RYScope.LOG.info("[autotest] рецепт с прокруткой найден: {}", scrollFound), 2);
+        step("jeiscroll: slate", () -> works.repka.ryscore.theme.ThemeManager.select("ryscore:slate"), 6);
+        shot("jeiscroll_slate");
         step("jeiscroll: world lens", () -> {
-            works.repka.ryscore.theme.ThemeManager.select("ryscore:slate");
             mc().setScreen(null);
             command("setblock 0 -59 3 minecraft:iron_ore");
             works.repka.ryscope.client.Keys.forceLens = true;
