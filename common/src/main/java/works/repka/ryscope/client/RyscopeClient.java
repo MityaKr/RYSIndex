@@ -93,8 +93,14 @@ public final class RyscopeClient {
         if (container(screen)) Overlay.renderBackground(screen, g, mx, my, partialTick);
     }
 
+    /** Экран чужого мода: не инвентарь и не наш собственный (квесты, справочники). */
+    private static boolean foreign(Screen screen) {
+        return screen != null && !container(screen) && !screen.getClass().getName().startsWith("works.repka.ryscope.");
+    }
+
     public static void renderScreenPost(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
         if (container(screen)) Overlay.renderTop(screen, g, mx, my, partialTick);
+        else if (foreign(screen)) Overlay.renderForeign(screen, g, mx, my);
     }
 
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
@@ -114,7 +120,8 @@ public final class RyscopeClient {
     }
 
     public static boolean keyPressed(Screen screen, int key, int scan, int mods) {
-        return container(screen) && Overlay.keyPressed(screen, key, scan, mods);
+        if (container(screen)) return Overlay.keyPressed(screen, key, scan, mods);
+        return foreign(screen) && Overlay.foreignKey(screen, key, scan);
     }
 
     public static boolean charTyped(Screen screen, char c, int mods) {

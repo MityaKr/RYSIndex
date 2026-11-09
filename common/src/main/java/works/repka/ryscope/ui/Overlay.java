@@ -676,6 +676,48 @@ public final class Overlay {
         return null;
     }
 
+    // --- экраны чужих модов (квесты FTB, справочники) ---
+
+    /**
+     * Ресурс под курсором на экране чужого мода. Работает там, где мод сообщает JEI о предметах под курсором:
+     * так делает FTB Library (экраны квестов FTB Quests), и тем же путём у игроков работают клавиши самого JEI.
+     */
+    @Nullable
+    private static Stack foreignStack(Screen screen) {
+        Minecraft mc = Minecraft.getInstance();
+        Foreign.Source foreign = Foreign.get();
+        if (foreign == null || mc.level == null || mc.player == null) return null;
+        try {
+            return foreign.stackUnderMouse(screen, mouseX(), mouseY());
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Наши клавиши над предметом на чужом экране: рецепты, использования, закладка, дерево крафта. */
+    public static boolean foreignKey(Screen screen, int key, int scan) {
+        boolean recipes = Keys.matches(Keys.RECIPES, key, scan), uses = Keys.matches(Keys.USES, key, scan);
+        boolean bookmark = Keys.matches(Keys.BOOKMARK, key, scan), tree = Keys.matches(Keys.TREE, key, scan);
+        if (!recipes && !uses && !bookmark && !tree) return false;
+        if (typingElsewhere(screen)) return false;
+        Stack stack = foreignStack(screen);
+        if (stack == null) return false;
+        if (recipes) RecipeScreen.open(stack, Lookup.Mode.RECIPES);
+        else if (uses) RecipeScreen.open(stack, Lookup.Mode.USES);
+        else if (bookmark) toggleBookmark(stack);
+        else TreeScreen.open(stack);
+        return true;
+    }
+
+    /** На чужом экране рисуем только линзу над предметом и уведомления. */
+    public static void renderForeign(Screen screen, GuiGraphics g, int mx, int my) {
+        if (Lens.held()) {
+            Stack target = foreignStack(screen);
+            if (target != null) Lens.renderCard(g, ThemeManager.get(), target, mx, my, screen.width, screen.height);
+        }
+        renderToast(screen, g);
+    }
+
     /** Ресурс под курсором в панели списка (для модов, которые спрашивают об этом через JEI). */
     @Nullable
     public static Stack listStackUnderMouse() {
