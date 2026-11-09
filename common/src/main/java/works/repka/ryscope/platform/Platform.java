@@ -34,6 +34,12 @@ public interface Platform {
 
     net.minecraft.network.chat.Component fluidName(net.minecraft.world.level.material.Fluid fluid);
 
+    /** Количество в стеке жидкости загрузчика (в миллибакетах); для чужого объекта возвращает ведро. */
+    long fluidAmount(Object fluidStack);
+
+    /** Обычная жидкость без компонентов. Жидкость с компонентами (зелья Create) это отдельный ресурс на каждый набор. */
+    boolean plainFluid(Object fluidStack);
+
     final class Holder {
         private static Platform instance;
 

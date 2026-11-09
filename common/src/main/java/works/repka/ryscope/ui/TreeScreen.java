@@ -98,7 +98,7 @@ public final class TreeScreen extends Screen {
         // --- шапка ---
         tree.root.stack.render(g, px + PAD, py + PAD - 1);
         String title = tree.root.stack.name().getString();
-        Draw.text(g, Draw.ellipsize(title, toolRects(font)[0] - (px + PAD + 22) - 6), px + PAD + 22, py + PAD - 1, theme.c("text.primary"));
+        Draw.text(g, Draw.ellipsize(title, toolRects(font)[4] - (px + PAD + 22) - 6), px + PAD + 22, py + PAD - 1, theme.c("text.primary"));
         String sub = Component.translatable("ryscope.tree.summary", tree.steps, tree.maxDepth).getString();
         Draw.textScaled(g, sub, px + PAD + 22, py + PAD + 9, 0.75f, theme.c("text.muted"));
         // планировщик и сравнение маршрутов
@@ -109,6 +109,10 @@ public final class TreeScreen extends Screen {
         Draw.text(g, planLabel, tools[0] + 5, py + PAD + 1, theme.c("text.body"));
         theme.button(g, tools[2], py + PAD - 2, tools[3], 14, over(mx, my, tools[2], py + PAD - 2, tools[3], 14), false);
         Draw.text(g, cmpLabel, tools[2] + 5, py + PAD + 1, theme.c("text.body"));
+        // выбор рецептов по наименьшему числу шагов
+        theme.button(g, tools[4], py + PAD - 2, tools[5], 14, over(mx, my, tools[4], py + PAD - 2, tools[5], 14), tree.shortest());
+        Draw.text(g, Component.translatable("ryscope.tree.shortest").getString(), tools[4] + 5, py + PAD + 1,
+            tree.shortest() ? theme.c("accent.text") : theme.c("text.body"));
         // количество
         int ax = px + pw - PAD - 64, ay = py + PAD - 2;
         theme.button(g, ax, ay, 14, 14, over(mx, my, ax, ay, 14, 14), false);
@@ -257,12 +261,14 @@ public final class TreeScreen extends Screen {
         Overlay.renderToast(this, g);
     }
 
-    /** Кнопки «План» и «Сравнить» слева от счётчика количества: x и ширина каждой. */
+    /** Кнопки «Кратчайший», «План» и «Сравнить» слева от счётчика количества: x и ширина плана, сравнения, кратчайшего. */
     private int[] toolRects(Font font) {
         int planW = font.width(Component.translatable("ryscope.tree.plan").getString()) + 10;
         int cmpW = font.width(Component.translatable("ryscope.tree.compare").getString()) + 10;
         int cmpX = px + pw - PAD - 64 - 8 - cmpW;
-        return new int[] {cmpX - 4 - planW, planW, cmpX, cmpW};
+        int planX = cmpX - 4 - planW;
+        int shortW = font.width(Component.translatable("ryscope.tree.shortest").getString()) + 10;
+        return new int[] {planX, planW, cmpX, cmpW, planX - 4 - shortW, shortW};
     }
 
     private static boolean over(double mx, double my, int x, int y, int w, int h) {
@@ -295,6 +301,11 @@ public final class TreeScreen extends Screen {
         }
         if (over(mx, my, tools[2], ay, tools[3], 14)) {
             CompareScreen.open(tree.root.stack);
+            return true;
+        }
+        if (over(mx, my, tools[4], ay, tools[5], 14)) {
+            tree.setShortest(!tree.shortest());
+            target = 0;
             return true;
         }
         int step = hasShiftDown() ? 8 : 1;

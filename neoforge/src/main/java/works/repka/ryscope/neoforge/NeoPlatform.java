@@ -89,4 +89,14 @@ public final class NeoPlatform implements Platform {
     public net.minecraft.network.chat.Component fluidName(net.minecraft.world.level.material.Fluid fluid) {
         return fluid.getFluidType().getDescription();
     }
+
+    @Override
+    public boolean plainFluid(Object fluidStack) {
+        return fluidStack instanceof net.neoforged.neoforge.fluids.FluidStack stack && stack.getComponentsPatch().isEmpty();
+    }
+
+    @Override
+    public long fluidAmount(Object fluidStack) {
+        return fluidStack instanceof net.neoforged.neoforge.fluids.FluidStack stack && stack.getAmount() > 0 ? stack.getAmount() : 1000;
+    }
 }

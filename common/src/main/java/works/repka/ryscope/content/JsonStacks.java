@@ -119,7 +119,8 @@ public final class JsonStacks {
             // стек жидкости в записи {"id": ..., "amount": ...}; предметы пишут count
             String id = o.get("id").getAsString();
             ResourceLocation rl = ResourceLocation.tryParse(id);
-            if (rl != null && BuiltInRegistries.FLUID.containsKey(rl) && (fluidType || !BuiltInRegistries.ITEM.containsKey(rl))) {
+            if (rl != null && BuiltInRegistries.FLUID.containsKey(rl)
+                && (fluidType || !o.has("count") || !BuiltInRegistries.ITEM.containsKey(rl))) {
                 fluid(id, out, amount, chance);
                 return;
             }

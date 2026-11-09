@@ -74,6 +74,10 @@ final class AutoTest {
         build();
         bus.addListener((ClientTickEvent.Post e) -> tick());
         bus.addListener((ScreenEvent.Render.Post e) -> {
+            long now = System.nanoTime();
+            if (lastFrameAt != 0) worstFrame = Math.max(worstFrame, now - lastFrameAt);
+            lastFrameAt = now;
+            frames++;
             if (lensCard != null) {
                 Lens.renderCard(e.getGuiGraphics(), ThemeManager.get(), lensCard, e.getScreen().width / 2 - 60, 60,
                     e.getScreen().width, e.getScreen().height);
@@ -121,6 +125,9 @@ final class AutoTest {
             Config.get().searchLanguages = new ArrayList<>(List.of("en_us", "ru_ru"));
             Config.get().lastSearch = "";
             ThemeManager.select("ryscope:slate");
+            // настройки живут между запусками: каждый запуск выставляет режим заново
+            Config.get().replaceJeiInterface = !JEI_GUI;
+            Config.get().overlayEnabled = !JEI_GUI;
             writeSamples();
             if (mc().getLevelSource().levelExists(WORLD)) {
                 mc().createWorldOpenFlows().openWorld(WORLD, () -> RYScope.LOG.error("[autotest] мир не открылся"));
@@ -156,6 +163,10 @@ final class AutoTest {
             command("tp @s 0.5 -60 0.5 0 0");
             command("fill -3 -60 -3 3 -56 6 minecraft:air");
         }, 30);
+        if ("perf".equals(System.getProperty("ryscope.autotest"))) {
+            buildPerf();
+            return;
+        }
 
         step("inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 20);
         shot("inventory");
@@ -758,6 +769,130 @@ final class AutoTest {
                 return;
             }
         }
+    }
+
+    // --- сценарий perf: отклик нашего интерфейса или родного интерфейса JEI, сверка рецептов ---
+
+    /** Мерить родной интерфейс JEI: наши панели выключены, интерфейс JEI не заменяется. */
+    private static final boolean JEI_GUI = Boolean.getBoolean("ryscope.autotest.jeiGui");
+    private static long frames, framesSince, lastFrameAt, worstFrame;
+
+    private static void framesReset() {
+        frames = 0;
+        framesSince = System.nanoTime();
+        lastFrameAt = 0;
+        worstFrame = 0;
+    }
+
+    private static String framesReport() {
+        double average = frames == 0 ? 0 : (System.nanoTime() - framesSince) / 1e6 / frames;
+        return String.format(java.util.Locale.ROOT, "%.2f мс на кадр, худший %.1f мс, кадров %d", average, worstFrame / 1e6, frames);
+    }
+
+    private static void setPanels(boolean on) {
+        if (JEI_GUI) AutoTestJei.overlay(on);
+        else Config.get().overlayEnabled = on;
+    }
+
+    private static long usedMegabytes() {
+        System.gc();
+        System.gc();
+        Runtime rt = Runtime.getRuntime();
+        return (rt.totalMemory() - rt.freeMemory()) >> 20;
+    }
+
+    /** Деревья нескольких предметов: обычный выбор рецептов против кратчайшего пути. */
+    private static void treeReport() {
+        for (String id : new String[] {"minecraft:dispenser", "minecraft:comparator", "minecraft:beacon", "mekanism:steel_casing",
+            "create:mechanical_crafter", "ae2:controller", "mekanism:digital_miner"}) {
+            var key = net.minecraft.resources.ResourceLocation.parse(id);
+            if (!net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(key)) continue;
+            var stack = new ItemRes(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(key)));
+            long t0 = System.nanoTime();
+            var tree = new works.repka.ryscope.runtime.CraftTree(stack);
+            long usualMs = (System.nanoTime() - t0) / 1_000_000;
+            int usualSteps = tree.steps, usualDepth = tree.maxDepth, usualItems = tree.examined();
+            t0 = System.nanoTime();
+            tree.setShortest(true);
+            long shortMs = (System.nanoTime() - t0) / 1_000_000;
+            RYScope.LOG.info("[perf] дерево {}: обычный выбор {} шагов, глубина {}, построение {} мс, просмотрено {}; "
+                + "кратчайший путь {} шагов, глубина {}, поиск {} мс, просмотрено {}",
+                id, usualSteps, usualDepth, usualMs, usualItems, tree.steps, tree.maxDepth, shortMs, tree.examined());
+        }
+    }
+
+    private static void buildPerf() {
+        String who = JEI_GUI ? "интерфейс JEI" : "RYScope";
+        step("perf: setup", () -> {
+            mc().options.enableVsync().set(false);
+            mc().options.framerateLimit().set(260);
+            mc().getWindow().updateVsync(false);
+            mc().setScreen(new InventoryScreen(mc().player));
+            RYScope.LOG.info("[perf] режим: {}; память после сборки мусора: {} МБ", who, usedMegabytes());
+        }, 60);
+        for (int round = 1; round <= 2; round++) {
+            int r = round;
+            step("perf: panels off", () -> {
+                setPanels(false);
+                framesReset();
+            }, 100);
+            step("perf: baseline", () -> {
+                RYScope.LOG.info("[perf] круг {}: инвентарь без панелей: {}", r, framesReport());
+                setPanels(true);
+            }, 20);
+            step("perf: panels on", AutoTest::framesReset, 100);
+            step("perf: with panels", () -> RYScope.LOG.info("[perf] круг {}: инвентарь с панелями ({}): {}", r, who, framesReport()), 2);
+        }
+        shot("perf_inventory");
+        for (String query : new String[] {"piston", "iron", "@mekanism", "#c:ingots", "слиток", "zzzz"}) {
+            if (JEI_GUI) {
+                step("perf: search " + query, () -> RYScope.LOG.info("[perf] поиск JEI «{}»: {}", query, AutoTestJei.search(query)), 10);
+            } else {
+                step("perf: search " + query, () -> Overlay.setSearch(query), 15);
+                step("perf: search result", () -> RYScope.LOG.info("[perf] поиск RYScope «{}»: {} мкс в фоновом потоке, найдено {}",
+                    query, SearchService.results().micros, SearchService.results().stacks.size()), 2);
+            }
+        }
+        step("perf: search clear", () -> {
+            if (JEI_GUI) AutoTestJei.search("");
+            else Overlay.setSearch("");
+        }, 10);
+        Object[][] cases = {
+            {Items.IRON_INGOT, Lookup.Mode.USES}, {Items.IRON_INGOT, Lookup.Mode.RECIPES}, {Items.PISTON, Lookup.Mode.RECIPES},
+            {Items.REDSTONE, Lookup.Mode.USES}, {Items.OAK_PLANKS, Lookup.Mode.USES}};
+        for (Object[] c : cases) {
+            net.minecraft.world.item.Item item = (net.minecraft.world.item.Item) c[0];
+            Lookup.Mode mode = (Lookup.Mode) c[1];
+            boolean uses = mode == Lookup.Mode.USES;
+            String label = (uses ? "использования " : "рецепты ") + net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item);
+            step("perf: open " + label, () -> {
+                ItemStack stack = new ItemStack(item);
+                String volume = AutoTestJei.volume(stack, uses);
+                long t0 = System.nanoTime();
+                if (JEI_GUI) {
+                    AutoTestJei.openRecipes(stack, uses);
+                } else {
+                    RecipeScreen.open(new ItemRes(stack), mode);
+                }
+                long ms = (System.nanoTime() - t0) / 1_000_000;
+                framesReset();
+                RYScope.LOG.info("[perf] окно рецептов ({}), {}: открытие {} мс; у JEI для этого запроса {}", who, label, ms, volume);
+            }, 30);
+            step("perf: first frames", () -> RYScope.LOG.info("[perf]   первые кадры окна: {}", framesReport()), 2);
+            step("perf: back", () -> mc().setScreen(new InventoryScreen(mc().player)), 10);
+        }
+        shot("perf_after_recipes");
+        step("perf: memory", () -> RYScope.LOG.info("[perf] память после сборки мусора в конце: {} МБ", usedMegabytes()), 10);
+        if (!JEI_GUI) {
+            step("perf: trees", AutoTest::treeReport, 5);
+            step("audit", AutoTestJei::audit, 5);
+            step("summary", () -> {
+                var snap = Indexer.snapshot();
+                RYScope.LOG.info("[perf] индекс: ресурсов {}, рецептов {}, построен за {} мс в фоне; отрисовка наших панелей {} мкс на кадр",
+                    snap.stacks.size(), snap.recipeCount, snap.buildMillis, Overlay.averageFrameMicros());
+            }, 5);
+        }
+        step("quit", () -> mc().stop(), 0);
     }
 
     private static void search(String text) {

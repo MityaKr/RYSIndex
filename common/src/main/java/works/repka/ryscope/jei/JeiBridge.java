@@ -40,9 +40,20 @@ import works.repka.ryscope.runtime.Snapshot;
 public final class JeiBridge implements Foreign.Source {
     final IJeiRuntime runtime;
     private final Map<ResourceLocation, JeiCategory> categories = new HashMap<>();
+    /** Тип «жидкость» у JEI на этом загрузчике, или null, если узнать его не удалось. */
+    @SuppressWarnings("rawtypes")
+    private mezz.jei.api.ingredients.IIngredientTypeWithSubtypes fluidType;
+    @SuppressWarnings("rawtypes")
+    private mezz.jei.api.helpers.IPlatformFluidHelper fluidHelper;
 
     public JeiBridge(IJeiRuntime runtime) {
         this.runtime = runtime;
+        try {
+            fluidHelper = runtime.getJeiHelpers().getPlatformFluidHelper();
+            fluidType = fluidHelper.getFluidIngredientType();
+        } catch (Throwable t) {
+            RYScope.LOG.debug("Тип жидкостей JEI недоступен: {}", t.toString());
+        }
         try {
             runtime.getIngredientVisibility().registerListener(new IIngredientVisibility.IListener() {
                 @Override
@@ -53,6 +64,11 @@ public final class JeiBridge implements Foreign.Source {
         } catch (Throwable t) {
             RYScope.LOG.debug("Подписка на видимость ингредиентов JEI недоступна: {}", t.toString());
         }
+    }
+
+    /** Сам JEI: нужен сверке и замерам в автотесте. */
+    public IJeiRuntime runtime() {
+        return runtime;
     }
 
     @Override
@@ -67,6 +83,8 @@ public final class JeiBridge implements Foreign.Source {
     public Stack fromTyped(ITypedIngredient<?> typed) {
         Optional<ItemStack> item = typed.getItemStack();
         if (item.isPresent()) return item.get().isEmpty() ? null : new ItemRes(item.get());
+        Stack fluid = fluidFrom(typed);
+        if (fluid != null) return fluid;
         try {
             IIngredientManager im = runtime.getIngredientManager();
             IIngredientType type = typed.getType();
@@ -78,10 +96,43 @@ public final class JeiBridge implements Foreign.Source {
 
     public Optional<ITypedIngredient<?>> toTyped(Stack stack) {
         if (stack instanceof JeiRes<?> jr) return Optional.of(jr.typed);
+        if (stack instanceof works.repka.ryscope.model.FluidRes fluid) return fluidTo(fluid);
         ItemStack item = stack.item();
         if (item.isEmpty()) return Optional.empty();
         Optional<ITypedIngredient<ItemStack>> typed = runtime.getIngredientManager().createTypedIngredient(VanillaTypes.ITEM_STACK, item);
         return typed.map(t -> t);
+    }
+
+    /**
+     * Жидкость JEI превращается в нашу жидкость. Иначе одна и та же вода была бы двумя разными ресурсами:
+     * из списка JEI и из наших раскладок, и рецепты одной не находились бы по другой
+     * (так и было: найдено сверкой на сборке RepYS).
+     */
+    @Nullable
+    @SuppressWarnings("unchecked")
+    private Stack fluidFrom(ITypedIngredient<?> typed) {
+        if (fluidType == null || typed.getType() != fluidType) return null;
+        try {
+            // жидкость с компонентами остаётся ресурсом JEI: у нашей жидкости компонентов нет, и разные зелья слились бы в одно
+            if (!works.repka.ryscope.platform.Platform.get().plainFluid(typed.getIngredient())) return null;
+            Object base = fluidType.getBase(typed.getIngredient());
+            if (!(base instanceof net.minecraft.world.level.material.Fluid fluid) || fluid == net.minecraft.world.level.material.Fluids.EMPTY) return null;
+            return new works.repka.ryscope.model.FluidRes(fluid, works.repka.ryscope.platform.Platform.get().fluidAmount(typed.getIngredient()));
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Optional<ITypedIngredient<?>> fluidTo(works.repka.ryscope.model.FluidRes fluid) {
+        if (fluidType == null || fluidHelper == null) return Optional.empty();
+        try {
+            Object ingredient = fluidHelper.create(fluid.fluid.builtInRegistryHolder(), Math.max(1, fluid.amount));
+            Optional<ITypedIngredient<?>> typed = runtime.getIngredientManager().createTypedIngredient((IIngredientType) fluidType, ingredient);
+            return typed;
+        } catch (Throwable t) {
+            return Optional.empty();
+        }
     }
 
     // --- список ресурсов ---
@@ -109,9 +160,15 @@ public final class JeiBridge implements Foreign.Source {
 
     private <V> void addAll(List<Stack> out, IIngredientManager im, IIngredientVisibility visibility, IIngredientType<V> type) {
         try {
+            java.util.Set<Object> fluids = new java.util.HashSet<>();
             for (V ingredient : im.getAllIngredients(type)) {
                 Optional<ITypedIngredient<V>> typed = im.createTypedIngredient(type, ingredient);
                 if (typed.isEmpty() || !visibility.isIngredientVisible(typed.get())) continue;
+                Stack fluid = fluidFrom(typed.get());
+                if (fluid != null) {
+                    if (fluids.add(fluid.key())) out.add(fluid.withAmount(1000));
+                    continue;
+                }
                 out.add(new JeiRes<>(typed.get(), im.getIngredientHelper(type), im.getIngredientRenderer(type)));
             }
         } catch (Throwable t) {
@@ -188,21 +245,45 @@ public final class JeiBridge implements Foreign.Source {
         var lookup = rm.createRecipeLookup(c.getRecipeType());
         if (!focuses.isEmpty()) lookup = lookup.limitFocus(focuses);
         boolean overlaps = snapshot.hasCategory(c.getRecipeType().getUid());
+        java.util.Set<ResourceLocation> ownIds = overlaps ? nativeIds(snapshot, c.getRecipeType().getUid()) : java.util.Set.of();
         List<RecipeView> views = new ArrayList<>();
         lookup.get().forEach(recipe -> {
             if (overlaps) {
-                // рецепт уже показан нашей раскладкой
+                // рецепт уже показан нашей раскладкой в этой же категории
                 ResourceLocation id;
                 try {
                     id = c.getRegistryName(recipe);
                 } catch (Throwable t) {
                     id = null;
                 }
-                if (id != null && snapshot.recipeIds.contains(id)) return;
+                if (id != null && ownIds.contains(id)) return;
             }
             views.add(new JeiRecipeView<>(this, c, recipe, group));
         });
         return views;
+    }
+
+    private Snapshot idsFor;
+    private final Map<ResourceLocation, java.util.Set<ResourceLocation>> idsByCategory = new HashMap<>();
+
+    /**
+     * Id рецептов, которые наша раскладка показывает в категории с этим id. Сверять нужно именно по категории:
+     * JEI показывает один рецепт в нескольких категориях (помол Create есть и в «Помоле», и в «Дроблении»),
+     * и сверка по всем нашим рецептам сразу теряла такие повторы (найдено сверкой на сборке RepYS).
+     */
+    public synchronized java.util.Set<ResourceLocation> nativeIds(Snapshot snapshot, ResourceLocation uid) {
+        if (idsFor != snapshot) {
+            idsByCategory.clear();
+            idsFor = snapshot;
+        }
+        return idsByCategory.computeIfAbsent(uid, u -> {
+            java.util.Set<ResourceLocation> ids = new java.util.HashSet<>();
+            Category own = snapshot.category(u);
+            if (own != null) {
+                for (RecipeView r : snapshot.recipes(own)) if (r.id() != null) ids.add(r.id());
+            }
+            return ids;
+        });
     }
 
     @Override

@@ -40,6 +40,11 @@ import works.repka.ryscope.ui.RecipeScreen;
 public final class RyscopeJeiPlugin implements IModPlugin {
     private static JeiBridge bridge;
 
+    /** Мост к запущенному JEI или null. */
+    public static JeiBridge bridge() {
+        return bridge;
+    }
+
     @Override
     public ResourceLocation getPluginUid() {
         return ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "jei_bridge");

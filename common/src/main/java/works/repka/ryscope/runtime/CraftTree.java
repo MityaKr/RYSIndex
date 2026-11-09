@@ -193,7 +193,7 @@ public final class CraftTree {
             return;
         }
         if (node.options == null) loadOptions(node);
-        if (node.choice == -2) node.choice = defaultChoice(node);
+        if (node.choice == -2) node.choice = shortest ? shortestChoice(node) : defaultChoice(node);
         Option option = node.chosen();
         if (option == null || node.depth >= MAX_DEPTH || nodeCount >= MAX_NODES) {
             node.children.clear();
@@ -376,8 +376,112 @@ public final class CraftTree {
             if (total > 0 && have == total) return i;
         }
         if (own >= 0) return own;
-        if (node.sources != null && !node.sources.isEmpty()) return -1;
+        if (node.parent != null && node.sources != null && !node.sources.isEmpty()) return -1;
         return first;
+    }
+
+    // --- кратчайший путь ---
+
+    /** Насколько глубоко и широко искать: без границ перебор всех рецептов большой сборки не закончится. */
+    private static final int SHORT_DEPTH = 4;
+    private static final int SHORT_OPTIONS = 12;
+    private static final int SHORT_ITEMS = 1500;
+    private static final int FAR = 1000;
+
+    private boolean shortest;
+    private final Map<Object, Integer> costMemo = new HashMap<>();
+    private final Map<Object, RecipeView> bestMemo = new HashMap<>();
+
+    public boolean shortest() {
+        return shortest;
+    }
+
+    /**
+     * Включает выбор рецептов по наименьшему числу шагов вместо обычных правил. Выбор во всех узлах
+     * сбрасывается и считается заново; после этого игрок по-прежнему может менять рецепт в любом узле.
+     */
+    public void setShortest(boolean value) {
+        shortest = value;
+        root.choice = -2;
+        root.children.clear();
+        recompute();
+    }
+
+    private int shortestChoice(Node node) {
+        Set<Object> path = new HashSet<>();
+        for (Node n = node.parent; n != null; n = n.parent) path.add(n.stack.key());
+        steps(node.stack, node.parent == null ? 0 : 1, path, node.parent == null);
+        RecipeView best = bestMemo.get(node.stack.key());
+        if (best == null) return node.parent != null && costMemo.containsKey(node.stack.key()) ? -1 : defaultChoice(node);
+        for (int i = 0; i < node.options.size(); i++) if (node.options.get(i).recipe == best) return i;
+        return defaultChoice(node);
+    }
+
+    /**
+     * Наименьшее число шагов крафта, чтобы получить ресурс. Сырьё стоит ноль. Результат запоминается на время
+     * жизни дерева, поэтому при построении по частям прерванный поиск продолжается с найденного.
+     */
+    private int steps(Stack stack, int depth, Set<Object> path, boolean target) {
+        Object key = stack.key();
+        if (!target && pool != null && pool.getOrDefault(key, 0L) > 0) return 0;
+        Integer known = costMemo.get(key);
+        if (known != null) return known;
+        if (depth >= SHORT_DEPTH || path.contains(key)) return FAR;
+        if (loaded.size() >= SHORT_ITEMS && !loaded.containsKey(key)) return FAR;
+        Loaded info = loaded(stack);
+        String namespace = stack.namespace();
+
+        // первый проход без рекурсии: какие рецепты вообще годятся и есть ли среди них «родной»
+        List<Candidate> usable = new ArrayList<>();
+        boolean own = false;
+        for (Candidate c : info.candidates()) {
+            if (usable.size() >= SHORT_OPTIONS) break;
+            boolean skip = c.unpacking();
+            for (Ing ing : c.inputs()) {
+                if (ing.isEmpty() || ing.options.isEmpty()) continue;
+                boolean allOnPath = true, allReverse = true;
+                for (Stack o : ing.options) {
+                    if (o.key().equals(key)) skip = true;
+                    if (!path.contains(o.key())) allOnPath = false;
+                    if (!info.madeFromThis().contains(o.key())) allReverse = false;
+                }
+                if (allOnPath || (allReverse && c.singleKind())) skip = true;
+            }
+            if (skip) continue;
+            usable.add(c);
+            if (c.recipe().id() != null && c.recipe().id().getNamespace().equals(namespace)) own = true;
+        }
+        // те же правила сырья, что и в обычном выборе: рецептов нет или предмет добывается в мире
+        if (usable.isEmpty() || (!target && !own && !info.sources().isEmpty())) {
+            costMemo.put(key, 0);
+            return 0;
+        }
+
+        int best = Integer.MAX_VALUE;
+        RecipeView bestRecipe = null;
+        path.add(key);
+        try {
+            for (Candidate c : usable) {
+                int total = 1;
+                Set<Object> seen = new HashSet<>();
+                for (Ing ing : c.inputs()) {
+                    if (ing.isEmpty() || ing.options.isEmpty()) continue;
+                    Stack pick = pick(ing);
+                    if (!seen.add(pick.key())) continue;
+                    total += steps(pick, depth + 1, path, false);
+                    if (total >= best) break;
+                }
+                if (total < best) {
+                    best = total;
+                    bestRecipe = c.recipe();
+                }
+            }
+        } finally {
+            path.remove(key);
+        }
+        costMemo.put(key, best);
+        if (bestRecipe != null) bestMemo.put(key, bestRecipe);
+        return best;
     }
 
     /** Следующий рецепт узла; после последнего идёт «сырьё». */

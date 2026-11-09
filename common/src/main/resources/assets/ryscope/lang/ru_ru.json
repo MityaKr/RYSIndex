@@ -196,6 +196,7 @@
   "ryscope.unit.hours": "%s ч",
   "ryscope.tree.plan": "План",
   "ryscope.tree.compare": "Сравнить",
+  "ryscope.tree.shortest": "Кратчайший",
   "ryscope.planner.title": "Планировщик производства",
   "ryscope.planner.rate": "%s в час",
   "ryscope.planner.mode.tree": "Как в дереве",

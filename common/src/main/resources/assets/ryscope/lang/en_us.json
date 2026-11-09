@@ -196,6 +196,7 @@
   "ryscope.unit.hours": "%s h",
   "ryscope.tree.plan": "Plan",
   "ryscope.tree.compare": "Compare",
+  "ryscope.tree.shortest": "Shortest",
   "ryscope.planner.title": "Production planner",
   "ryscope.planner.rate": "%s per hour",
   "ryscope.planner.mode.tree": "As in the tree",
