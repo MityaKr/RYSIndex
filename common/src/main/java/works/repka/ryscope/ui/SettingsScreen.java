@@ -40,6 +40,9 @@ public final class SettingsScreen extends Screen {
         options.add(new Option("ryscope.settings.energy_unit", works.repka.ryscope.runtime.Units::energyUnit,
             works.repka.ryscope.runtime.Units::cycleEnergyUnit, "ryscope.settings.energy_unit.note"));
         toggle("ryscope.settings.bookmarks", () -> c.bookmarksPanel, () -> c.bookmarksPanel = !c.bookmarksPanel, null);
+        if (Dock.available()) {
+            toggle("ryscope.settings.ftb_dock", () -> c.replaceFtbSidebar, () -> c.replaceFtbSidebar = !c.replaceFtbSidebar, "ryscope.settings.ftb_dock.note");
+        }
         toggle("ryscope.settings.board", () -> c.boardHud, () -> c.boardHud = !c.boardHud, "ryscope.settings.board.note");
         toggle("ryscope.settings.storages", () -> c.countStorages, () -> c.countStorages = !c.countStorages, "ryscope.settings.storages.note");
         toggle("ryscope.settings.groups", () -> c.groupItems, () -> {

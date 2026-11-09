@@ -42,6 +42,8 @@ public final class Config {
     public boolean asyncJeiUnsafe = false;
     /** Сколько ошибок плагинов даёт и обычная загрузка JEI в этой сборке: столько в фоне считается нормой. */
     public int asyncJeiTolerated = 0;
+    /** Показывать кнопки FTB нашей панелью вместо их собственной. */
+    public boolean replaceFtbSidebar = true;
     /** Учитывать в дереве крафта и на доске то, что игрок видел в хранилищах рядом. */
     public boolean countStorages = true;
     /** Радиус в блоках, в котором запомненные хранилища считаются доступными. */

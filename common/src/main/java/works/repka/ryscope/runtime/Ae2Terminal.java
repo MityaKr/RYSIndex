@@ -1,0 +1,236 @@
+package works.repka.ryscope.runtime;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.NonNullList;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.material.Fluid;
+import org.jetbrains.annotations.Nullable;
+import works.repka.ryscope.RYScope;
+import works.repka.ryscope.model.FluidRes;
+import works.repka.ryscope.model.Ing;
+import works.repka.ryscope.model.RecipeView.Transfer;
+import works.repka.ryscope.model.Stack;
+import works.repka.ryscope.platform.Platform;
+
+/**
+ * Терминалы AE2: перенос рецепта в сетку крафта из сети, заказ недостающего (Ctrl) и запись шаблонов.
+ * Работает через те же общие помощники AE2, которыми пользуются её интеграции с просмотрщиками рецептов,
+ * поэтому отдельный аддон AE2 для JEI не нужен. Зависимости от AE2 нет: всё через отражение.
+ */
+public final class Ae2Terminal {
+    public enum State { HAVE, CRAFTABLE, MISSING }
+
+    private static final long REFRESH_MS = 500;
+
+    private static AbstractContainerMenu active;
+    private static AbstractContainerMenu cachedFor;
+    private static long cachedAt;
+    private static Map<Item, Boolean> network = Map.of();
+    private static Set<Item> craftable = Set.of();
+
+    private Ae2Terminal() {}
+
+    /** Имена проверены по AE2 19.2.17 и 19.2.19. */
+    private static final class Api {
+        static final boolean OK;
+        static Class<?> storageMenu, craftingMenu, patternMenu, itemKey;
+        static Method repo, allEntries, what, stored, entryCraftable, itemOf;
+        static Method findMissing, missingSlots, craftableSlots;
+        static Method performTransfer, encodeCrafting, encodeProcessing, supported;
+        static Method craftingTooltip, encodingTooltip, fromItemStack, fluidKey;
+        static Constructor<?> genericStack;
+
+        static {
+            boolean ok = false;
+            try {
+                if (Platform.get().isModLoaded("ae2")) {
+                    storageMenu = Class.forName("appeng.menu.me.common.MEStorageMenu");
+                    craftingMenu = Class.forName("appeng.menu.me.items.CraftingTermMenu");
+                    patternMenu = Class.forName("appeng.menu.me.items.PatternEncodingTermMenu");
+                    itemKey = Class.forName("appeng.api.stacks.AEItemKey");
+                    Class<?> entry = Class.forName("appeng.menu.me.common.GridInventoryEntry");
+                    Class<?> aeKey = Class.forName("appeng.api.stacks.AEKey");
+                    Class<?> stack = Class.forName("appeng.api.stacks.GenericStack");
+                    Class<?> missing = Class.forName("appeng.menu.me.items.CraftingTermMenu$MissingIngredientSlots");
+                    Class<?> crafting = Class.forName("appeng.integration.modules.itemlists.CraftingHelper");
+                    Class<?> encoding = Class.forName("appeng.integration.modules.itemlists.EncodingHelper");
+                    Class<?> tips = Class.forName("appeng.integration.modules.itemlists.TransferHelper");
+                    repo = storageMenu.getMethod("getClientRepo");
+                    allEntries = Class.forName("appeng.menu.me.common.IClientRepo").getMethod("getAllEntries");
+                    what = entry.getMethod("getWhat");
+                    stored = entry.getMethod("getStoredAmount");
+                    entryCraftable = entry.getMethod("isCraftable");
+                    itemOf = itemKey.getMethod("getItem");
+                    findMissing = craftingMenu.getMethod("findMissingIngredients", Map.class);
+                    missingSlots = missing.getMethod("missingSlots");
+                    craftableSlots = missing.getMethod("craftableSlots");
+                    performTransfer = crafting.getMethod("performTransfer", craftingMenu,
+                        net.minecraft.resources.ResourceLocation.class, Recipe.class, boolean.class);
+                    encodeCrafting = encoding.getMethod("encodeCraftingRecipe", patternMenu, RecipeHolder.class, List.class, Predicate.class);
+                    encodeProcessing = encoding.getMethod("encodeProcessingRecipe", patternMenu, List.class, List.class);
+                    supported = encoding.getMethod("isSupportedCraftingRecipe", Recipe.class);
+                    craftingTooltip = tips.getMethod("createCraftingTooltip", missing, boolean.class, boolean.class);
+                    encodingTooltip = tips.getMethod("createEncodingTooltip", boolean.class, boolean.class);
+                    fromItemStack = stack.getMethod("fromItemStack", ItemStack.class);
+                    fluidKey = Class.forName("appeng.api.stacks.AEFluidKey").getMethod("of", Fluid.class);
+                    genericStack = stack.getConstructor(aeKey, long.class);
+                    ok = true;
+                }
+            } catch (Throwable t) {
+                RYScope.LOG.warn("Поддержка терминалов AE2 отключена: {}", t.toString());
+            }
+            OK = ok;
+        }
+    }
+
+    public static boolean isTerminal(@Nullable AbstractContainerMenu menu) {
+        return menu != null && Api.OK && Api.storageMenu.isInstance(menu);
+    }
+
+    /** Экран рецептов сообщает, поверх какого терминала он открыт: от этого зависят отметки в рецептах. */
+    public static void setActive(@Nullable AbstractContainerMenu menu) {
+        active = isTerminal(menu) ? menu : null;
+    }
+
+    public static boolean active() {
+        return active != null;
+    }
+
+    private static void refresh() {
+        long now = System.currentTimeMillis();
+        if (active == cachedFor && now - cachedAt < REFRESH_MS) return;
+        cachedFor = active;
+        cachedAt = now;
+        Map<Item, Boolean> have = new HashMap<>();
+        Set<Item> craft = new java.util.HashSet<>();
+        try {
+            Object repo = Api.repo.invoke(active);
+            if (repo != null) {
+                for (Object entry : (Iterable<?>) Api.allEntries.invoke(repo)) {
+                    Object what = Api.what.invoke(entry);
+                    if (!Api.itemKey.isInstance(what)) continue;
+                    Item item = (Item) Api.itemOf.invoke(what);
+                    if ((long) Api.stored.invoke(entry) > 0) have.put(item, true);
+                    if ((boolean) Api.entryCraftable.invoke(entry)) craft.add(item);
+                }
+            }
+        } catch (Throwable t) {
+            RYScope.LOG.debug("Содержимое сети AE2 не прочитано: {}", t.toString());
+        }
+        network = have;
+        craftable = craft;
+    }
+
+    /** Есть ли ингредиент в сети или инвентаре, можно ли его заказать. В шаблоне важно только «можно заказать». */
+    public static State stateOf(Ing ing) {
+        if (active == null || ing.isEmpty()) return State.HAVE;
+        refresh();
+        boolean pattern = Api.patternMenu.isInstance(active);
+        boolean canCraft = false;
+        Map<Item, Integer> inventory = InventoryView.snapshot();
+        for (Stack option : ing.options) {
+            if (!(option.key() instanceof Item item)) return State.HAVE;
+            if (!pattern && (network.containsKey(item) || inventory.getOrDefault(item, 0) > 0)) return State.HAVE;
+            if (craftable.contains(item)) canCraft = true;
+        }
+        if (canCraft) return State.CRAFTABLE;
+        return pattern ? State.HAVE : State.MISSING;
+    }
+
+    /** @return итог переноса или null, если это не терминал AE2 и пробовать надо другим способом. */
+    @Nullable
+    public static Transfer transfer(AbstractContainerMenu menu, @Nullable RecipeHolder<?> holder, List<Ing> inputs, List<Stack> outputs, boolean simulate) {
+        if (!Api.OK) return null;
+        try {
+            if (Api.craftingMenu.isInstance(menu)) return toCraftingGrid(menu, holder, simulate);
+            if (Api.patternMenu.isInstance(menu)) return toPattern(menu, holder, inputs, outputs, simulate);
+        } catch (Throwable t) {
+            RYScope.LOG.warn("Перенос рецепта в терминал AE2 не удался: {}", t.toString());
+            return Transfer.missing("ryscope.transfer.failed");
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Transfer toCraftingGrid(AbstractContainerMenu menu, @Nullable RecipeHolder<?> holder, boolean simulate) throws ReflectiveOperationException {
+        if (holder == null || !(holder.value() instanceof CraftingRecipe recipe) || recipe.getType() != RecipeType.CRAFTING) return Transfer.UNSUPPORTED;
+        if (!recipe.canCraftInDimensions(3, 3)) return Transfer.missing("ryscope.transfer.too_small");
+        NonNullList<Ingredient> ingredients = recipe.getIngredients();
+        Map<Integer, Ingredient> bySlot = new HashMap<>();
+        for (int i = 0; i < ingredients.size(); i++) if (!ingredients.get(i).isEmpty()) bySlot.put(i, ingredients.get(i));
+        if (bySlot.isEmpty()) return Transfer.UNSUPPORTED;
+        boolean craftMissing = Screen.hasControlDown();
+        if (simulate) {
+            Object result = Api.findMissing.invoke(menu, bySlot);
+            Set<Integer> missing = (Set<Integer>) Api.missingSlots.invoke(result);
+            Set<Integer> canCraft = (Set<Integer>) Api.craftableSlots.invoke(result);
+            if (missing.size() == bySlot.size()) return Transfer.missing("ryscope.transfer.missing");
+            List<Component> tip = (List<Component>) Api.craftingTooltip.invoke(null, result, craftMissing, true);
+            return missing.isEmpty() && canCraft.isEmpty() ? Transfer.ok(tip) : Transfer.partial(tip);
+        }
+        Api.performTransfer.invoke(null, menu, holder.id(), recipe, craftMissing);
+        return Transfer.OK;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Transfer toPattern(AbstractContainerMenu menu, @Nullable RecipeHolder<?> holder, List<Ing> inputs, List<Stack> outputs, boolean simulate) throws ReflectiveOperationException {
+        boolean craftingLike = holder != null && (boolean) Api.supported.invoke(null, holder.value());
+        if (craftingLike && holder.value() instanceof CraftingRecipe recipe && !recipe.canCraftInDimensions(3, 3)) {
+            return Transfer.missing("ryscope.transfer.too_small");
+        }
+        if (simulate) {
+            setActive(menu);
+            boolean anyCraftable = false;
+            for (Ing ing : inputs) if (stateOf(ing) == State.CRAFTABLE) anyCraftable = true;
+            return Transfer.ok((List<Component>) Api.encodingTooltip.invoke(null, anyCraftable, true));
+        }
+        if (craftingLike) {
+            Predicate<ItemStack> anyVisible = stack -> true;
+            Api.encodeCrafting.invoke(null, menu, holder, List.of(), anyVisible);
+            return Transfer.OK;
+        }
+        List<List<Object>> in = new ArrayList<>();
+        for (Ing ing : inputs) {
+            List<Object> options = new ArrayList<>();
+            for (Stack option : ing.options) {
+                Object stack = generic(option);
+                if (stack != null) options.add(stack);
+            }
+            if (!options.isEmpty()) in.add(options);
+        }
+        List<Object> out = new ArrayList<>();
+        for (Stack stack : outputs) {
+            Object generic = generic(stack);
+            if (generic != null) out.add(generic);
+        }
+        if (in.isEmpty() || out.isEmpty()) return Transfer.UNSUPPORTED;
+        Api.encodeProcessing.invoke(null, menu, in, out);
+        return Transfer.OK;
+    }
+
+    @Nullable
+    private static Object generic(Stack stack) throws ReflectiveOperationException {
+        if (stack instanceof FluidRes fluid) {
+            return Api.genericStack.newInstance(Api.fluidKey.invoke(null, fluid.fluid), Math.max(1, fluid.amount));
+        }
+        ItemStack item = stack.item();
+        if (item.isEmpty()) return null;
+        return Api.fromItemStack.invoke(null, item.copyWithCount((int) Math.max(1, Math.min(stack.amount, item.getMaxStackSize()))));
+    }
+}

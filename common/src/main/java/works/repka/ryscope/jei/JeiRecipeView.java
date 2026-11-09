@@ -38,6 +38,8 @@ public final class JeiRecipeView<T> implements RecipeView {
     private int border = 4;
     private List<Ing> inputs;
     private List<Stack> outputs;
+    /** Ответ обработчика переноса: сам рисует на рецепте, чего не хватает. */
+    private IRecipeTransferError transferError;
 
     public JeiRecipeView(JeiBridge bridge, IRecipeCategory<T> category, T recipe, IFocusGroup focus) {
         this.bridge = bridge;
@@ -94,6 +96,13 @@ public final class JeiRecipeView<T> implements RecipeView {
         }
         l.setPosition(x + border, y + border);
         l.drawRecipe(g, mouseX, mouseY);
+        if (transferError != null && works.repka.ryscope.content.NativeRecipe.missingBadges) {
+            try {
+                transferError.showError(g, mouseX, mouseY, l.getRecipeSlotsView(), x + border, y + border);
+            } catch (Throwable t) {
+                transferError = null;
+            }
+        }
     }
 
     @Override
@@ -184,11 +193,70 @@ public final class JeiRecipeView<T> implements RecipeView {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null || mc.player == null) return Transfer.UNSUPPORTED;
         Optional<IRecipeTransferHandler<C, T>> handler = bridge.runtime.getRecipeTransferManager().getRecipeTransferHandler(menu, category);
-        if (handler.isEmpty()) return Transfer.UNSUPPORTED;
+        if (handler.isEmpty()) {
+            // аддона AE2 для JEI может не быть: терминал умеет принимать рецепт и без него
+            Transfer ae2 = works.repka.ryscope.runtime.Ae2Terminal.transfer(menu,
+                recipe instanceof net.minecraft.world.item.crafting.RecipeHolder<?> holder ? holder : null, inputs(), outputs(), simulate);
+            return ae2 != null ? ae2 : Transfer.UNSUPPORTED;
+        }
         IRecipeTransferError error = handler.get().transferRecipe(menu, recipe, l.getRecipeSlotsView(), mc.player, max, !simulate);
-        if (error == null || error.getType().allowsTransfer) return Transfer.OK;
+        if (simulate) transferError = error;
+        if (error == null) return Transfer.OK;
+        List<Component> lines = tooltip(error);
+        if (error.getType().allowsTransfer) return lines.isEmpty() ? Transfer.OK : Transfer.partial(lines);
         if (error.getType() == IRecipeTransferError.Type.INTERNAL) return Transfer.UNSUPPORTED;
-        List<Component> lines = error.getTooltip();
         return Transfer.missing(lines.isEmpty() ? "ryscope.transfer.missing" : lines.get(0).getString());
+    }
+
+    /** Подсказку обработчики пишут то в старый метод, то в новый: собираем из нового, он вызывает и старый. */
+    private static List<Component> tooltip(IRecipeTransferError error) {
+        List<Component> out = new ArrayList<>();
+        try {
+            error.getTooltip(new mezz.jei.api.gui.builder.ITooltipBuilder() {
+                @Override
+                public void add(net.minecraft.network.chat.FormattedText text) {
+                    if (text instanceof Component c) out.add(c);
+                }
+
+                @Override
+                public void addAll(java.util.Collection<? extends net.minecraft.network.chat.FormattedText> texts) {
+                    texts.forEach(this::add);
+                }
+
+                @Override
+                public void add(net.minecraft.world.inventory.tooltip.TooltipComponent component) {
+                }
+
+                @Override
+                public void addKeyUsageComponent(String key, mezz.jei.api.runtime.IJeiKeyMapping mapping) {
+                }
+
+                @Override
+                public void setIngredient(mezz.jei.api.ingredients.ITypedIngredient<?> ingredient) {
+                }
+
+                @Override
+                public void clearIngredient() {
+                }
+
+                @Override
+                public List<com.mojang.datafixers.util.Either<net.minecraft.network.chat.FormattedText, net.minecraft.world.inventory.tooltip.TooltipComponent>> getLines() {
+                    return List.of();
+                }
+
+                @Override
+                public List<Component> toLegacyToComponents() {
+                    return out;
+                }
+
+                @Override
+                public void removeAll(List<Component> lines) {
+                    out.removeAll(lines);
+                }
+            });
+        } catch (Throwable t) {
+            return error.getTooltip();
+        }
+        return out;
     }
 }

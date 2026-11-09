@@ -60,14 +60,28 @@ public interface RecipeView {
     }
 
     /** Результат попытки переноса. */
-    record Transfer(Status status, @Nullable String message) {
-        public enum Status { OK, MISSING, UNSUPPORTED }
+    record Transfer(Status status, @Nullable String message, List<net.minecraft.network.chat.Component> lines) {
+        /** PARTIAL: перенести можно, но части ингредиентов нет или их придётся заказать. */
+        public enum Status { OK, PARTIAL, MISSING, UNSUPPORTED }
 
-        public static final Transfer UNSUPPORTED = new Transfer(Status.UNSUPPORTED, null);
-        public static final Transfer OK = new Transfer(Status.OK, null);
+        public static final Transfer UNSUPPORTED = new Transfer(Status.UNSUPPORTED, null, List.of());
+        public static final Transfer OK = new Transfer(Status.OK, null, List.of());
 
         public static Transfer missing(String message) {
-            return new Transfer(Status.MISSING, message);
+            return new Transfer(Status.MISSING, message, List.of());
+        }
+
+        /** Перенос возможен, подсказка объясняет, что произойдёт. */
+        public static Transfer ok(List<net.minecraft.network.chat.Component> lines) {
+            return new Transfer(Status.OK, null, lines);
+        }
+
+        public static Transfer partial(List<net.minecraft.network.chat.Component> lines) {
+            return new Transfer(Status.PARTIAL, null, lines);
+        }
+
+        public boolean applicable() {
+            return status == Status.OK || status == Status.PARTIAL;
         }
     }
 }

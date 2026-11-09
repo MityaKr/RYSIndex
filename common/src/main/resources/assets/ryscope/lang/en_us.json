@@ -135,6 +135,8 @@
   "ryscope.tree.storages": "Nearby storages counted: %s (as last seen)",
   "ryscope.settings.storages": "Count nearby storages",
   "ryscope.settings.storages.note": "The craft tree counts what you last saw in nearby chests and the AE2 terminal",
+  "ryscope.settings.ftb_dock": "Themed FTB buttons",
+  "ryscope.settings.ftb_dock.note": "Shows FTB buttons in our panel at the top left instead of their own",
   "ryscope.list.keys": "%s recipes · %s uses · %s bookmark · %s tree",
   "ryscope.value.heated": "heated",
   "ryscope.value.superheated": "superheated",

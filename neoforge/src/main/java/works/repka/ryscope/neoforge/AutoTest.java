@@ -163,6 +163,14 @@ final class AutoTest {
             command("tp @s 0.5 -60 0.5 0 0");
             command("fill -3 -60 -3 3 -56 6 minecraft:air");
         }, 30);
+        if ("ae2".equals(System.getProperty("ryscope.autotest"))) {
+            buildAe2();
+            return;
+        }
+        if ("dock".equals(System.getProperty("ryscope.autotest"))) {
+            buildDock();
+            return;
+        }
         if ("perf".equals(System.getProperty("ryscope.autotest"))) {
             buildPerf();
             return;
@@ -892,6 +900,181 @@ final class AutoTest {
                     snap.stacks.size(), snap.recipeCount, snap.buildMillis, Overlay.averageFrameMicros());
             }, 5);
         }
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    // --- сценарий ae2: настоящая сеть, терминалы, перенос и шаблоны ---
+
+    private static final BlockPos AE_CELL = new BlockPos(0, -60, 2);
+    private static final BlockPos AE_DRIVE = new BlockPos(1, -60, 2);
+    private static final BlockPos AE_CABLE = new BlockPos(0, -59, 2);
+
+    private static void use(BlockPos pos, Direction face, Vec3 hit) {
+        mc().gameMode.useItemOn(mc().player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, face, pos, false));
+    }
+
+    private static void hold(String id) {
+        mc().player.getInventory().selected = 8;
+        command("item replace entity @s hotbar.8 with " + id);
+    }
+
+    private static void quickMoveAll(net.minecraft.world.item.Item item) {
+        var menu = mc().player.containerMenu;
+        for (var slot : menu.slots) {
+            if (slot.container == mc().player.getInventory() && slot.getItem().is(item)) {
+                mc().gameMode.handleInventoryMouseClick(menu.containerId, slot.index, 0, net.minecraft.world.inventory.ClickType.QUICK_MOVE, mc().player);
+            }
+        }
+    }
+
+    private static RecipeView firstRecipe(net.minecraft.world.item.Item item, String categoryPart) {
+        for (var group : Lookup.find(new ItemRes(new ItemStack(item)), Lookup.Mode.RECIPES)) {
+            if (!group.category().id.toString().contains(categoryPart)) continue;
+            // в большой сборке первым бывает рецепт из чужого мода: для проверки нужен обычный
+            var key = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item);
+            for (RecipeView r : group.recipes()) if (key.equals(r.id())) return r;
+            return group.recipes().get(0);
+        }
+        return null;
+    }
+
+    private static void logTransfer(String label, net.minecraft.world.item.Item item, String category) {
+        RecipeView recipe = firstRecipe(item, category);
+        var result = recipe == null || !(mc().screen instanceof AbstractContainerScreen<?> acs) ? null : recipe.transfer(acs, false, true);
+        RYScope.LOG.info("[ae2] {}: рецепт {}, проверка: {}, подсказка: {}", label, recipe == null ? "НЕ НАЙДЕН" : recipe.id(),
+            result == null ? "нет" : result.status(), result == null ? "" : result.lines().stream().map(c -> c.getString()).toList());
+    }
+
+    private static void doTransfer(net.minecraft.world.item.Item item, String category) {
+        RecipeView recipe = firstRecipe(item, category);
+        if (recipe != null && mc().screen instanceof AbstractContainerScreen<?> acs) {
+            RYScope.LOG.info("[ae2] перенос {}: {}", recipe.id(), recipe.transfer(acs, false, false).status());
+        }
+    }
+
+    /** Что лежит в особых слотах терминала: сетка крафта или слоты шаблона. */
+    private static String slotsOf(String classPart) {
+        List<String> out = new ArrayList<>();
+        for (var slot : mc().player.containerMenu.slots) {
+            if (slot.getClass().getSimpleName().contains(classPart) && !slot.getItem().isEmpty()) out.add(slot.getItem().getItem().toString() + " x" + slot.getItem().getCount());
+        }
+        return out.toString();
+    }
+
+    private static void buildAe2() {
+        step("ae2: setup", () -> {
+            command("clear @s");
+            command("fill 0 -60 2 1 -58 2 minecraft:air");
+            command("setblock 0 -60 2 ae2:creative_energy_cell");
+            command("setblock 1 -60 2 ae2:drive");
+            command("give @s ae2:item_storage_cell_1k");
+            command("give @s minecraft:oak_planks 64");
+            command("give @s minecraft:redstone 16");
+            command("give @s ae2:blank_pattern 4");
+            hold("ae2:fluix_glass_cable 4");
+        }, 20);
+        step("ae2: cable 1", () -> use(AE_CELL, Direction.UP, new Vec3(0.5, -59, 2.5)), 10);
+        step("ae2: cable 2", () -> use(AE_DRIVE, Direction.UP, new Vec3(1.5, -59, 2.5)), 10);
+        step("ae2: hold terminal", () -> hold("ae2:crafting_terminal"), 10);
+        step("ae2: place terminal", () -> use(AE_CABLE, Direction.NORTH, new Vec3(0.5, -58.5, 2.3)), 10);
+        step("ae2: hold pattern", () -> hold("ae2:pattern_encoding_terminal"), 10);
+        step("ae2: place pattern", () -> use(AE_CABLE, Direction.WEST, new Vec3(0.3, -58.5, 2.5)), 10);
+        step("ae2: empty hand", () -> command("item replace entity @s hotbar.8 with minecraft:air"), 10);
+        step("ae2: open drive", () -> use(AE_DRIVE, Direction.NORTH, new Vec3(1.5, -59.5, 2)), 20);
+        step("ae2: insert cell", () -> {
+            RYScope.LOG.info("[ae2] экран диска: {}", mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName());
+            quickMoveAll(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("ae2:item_storage_cell_1k")));
+        }, 15);
+        step("ae2: close drive", () -> mc().player.closeContainer(), 30);
+        step("ae2: open terminal", () -> use(AE_CABLE, Direction.NORTH, new Vec3(0.5, -58.5, 2.1)), 30);
+        step("ae2: fill network", () -> {
+            RYScope.LOG.info("[ae2] экран терминала: {}", mc().screen == null ? "нет" : mc().screen.getClass().getName());
+            quickMoveAll(Items.OAK_PLANKS);
+        }, 30);
+        shot("ae2_terminal");
+        step("ae2: simulate", () -> {
+            logTransfer("сундук (доски есть в сети)", Items.CHEST, "crafting");
+            logTransfer("поршень (не хватает части)", Items.PISTON, "crafting");
+            logTransfer("алмазная кирка (ничего нет)", Items.DIAMOND_PICKAXE, "crafting");
+            logTransfer("стекло в печи (не верстак)", Items.GLASS, "smelting");
+        }, 5);
+        step("ae2: recipes over terminal", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 25);
+        shot("ae2_recipe_partial");
+        step("ae2: back to terminal", () -> mc().screen.onClose(), 10);
+        step("ae2: transfer chest", () -> doTransfer(Items.CHEST, "crafting"), 25);
+        step("ae2: check grid", () -> RYScope.LOG.info("[ae2] сетка терминала после переноса: {}", slotsOf("CraftingMatrix")), 2);
+        shot("ae2_terminal_filled");
+        step("ae2: close terminal", () -> mc().player.closeContainer(), 15);
+        step("ae2: open pattern", () -> use(AE_CABLE, Direction.WEST, new Vec3(0.1, -58.5, 2.5)), 30);
+        step("ae2: pattern state", () -> {
+            RYScope.LOG.info("[ae2] экран шаблонов: {}", mc().screen == null ? "нет" : mc().screen.getClass().getName());
+            logTransfer("шаблон сундука", Items.CHEST, "crafting");
+            logTransfer("шаблон стекла", Items.GLASS, "smelting");
+        }, 5);
+        step("ae2: encode crafting", () -> doTransfer(Items.CHEST, "crafting"), 25);
+        step("ae2: check crafting pattern", () -> RYScope.LOG.info("[ae2] слоты шаблона после записи верстака: {}", slotsOf("Fake")), 2);
+        shot("ae2_pattern_crafting");
+        step("ae2: encode processing", () -> doTransfer(Items.GLASS, "smelting"), 25);
+        step("ae2: check processing pattern", () -> RYScope.LOG.info("[ae2] слоты шаблона после записи печи: {}", slotsOf("Fake")), 2);
+        shot("ae2_pattern_processing");
+        step("ae2: card height", () -> {
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES);
+        }, 12);
+        step("ae2: card top 1", () -> RYScope.LOG.info("[card] поршень: верх {}, высота {}", cardTop(), cardHeight()), 2);
+        step("ae2: card iron", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.IRON_INGOT)), Lookup.Mode.USES), 12);
+        step("ae2: card top 2", () -> RYScope.LOG.info("[card] железо: верх {}, высота {}", cardTop(), cardHeight()), 2);
+        shot("card_after_navigation");
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    private static int cardTop() {
+        return mc().screen instanceof RecipeScreen rs ? rs.cardBounds()[1] : -1;
+    }
+
+    private static int cardHeight() {
+        return mc().screen instanceof RecipeScreen rs ? rs.cardBounds()[3] : -1;
+    }
+
+    // --- сценарий dock: панель кнопок FTB ---
+
+    private static boolean ftbWidgetOnScreen() {
+        return mc().screen.children().stream().anyMatch(works.repka.ryscope.ui.Dock::isFtbWidget);
+    }
+
+    private static void setOverlay(boolean on) {
+        Config.get().overlayEnabled = on;
+        mc().screen.resize(mc(), mc().screen.width, mc().screen.height);
+    }
+
+    private static void buildDock() {
+        step("dock: open", () -> mc().setScreen(new InventoryScreen(mc().player)), 30);
+        step("dock: state", () -> RYScope.LOG.info("[dock] панель видна: {}, виджет FTB на экране: {}, кнопки: {}",
+            works.repka.ryscope.ui.Dock.visible(), ftbWidgetOnScreen(), works.repka.ryscope.ui.Dock.keys()), 2);
+        shot("dock_inventory");
+        step("dock: hover", () -> {
+            int[] p = works.repka.ryscope.ui.Dock.center("ftbquests_quests");
+            RYScope.LOG.info("[dock] кнопка квестов: {}", p == null ? "НЕТ" : p[0] + ", " + p[1]);
+            if (p != null) moveMouse(p[0], p[1]);
+        }, 8);
+        shot("dock_hover");
+        step("dock: click quests", () -> click(0), 40);
+        step("dock: after click", () -> RYScope.LOG.info("[dock] после клика открыт экран: {}", mc().screen == null ? "нет" : mc().screen.getClass().getName()), 2);
+        shot("dock_quests_opened");
+        step("dock: back", () -> mc().setScreen(new InventoryScreen(mc().player)), 15);
+        step("dock: chest size", () -> {
+            mc().setScreen(new net.minecraft.client.gui.screens.inventory.CraftingScreen(
+                new net.minecraft.world.inventory.CraftingMenu(0, mc().player.getInventory()), mc().player.getInventory(), net.minecraft.network.chat.Component.empty()));
+        }, 15);
+        step("dock: crafting state", () -> RYScope.LOG.info("[dock] экран верстака: панель видна {}, виджет FTB {}",
+            works.repka.ryscope.ui.Dock.visible(), ftbWidgetOnScreen()), 2);
+        shot("dock_crafting");
+        step("dock: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 15);
+        step("dock: overlay off", () -> setOverlay(false), 15);
+        step("dock: off state", () -> RYScope.LOG.info("[dock] наши панели выключены: виджет FTB вернулся: {}", ftbWidgetOnScreen()), 2);
+        shot("dock_overlay_off");
+        step("dock: overlay on", () -> setOverlay(true), 15);
+        step("dock: on state", () -> RYScope.LOG.info("[dock] наши панели включены: панель видна {}, виджет FTB {}",
+            works.repka.ryscope.ui.Dock.visible(), ftbWidgetOnScreen()), 2);
         step("quit", () -> mc().stop(), 0);
     }
 

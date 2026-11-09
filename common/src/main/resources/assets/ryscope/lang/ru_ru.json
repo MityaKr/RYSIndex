@@ -135,6 +135,8 @@
   "ryscope.tree.storages": "Учтено хранилищ рядом: %s (по последнему просмотру)",
   "ryscope.settings.storages": "Учитывать хранилища рядом",
   "ryscope.settings.storages.note": "Дерево крафта считает то, что вы видели в сундуках и терминале AE2 поблизости",
+  "ryscope.settings.ftb_dock": "Кнопки FTB в стиле мода",
+  "ryscope.settings.ftb_dock.note": "Показывает кнопки FTB нашей панелью слева сверху вместо их собственной",
   "ryscope.list.keys": "%s рецепты · %s исп. · %s закладка · %s дерево",
   "ryscope.value.heated": "нагрев",
   "ryscope.value.superheated": "сильный нагрев",

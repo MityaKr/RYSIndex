@@ -157,17 +157,19 @@ public final class Overlay {
         if (foreign != null && screen instanceof AbstractContainerScreen<?>) {
             try {
                 for (int[] area : foreign.exclusionAreas(screen)) {
+                    if (Dock.isFtbArea(screen, area)) continue;
                     boolean beside = area[1] < b[1] + b[3] && area[1] + area[3] > b[1];
                     if (beside && area[0] + area[2] > right && area[0] <= right + 12) {
                         // боковая вкладка, прилипшая к окну справа, расширяет занятую область
                         right = area[0] + area[2];
                     } else if (beside && area[0] < left && area[0] + area[2] >= left - 12) {
                         left = area[0];
-                    } else if (area[0] + area[2] / 2 < sw / 2) {
-                        // чужие кнопки в углу экрана (например, боковая панель FTB): наши панели их обходят
+                    } else if (area[0] + area[2] <= b[0]) {
+                        // чужие кнопки в углу экрана: панели колонки их обходят.
+                        // Области над самим окном (инструменты терминала AE2) к колонкам отношения не имеют
                         if (area[1] < sh / 2) leftTop = Math.max(leftTop, area[1] + area[3] + MARGIN);
                         else leftBottom = Math.min(leftBottom, area[1] - MARGIN);
-                    } else {
+                    } else if (area[0] >= b[0] + b[2]) {
                         if (area[1] < sh / 2) rightTop = Math.max(rightTop, area[1] + area[3] + MARGIN);
                         else rightBottom = Math.min(rightBottom, area[1] - MARGIN);
                     }
@@ -215,6 +217,8 @@ public final class Overlay {
         List<Stack> marks = Bookmarks.list();
         int availL = left - MARGIN - MARGIN;
         int colsL = Math.min(maxCols, (availL - PAD * 2 - 4) / cell);
+        // панель кнопок FTB занимает верх левой колонки, закладки и недавние идут под ней
+        leftTop = Dock.layout(screen, MARGIN, colsL >= 2 ? colsL * cell + PAD * 2 + 4 : availL, leftTop, leftBottom);
         boolean anyMarks = !marks.isEmpty() || Bookmarks.folders().size() > 1 || folderEdit != null;
         if (!cfg.bookmarksPanel || !anyMarks || colsL < 2 || leftBottom - leftTop < PAD * 2 + 12 + cell) {
             MARKS.hide();
@@ -349,6 +353,7 @@ public final class Overlay {
             renderMarksHeader(g, theme, mx, my);
             MARKS.render(g, theme, mx, my, animate);
         }
+        Dock.render(g, theme, mx, my);
         if (RECENT.visible()) {
             theme.panel(g, RECENT.x, RECENT.y, RECENT.w, RECENT.h);
             Draw.textScaled(g, Component.translatable("ryscope.recent").getString(), RECENT.x + PAD + 1, RECENT.y + PAD + 2, 0.75f, theme.c("text.muted"));
@@ -371,6 +376,7 @@ public final class Overlay {
             own.renderTooltip(g, mx, my);
             g.pose().popPose();
         }
+        Dock.renderTooltip(g, mx, my);
         renderHelp(g, theme);
         renderSaved(g, theme, mx, my);
         renderToast(screen, g);
@@ -662,6 +668,15 @@ public final class Overlay {
         if (s != null) return s;
         if (screen instanceof RecipeScreen rs) return rs.hoveredStack((int) mx, (int) my);
         if (screen instanceof AbstractContainerScreen<?> acs) {
+            // в терминале AE2 слоты сети показывают обёртки: предмет или жидкость точнее назовёт JEI
+            if (works.repka.ryscope.runtime.Ae2Terminal.isTerminal(acs.getMenu()) && Foreign.get() != null) {
+                try {
+                    Stack typed = Foreign.get().stackUnderMouse(screen, mx, my);
+                    if (typed != null) return typed;
+                } catch (Throwable ignored) {
+                    // чужой обработчик
+                }
+            }
             Slot slot = Platform.get().hoveredSlot(acs);
             if (slot != null && slot.hasItem()) return new ItemRes(slot.getItem());
         }
@@ -730,7 +745,7 @@ public final class Overlay {
     }
 
     public static boolean isOver(double mx, double my) {
-        return LIST.contains(mx, my) || MARKS.contains(mx, my) || RECENT.contains(mx, my);
+        return LIST.contains(mx, my) || MARKS.contains(mx, my) || RECENT.contains(mx, my) || Dock.contains(mx, my);
     }
 
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
@@ -795,6 +810,10 @@ public final class Overlay {
             if (MARKS.contains(mx, my) || (LIST.contains(mx, my) && !MARKS.visible())) {
                 if (Bookmarks.toggle(new ItemRes(carried))) toast(Component.translatable("ryscope.bookmark.added").getString());
             }
+            return true;
+        }
+        if (Dock.contains(mx, my)) {
+            Dock.click(mx, my, button);
             return true;
         }
         int markIndex = MARKS.indexAt(mx, my);
@@ -869,6 +888,10 @@ public final class Overlay {
         if (host && Keys.matches(Keys.TOGGLE, key, scan) && !searchFocused() && !typingElsewhere(screen)) {
             Config.get().overlayEnabled = !Config.get().overlayEnabled;
             Config.save();
+            // виджет FTB убирается при создании экрана: пересоздаём, чтобы он вернулся или исчез
+            if (screen instanceof AbstractContainerScreen<?> && Dock.available()) {
+                screen.resize(Minecraft.getInstance(), screen.width, screen.height);
+            }
             return true;
         }
         if (!active(screen)) return false;

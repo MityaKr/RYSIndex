@@ -174,7 +174,18 @@ public final class NativeRecipe implements RecipeView {
             int ix = sx + (size - 16) / 2, iy = sy + (size - 16) / 2;
             shown.render(g, ix, iy);
             shown.renderOverlay(g, ix, iy);
-            if (!s.output && missingBadges && crafting && InventoryView.tracking() && !InventoryView.has(s.ing)) {
+            works.repka.ryscope.runtime.Ae2Terminal.State ae2 = !s.output && missingBadges && crafting
+                ? works.repka.ryscope.runtime.Ae2Terminal.stateOf(s.ing) : works.repka.ryscope.runtime.Ae2Terminal.State.HAVE;
+            if (ae2 == works.repka.ryscope.runtime.Ae2Terminal.State.CRAFTABLE) {
+                // ингредиента нет, но сеть AE2 умеет его сделать: Ctrl при переносе закажет
+                g.pose().pushPose();
+                g.pose().translate(0, 0, 250);
+                Draw.rect(g, sx + size - 5, sy + 1, 4, 4, theme.c("accent"));
+                g.pose().popPose();
+            }
+            boolean ae2Terminal = works.repka.ryscope.runtime.Ae2Terminal.active();
+            if (!s.output && missingBadges && crafting
+                && (ae2Terminal ? ae2 == works.repka.ryscope.runtime.Ae2Terminal.State.MISSING : InventoryView.tracking() && !InventoryView.has(s.ing))) {
                 // недостающий ингредиент: приглушаем слот и помечаем уголок, не только цветом
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 250);
@@ -237,6 +248,8 @@ public final class NativeRecipe implements RecipeView {
     @Override
     public Transfer transfer(AbstractContainerScreen<?> screen, boolean max, boolean simulate) {
         if (Minecraft.getInstance().player == null) return Transfer.UNSUPPORTED;
+        Transfer ae2 = works.repka.ryscope.runtime.Ae2Terminal.transfer(screen.getMenu(), holder, inputs, outputs, simulate);
+        if (ae2 != null) return ae2;
         return ClickTransfer.transfer(this, screen, max, simulate);
     }
 }

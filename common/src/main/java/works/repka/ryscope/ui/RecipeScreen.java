@@ -38,6 +38,7 @@ public final class RecipeScreen extends Screen {
     private static final int GAP = 4;
     private static final int BUTTON_COL = 20;
     private static final int TAB_W = 22;
+    private static final int MIN_CARD_W = 250;
 
     // --- вкладки открытых предметов: живут, пока игрок в мире ---
 
@@ -135,6 +136,8 @@ public final class RecipeScreen extends Screen {
     private Nav nav;
     private int cardX, cardY, cardW, cardH;
     private int perPage = 1;
+    /** Ширина карточки за это открытие: только растёт, иначе окно дёргается при смене вкладки. */
+    private int widestCard;
     private int tabScroll;
     private final List<Placed> placed = new ArrayList<>();
     private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
@@ -214,14 +217,16 @@ public final class RecipeScreen extends Screen {
         }
         int plate = recipes.isEmpty() || !recipes.get(0).needsPlate() ? 0 : 3;
         int rowH = maxH + INNER * 2 + plate * 2;
-        cardW = Math.min(width - 8, Math.max(210, maxW + plate * 2 + INNER * 2 + BUTTON_COL + PAD * 2));
+        widestCard = Math.max(widestCard, Math.max(MIN_CARD_W, maxW + plate * 2 + INNER * 2 + BUTTON_COL + PAD * 2));
+        cardW = Math.min(width - 8, widestCard);
         int chrome = PAD + HEADER_H + TABS_H + TITLE_H + FOOTER_H + PAD;
-        int strip = TABS.size() > 1 ? STRIP_H : 0;
-        int bodyAvail = height - (compact ? 6 : 12) - chrome - strip;
+        // место под вкладки предметов оставлено всегда: иначе появление второй вкладки сдвинуло бы карточку
+        cardY = Math.max(2, height / 18) + STRIP_H;
+        int bottomGap = compact ? 3 : 6;
+        int bodyAvail = height - cardY - bottomGap - chrome;
         perPage = Math.max(1, Math.min(recipes.size(), (bodyAvail + GAP) / (rowH + GAP)));
-        cardH = Math.min(height - 4 - strip, chrome + perPage * (rowH + GAP) - GAP);
+        cardH = Math.min(height - cardY - bottomGap, chrome + perPage * (rowH + GAP) - GAP);
         cardX = (width - cardW) / 2;
-        cardY = Math.max(2 + strip, (height - cardH + strip) / 2);
         nav.page = Math.max(0, Math.min(nav.page, pages() - 1));
     }
 
@@ -350,6 +355,7 @@ public final class RecipeScreen extends Screen {
         int by = ly + TITLE_H;
         boolean canTransfer = parent instanceof AbstractContainerScreen<?>;
         works.repka.ryscope.content.NativeRecipe.missingBadges = canTransfer;
+        works.repka.ryscope.runtime.Ae2Terminal.setActive(parent instanceof AbstractContainerScreen<?> host ? host.getMenu() : null);
         for (int i = 0; i < perPage; i++) {
             int idx = nav.page * perPage + i;
             if (idx >= recipes.size()) break;
@@ -393,13 +399,14 @@ public final class RecipeScreen extends Screen {
                 Transfer tr = transfers.get(r);
                 if (tr != null && tr.status() != Transfer.Status.UNSUPPORTED) {
                     int bx = rx0 + rw - BUTTON_COL + 2, bby = by + (rowH - 14) / 2;
-                    boolean ok = tr.status() == Transfer.Status.OK;
+                    boolean ok = tr.applicable();
                     boolean hov = over(mx, my, bx, bby, 14, 14);
                     theme.button(g, bx, bby, 14, 14, hov, ok);
                     int fg = ok ? theme.c("accent.text") : theme.c("text.dim");
                     Draw.rect(g, bx + 6, bby + 3, 2, 8, fg);
                     Draw.rect(g, bx + 3, bby + 6, 8, 2, fg);
                     if (!ok) Draw.rect(g, bx + 10, bby + 1, 3, 3, theme.c("state.bad"));
+                    else if (tr.status() == Transfer.Status.PARTIAL) Draw.rect(g, bx + 10, bby + 1, 3, 3, theme.c("state.warn"));
                 }
             }
             by += rowH + GAP;
@@ -450,7 +457,11 @@ public final class RecipeScreen extends Screen {
                         Transfer tr = transfers.get(p.recipe);
                         int bx = p.cardX + p.cardW - BUTTON_COL + 2, bby = p.cardY + (p.cardH - 14) / 2;
                         if (tr != null && tr.status() != Transfer.Status.UNSUPPORTED && over(mx, my, bx, bby, 14, 14)) {
-                            String key = tr.status() == Transfer.Status.OK ? "ryscope.transfer.hint" : tr.message();
+                            if (!tr.lines().isEmpty()) {
+                                g.renderComponentTooltip(font, tr.lines(), mx, my);
+                                continue;
+                            }
+                            String key = tr.applicable() ? "ryscope.transfer.hint" : tr.message();
                             g.renderTooltip(font, Component.translatable(key == null ? "ryscope.transfer.missing" : key), mx, my);
                         }
                     }
@@ -644,7 +655,7 @@ public final class RecipeScreen extends Screen {
         } catch (Throwable t) {
             result = Transfer.missing("ryscope.transfer.failed");
         }
-        if (result.status() == Transfer.Status.OK) {
+        if (result.applicable()) {
             mc.setScreen(acs);
         } else {
             Overlay.toast(Component.translatable(result.message() == null ? "ryscope.transfer.missing" : result.message()).getString());
