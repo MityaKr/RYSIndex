@@ -259,6 +259,7 @@ public final class CraftTree {
 
     private void loadOptions(Node node) {
         Loaded info = loaded(node.stack);
+        Object self = node.stack.key();
         List<Option> out = new ArrayList<>();
         for (Candidate c : info.candidates()) {
             if (out.size() >= 64) break;
@@ -269,6 +270,9 @@ public final class CraftTree {
                 for (Stack o : ing.options) {
                     if (!node.hasAncestor(o.key())) allAncestors = false;
                     if (!info.madeFromThis().contains(o.key())) allReverse = false;
+                    // починка и улучшение берут на вход сам предмет: получить его так нельзя
+                    // (на сборке RepYS «починка духами» из Malum выбиралась как рецепт лука)
+                    if (o.key().equals(self)) cyclic = true;
                 }
                 if (allAncestors) cyclic = true;
                 // обратимая пара это «слиток из блока, блок из слитков»: у обоих рецептов один вид входа.
@@ -339,13 +343,25 @@ public final class CraftTree {
         return result;
     }
 
-    /** По умолчанию берём необратимый рецепт, для которого у игрока есть больше всего ингредиентов. */
+    /**
+     * Какой рецепт взять по умолчанию. По порядку:
+     * <ol>
+     *   <li>рецепт, для которого у игрока есть все ингредиенты;</li>
+     *   <li>«родной» рецепт: из того же мода, что и сам предмет (для ванильного предмета это ванильный рецепт);</li>
+     *   <li>если родного нет, а предмет добывается в мире (дроп, лут), он считается сырьём: в больших сборках
+     *       у нити или кости десятки рецептов из чужих модов, и дерево уходило в них вместо «убить паука»;</li>
+     *   <li>иначе первый необратимый: варианты идут в порядке категорий, верстак первым.</li>
+     * </ol>
+     * Частичное наличие ингредиентов не учитывается: одна общая доска в рецепте ритуала перевешивала верстак.
+     */
     private int defaultChoice(Node node) {
-        int best = -1;
-        float bestScore = -1f;
+        int first = -1, own = -1;
+        String namespace = node.stack.namespace();
         for (int i = 0; i < node.options.size(); i++) {
             Option o = node.options.get(i);
             if (o.reversible) continue;
+            if (first < 0) first = i;
+            if (own < 0 && o.recipe.id() != null && o.recipe.id().getNamespace().equals(namespace)) own = i;
             int total = 0, have = 0;
             for (Ing ing : o.recipe.inputs()) {
                 if (ing.isEmpty()) continue;
@@ -357,13 +373,11 @@ public final class CraftTree {
                     }
                 }
             }
-            float score = total == 0 ? 0f : have / (float) total;
-            if (score > bestScore) {
-                bestScore = score;
-                best = i;
-            }
+            if (total > 0 && have == total) return i;
         }
-        return best;
+        if (own >= 0) return own;
+        if (node.sources != null && !node.sources.isEmpty()) return -1;
+        return first;
     }
 
     /** Следующий рецепт узла; после последнего идёт «сырьё». */

@@ -266,6 +266,21 @@ final class AutoTest {
         shot("tree_dispenser");
         step("tree2", () -> works.repka.ryscope.ui.TreeScreen.open(new ItemRes(new ItemStack(Items.COMPARATOR))), 12);
         shot("tree_comparator");
+        // какие рецепты дерево видит для предмета и какой берёт по умолчанию: для разбора странных деревьев в сборках
+        step("tree options", () -> {
+            var probe = new works.repka.ryscope.runtime.CraftTree(itemProp("ryscope.autotest.treeProbe", "minecraft:bow"));
+            var node = probe.root;
+            RYScope.LOG.info("[autotest] варианты для {}: выбран {} из {}", node.stack.id(), node.choice + 1, node.options.size());
+            for (int i = 0; i < Math.min(12, node.options.size()); i++) {
+                var option = node.options.get(i);
+                StringBuilder inputs = new StringBuilder();
+                for (var ing : option.recipe.inputs()) {
+                    if (!ing.isEmpty() && !ing.options.isEmpty()) inputs.append(ing.options.get(0).id()).append(' ');
+                }
+                RYScope.LOG.info("[autotest]   {}. {} | {} | обратимый: {} | входы: {}", i + 1, option.category.title.getString(),
+                    option.recipe.id(), option.reversible, inputs.toString().trim());
+            }
+        }, 2);
         // стадии, справка, торговля, руды
         step("stage recipe", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.DIAMOND_PICKAXE)), Lookup.Mode.RECIPES), 10);
         shot("stage_locked_recipe");
