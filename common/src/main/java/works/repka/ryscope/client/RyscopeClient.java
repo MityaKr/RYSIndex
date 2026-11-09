@@ -24,7 +24,24 @@ public final class RyscopeClient {
 
     public static void init() {
         Config.get();
+        works.repka.ryscore.team.TeamCards.register(RyscopeClient::goalsCard);
         RYScope.LOG.info("{} client ready", RYScope.NAME);
+    }
+
+    /** Карточка на экране команды: что игрок сейчас собирает. */
+    private static works.repka.ryscore.team.TeamCards.Card goalsCard() {
+        java.util.List<works.repka.ryscope.runtime.Board.Goal> goals = works.repka.ryscope.runtime.Board.goals();
+        if (goals.isEmpty()) return null;
+        java.util.List<net.minecraft.network.chat.Component> lines = new java.util.ArrayList<>();
+        for (int i = 0; i < Math.min(3, goals.size()); i++) {
+            var goal = goals.get(i);
+            long have = Math.min(goal.amount, InventoryView.count(goal.stack));
+            lines.add(net.minecraft.network.chat.Component.literal(goal.stack.name().getString() + ": " + have + " / " + goal.amount));
+        }
+        var first = goals.get(0).stack;
+        return new works.repka.ryscore.team.TeamCards.Card(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("ryscope", "scope"),
+            net.minecraft.network.chat.Component.translatable("ryscope.goals"), lines,
+            net.minecraft.network.chat.Component.translatable("ryscope.goals.tree"), () -> works.repka.ryscope.ui.TreeScreen.open(first), false);
     }
 
     // --- данные ---

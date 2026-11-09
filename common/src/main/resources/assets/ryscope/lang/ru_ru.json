@@ -209,6 +209,7 @@
   "ryscope.status.missing": "не хватает: %s",
   "ryscope.status.more": "и ещё %s",
   "ryscope.status.stored": "есть в хранилищах рядом",
+  "ryscope.goals.tree": "Дерево крафта",
   "ryscope.goals.removed": "Цель снята",
   "ryscope.settings.search_bottom": "Поиск внизу списка",
   "ryscope.settings.list_paged": "Список страницами",

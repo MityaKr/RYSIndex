@@ -209,6 +209,7 @@
   "ryscope.status.missing": "missing: %s",
   "ryscope.status.more": "and %s more",
   "ryscope.status.stored": "some in nearby storage",
+  "ryscope.goals.tree": "Craft tree",
   "ryscope.goals.removed": "Goal removed",
   "ryscope.settings.search_bottom": "Search at the bottom of the list",
   "ryscope.settings.list_paged": "Paged list",
