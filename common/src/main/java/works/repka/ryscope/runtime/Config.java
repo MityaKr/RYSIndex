@@ -17,7 +17,7 @@ public final class Config {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static Config instance;
 
-    /** compact (16), comfortable (18), large (24). */
+    /** compact (16, без плашек), comfortable (20), large (24). */
     public String density = "comfortable";
     public boolean overlayEnabled = true;
     public boolean bookmarksPanel = true;
@@ -74,7 +74,7 @@ public final class Config {
         return switch (density) {
             case "compact" -> 16;
             case "large" -> 24;
-            default -> 18;
+            default -> 20;
         };
     }
 

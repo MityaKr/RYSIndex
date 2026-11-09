@@ -21,6 +21,9 @@ public final class GridPanel {
     private long lastFrame;
     /** Страничный режим: колесо и стрелки листают экранами, полосы прокрутки нет. */
     public boolean paged;
+    /** Плашки с лёгким оттенком акцента: так в макете отличаются закладки. */
+    public boolean accentTiles;
+    private int[] tileXy = new int[0];
     private int page;
 
     public boolean visible() {
@@ -145,21 +148,42 @@ public final class GridPanel {
         int hovered = indexAt(mx, my);
         int first = (int) (scroll / cell);
         int last = paged ? first + rowsPerPage() - 1 : (int) ((scroll + gridH) / cell);
-        int pad = (cell - 16) / 2;
+        boolean tiled = cell >= 18;
+        int tile = tiled ? cell - 1 : cell;
+        int pad = (tile - 16) / 2;
         float itemScale = cell > 20 ? (cell - 4) / 16f : 1f;
+        float scaledPad = (tile - 16 * itemScale) / 2f;
         g.enableScissor(gridX, gridY, gridX + gridW, gridY + gridH);
+        if (tiled) {
+            int count = 0;
+            int capacity = (last - first + 1) * cols * 2;
+            if (tileXy.length < capacity) tileXy = new int[capacity];
+            for (int row = first; row <= last; row++) {
+                int cy = gridY + row * cell - Math.round(scroll);
+                for (int col = 0; col < cols; col++) {
+                    if (row * cols + col >= items.size()) break;
+                    tileXy[count * 2] = gridX + col * cell;
+                    tileXy[count * 2 + 1] = cy;
+                    count++;
+                }
+            }
+            theme.slots(g, tile, tileXy, count, accentTiles ? Draw.mix(theme.c("slot.border"), theme.c("accent"), 0.3f) : theme.c("slot.border"));
+        }
         for (int row = first; row <= last; row++) {
             int cy = gridY + row * cell - Math.round(scroll);
             for (int col = 0; col < cols; col++) {
                 int idx = row * cols + col;
                 if (idx >= items.size()) break;
                 int cx = gridX + col * cell;
-                if (idx == hovered) theme.hover(g, cx, cy, cell);
+                if (idx == hovered) {
+                    if (tiled) theme.slot(g, cx, cy, tile, true);
+                    else theme.hover(g, cx, cy, cell);
+                }
                 Stack s = items.get(idx);
                 try {
                     if (itemScale != 1f) {
                         g.pose().pushPose();
-                        g.pose().translate(cx + 2, cy + 2, 0);
+                        g.pose().translate(cx + scaledPad, cy + scaledPad, 0);
                         g.pose().scale(itemScale, itemScale, 1f);
                         s.render(g, 0, 0);
                         g.pose().popPose();

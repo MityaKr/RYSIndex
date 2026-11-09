@@ -123,34 +123,38 @@ public final class Board {
             } catch (Throwable t) {
                 continue;
             }
-            int lines = Math.min(4, tree.raw.size());
-            int h = 22 + (tree.raw.isEmpty() ? 10 : lines * 10 + (tree.raw.size() > lines ? 8 : 0)) + 4;
-            Draw.roundBox(g, x, y, w, h, theme.beveled() ? 0 : 5f, Draw.alpha(theme.c("hud.bg"), 0.86f), theme.c("hud.border"));
-            goal.stack.render(g, x + 4, y + 3);
-            String title = goal.amount + "× " + goal.stack.name().getString();
+            // стикер как в макете: название, сколько уже есть, недостающее сырьё и полоса
+            int h = tree.raw.isEmpty() ? 30 : 42;
+            int bg = Draw.alpha(theme.c("hud.bg"), 0.92f);
+            Draw.roundBox(g, x, y, w, h, theme.beveled() ? 0 : theme.r("panel.radius"), bg, theme.c("hud.border"));
             int hudText = theme.beveled() ? 0xFFFFFFFF : theme.c("text.primary");
             int hudMuted = theme.beveled() ? 0xFFC0C0C0 : theme.c("text.muted");
-            Draw.text(g, Draw.ellipsize(title, w - 28), x + 23, y + 7, hudText);
-            int ly = y + 22;
+            long have = Math.min(goal.amount, InventoryView.count(goal.stack));
+            String progress = have + " / " + goal.amount;
+            int progressW = font.width(progress);
+            Draw.text(g, Draw.ellipsize(goal.stack.name().getString(), w - 16 - progressW), x + 6, y + 6, hudText);
+            Draw.text(g, progress, x + w - 6 - progressW, y + 6, hudMuted);
             if (tree.raw.isEmpty()) {
-                Draw.textScaled(g, Component.translatable("ryscope.board.ready").getString(), x + 5, ly, 0.75f, theme.c("state.ok"));
+                Draw.textScaled(g, Component.translatable("ryscope.board.ready").getString(), x + 6, y + 17, 0.75f, theme.c("state.ok"));
             } else {
-                int i = 0;
+                int i = 0, chipX = x + 6, chipY = y + 17, fits = (w - 12) / 17;
                 for (CraftTree.Raw r : tree.raw.values()) {
-                    if (i++ >= lines) break;
+                    if (i >= fits - (tree.raw.size() > fits ? 1 : 0)) break;
+                    theme.slot(g, chipX + i * 17, chipY, 16, false);
                     g.pose().pushPose();
-                    g.pose().translate(x + 5, ly - 1, 0);
-                    g.pose().scale(0.5f, 0.5f, 1f);
+                    g.pose().translate(chipX + i * 17 + 2, chipY + 2, 0);
+                    g.pose().scale(0.75f, 0.75f, 1f);
                     r.stack.render(g, 0, 0);
                     g.pose().popPose();
-                    String line = r.need + "× " + r.stack.name().getString();
-                    Draw.textScaled(g, Draw.ellipsize(line, (int) ((w - 22) / 0.75f)), x + 16, ly, 0.75f, hudMuted);
-                    ly += 10;
+                    i++;
                 }
-                if (tree.raw.size() > lines) {
-                    Draw.textScaled(g, Component.translatable("ryscope.board.more", tree.raw.size() - lines).getString(), x + 16, ly, 0.6f, hudMuted);
+                if (tree.raw.size() > fits) {
+                    Draw.textScaled(g, "+" + (tree.raw.size() - i), chipX + i * 17 + 2, chipY + 5, 0.75f, hudMuted);
                 }
             }
+            int barY = y + h - 5, barW = w - 12;
+            Draw.round(g, x + 6, barY, barW, 2, 1f, theme.c("slot.bg"));
+            if (have > 0) Draw.round(g, x + 6, barY, Math.max(2, barW * have / goal.amount), 2, 1f, theme.c("accent"));
             y += h + 3;
         }
     }

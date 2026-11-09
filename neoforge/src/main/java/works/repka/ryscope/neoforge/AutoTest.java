@@ -1125,6 +1125,8 @@ final class AutoTest {
             works.repka.ryscope.ui.CompareScreen.open(new ItemRes(new ItemStack(Items.STICK)));
         }, 40);
         shot("ui_compare_done");
+        step("ui: board hud", () -> mc().setScreen(null), 10);
+        shot("ui_board_hud");
         step("ui: lens cow", () -> {
             var view = works.repka.ryscope.content.LootContent.forEntity(net.minecraft.world.entity.EntityType.COW);
             RYScope.LOG.info("[ui] корова показывает: {}", view == null ? "нет" : view.outputs().stream().map(o -> o.id().toString()).toList());

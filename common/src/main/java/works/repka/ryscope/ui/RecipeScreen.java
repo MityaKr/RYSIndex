@@ -37,9 +37,17 @@ public final class RecipeScreen extends Screen {
     private int FOOTER_H = 12;
     private static final int INNER = 6;
     private static final int GAP = 4;
-    private static final int BUTTON_COL = 20;
+    private static final int BUTTON_ICON = 20;
+    private static final int STATUS_H = 16;
+    private static final int STATUS_BOX = 12;
+    /** Ширина колонки кнопок справа от рецепта: подписанные кнопки, если хватает места, иначе значок. */
+    private int buttonCol = BUTTON_ICON;
+    private boolean labelled;
+    /** Хватает ли шапке места на числа рядом с названиями вкладок. */
+    private boolean modeCounts = true;
+    private int statusH;
     private static final int TAB_W = 22;
-    private static final int MIN_CARD_W = 250;
+    private static final int MIN_CARD_W = 290;
 
     // --- вкладки открытых предметов: живут, пока игрок в мире ---
 
@@ -123,6 +131,8 @@ public final class RecipeScreen extends Screen {
         List<Group> groups;
         int group;
         int page;
+        /** Сколько рецептов и использований: считается один раз на предмет. */
+        @Nullable int[] counts;
 
         Nav(@Nullable Stack focus, Lookup.Mode mode, List<Group> groups) {
             this.focus = focus;
@@ -148,6 +158,7 @@ public final class RecipeScreen extends Screen {
     private int tabScroll;
     private final List<Placed> placed = new ArrayList<>();
     private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
+    private final Map<RecipeView, Status> statuses = new IdentityHashMap<>();
     private int transferAge;
 
     private RecipeScreen(@Nullable Screen parent, Nav nav) {
@@ -208,10 +219,132 @@ public final class RecipeScreen extends Screen {
         return Math.max(1, (group().recipes().size() + perPage - 1) / perPage);
     }
 
+    /** Строка под рецептом: сколько ингредиентов есть и чего не хватает. */
+    private record Status(String head, String tail, String color) {}
+
+    @Nullable
+    private static Status statusOf(RecipeView recipe) {
+        if (!recipe.isCrafting()) return null;
+        boolean network = works.repka.ryscope.runtime.Ae2Terminal.active();
+        if (!network && !works.repka.ryscope.runtime.InventoryView.tracking()) return null;
+        int total = 0, have = 0;
+        boolean stored = false;
+        Map<String, Integer> missing = new java.util.LinkedHashMap<>();
+        for (works.repka.ryscope.model.Ing in : recipe.inputs()) {
+            if (in.isEmpty()) continue;
+            boolean items = false;
+            for (Stack option : in.options) items |= option.key() instanceof net.minecraft.world.item.Item;
+            if (!items) continue;
+            total++;
+            boolean ok = network
+                ? works.repka.ryscope.runtime.Ae2Terminal.stateOf(in) != works.repka.ryscope.runtime.Ae2Terminal.State.MISSING
+                : works.repka.ryscope.runtime.InventoryView.has(in);
+            if (ok) {
+                have++;
+                continue;
+            }
+            missing.merge(in.options.get(0).name().getString(), 1, Integer::sum);
+            if (works.repka.ryscope.runtime.Config.get().countStorages) {
+                for (Stack option : in.options) {
+                    stored |= option.key() instanceof net.minecraft.world.item.Item item && works.repka.ryscope.runtime.Storages.count(item) > 0;
+                }
+            }
+        }
+        if (total == 0) return null;
+        String place = network ? "network" : "inventory";
+        if (missing.isEmpty()) return new Status(tr("ryscope.status.all." + place), "", "state.ok");
+        StringBuilder names = new StringBuilder();
+        int shown = 0;
+        for (Map.Entry<String, Integer> e : missing.entrySet()) {
+            if (shown == 2) break;
+            if (shown++ > 0) names.append(", ");
+            names.append(e.getKey()).append(" ×").append(e.getValue());
+        }
+        if (missing.size() > 2) names.append(' ').append(Component.translatable("ryscope.status.more", missing.size() - 2).getString());
+        String tail = tr("ryscope.status.have." + place) + " · " + Component.translatable("ryscope.status.missing", names.toString()).getString();
+        if (stored) tail += " · " + tr("ryscope.status.stored");
+        return new Status(Component.translatable("ryscope.status.head", have, total).getString(), tail, have == 0 ? "state.bad" : "state.warn");
+    }
+
+    private static String tr(String key) {
+        return Component.translatable(key).getString();
+    }
+
+    private int count(Lookup.Mode mode) {
+        if (nav.focus == null) return 0;
+        if (nav.counts == null) {
+            nav.counts = new int[2];
+            for (Lookup.Mode m : Lookup.Mode.values()) {
+                int sum = 0;
+                for (Group g : m == nav.mode ? nav.groups : Lookup.find(nav.focus, m)) sum += g.recipes().size();
+                nav.counts[m == Lookup.Mode.RECIPES ? 0 : 1] = sum;
+            }
+        }
+        return nav.counts[mode == Lookup.Mode.RECIPES ? 0 : 1];
+    }
+
+    // --- вкладки «рецепты» и «использования» ---
+
+    private int modeW(Font font, Lookup.Mode mode) {
+        int count = count(mode);
+        String label = tr(mode == Lookup.Mode.RECIPES ? "ryscope.mode.recipes" : "ryscope.mode.uses");
+        return font.width(label) + (count > 0 && modeCounts ? 4 + font.width(Integer.toString(count)) : 0) + 12;
+    }
+
+    private int modeY(Theme theme) {
+        return cardY + PAD + (theme.lineTabs ? 0 : 1);
+    }
+
+    private int modeH(Theme theme) {
+        return theme.lineTabs ? HEADER_H - 5 : 14;
+    }
+
+    private int treeX(Font font) {
+        return cardX + PAD + modeW(font, Lookup.Mode.RECIPES) + 3 + modeW(font, Lookup.Mode.USES) + 4;
+    }
+
+    private int closeX() {
+        return cardX + cardW - PAD - 14;
+    }
+
+    private int starX() {
+        return closeX() - 18;
+    }
+
+    // --- кнопки справа от рецепта ---
+
+    private boolean canTransfer(RecipeView recipe) {
+        if (!(parent instanceof AbstractContainerScreen<?>)) return false;
+        Transfer tr = transfers.get(recipe);
+        return tr == null || tr.status() != Transfer.Status.UNSUPPORTED;
+    }
+
+    private boolean canGoal(RecipeView recipe) {
+        return labelled && nav.focus != null && recipe.isCrafting() && !recipe.outputs().isEmpty();
+    }
+
+    private int buttonsTop(Placed p) {
+        int total = canTransfer(p.recipe) && canGoal(p.recipe) ? 30 : canGoal(p.recipe) ? 13 : labelled ? 15 : 14;
+        return p.cardY + (p.cardH - statusH - total) / 2;
+    }
+
+    private int[] transferRect(Placed p) {
+        return new int[] {p.cardX + p.cardW - buttonCol + 2, buttonsTop(p), labelled ? buttonCol - 8 : 14, labelled ? 15 : 14};
+    }
+
+    private int[] goalRect(Placed p) {
+        int top = buttonsTop(p) + (canTransfer(p.recipe) ? 17 : 0);
+        return new int[] {p.cardX + p.cardW - buttonCol + 2, top, buttonCol - 8, 13};
+    }
+
+    private static boolean over(double mx, double my, int[] r) {
+        return over(mx, my, r[0], r[1], r[2], r[3]);
+    }
+
     private void relayout() {
         boolean compact = height < 300;
         PAD = compact ? 7 : 10;
-        HEADER_H = compact ? 18 : 20;
+        HEADER_H = compact ? 20 : 24;
         TABS_H = compact ? 22 : 24;
         TITLE_H = compact ? 13 : 14;
         FOOTER_H = 0;
@@ -222,8 +355,15 @@ public final class RecipeScreen extends Screen {
             maxH = Math.max(maxH, r.height());
         }
         int plate = recipes.isEmpty() || !recipes.get(0).needsPlate() ? 0 : 3;
-        int rowH = maxH + INNER * 2 + plate * 2;
-        widestCard = Math.max(widestCard, Math.max(MIN_CARD_W, maxW + plate * 2 + INNER * 2 + BUTTON_COL + PAD * 2));
+        boolean crafting = false;
+        for (RecipeView r : recipes) crafting |= r.isCrafting();
+        statusH = !compact && crafting && parent instanceof AbstractContainerScreen<?> ? STATUS_H : 0;
+        int rowH = maxH + INNER * 2 + plate * 2 + statusH;
+        Font font = Minecraft.getInstance().font;
+        int labelW = Math.max(font.width(tr("ryscope.transfer.button")), Math.max(font.width(tr("ryscope.goals.add")), font.width(tr("ryscope.goals.in")))) + 14;
+        labelled = maxW + plate * 2 + INNER * 2 + labelW + 8 + PAD * 2 <= width - 8;
+        buttonCol = labelled ? labelW + 8 : BUTTON_ICON;
+        widestCard = Math.max(widestCard, Math.max(MIN_CARD_W, maxW + plate * 2 + INNER * 2 + buttonCol + PAD * 2));
         cardW = Math.min(width - 8, widestCard);
         int chrome = PAD + HEADER_H + TABS_H + TITLE_H + FOOTER_H + PAD;
         // место под вкладки предметов оставлено всегда: иначе появление второй вкладки сдвинуло бы карточку
@@ -235,6 +375,8 @@ public final class RecipeScreen extends Screen {
         if (cardY + needed > height - bottomGap) cardY = Math.max(STRIP_H + 2, height - bottomGap - needed);
         cardH = Math.min(height - cardY - bottomGap, needed);
         cardX = (width - cardW) / 2;
+        modeCounts = true;
+        modeCounts = nav.focus == null || treeX(font) + 15 + 4 <= starX();
         nav.page = Math.max(0, Math.min(nav.page, pages() - 1));
     }
 
@@ -268,18 +410,21 @@ public final class RecipeScreen extends Screen {
         // --- шапка: режимы, дерево крафта, справка; сам предмет виден на вкладке над карточкой ---
         int hy = cardY + PAD;
         Group group = group();
-        String recipesLabel = Component.translatable("ryscope.mode.recipes").getString();
-        String usesLabel = Component.translatable("ryscope.mode.uses").getString();
-        int pillW1 = font.width(recipesLabel) + 12, pillW2 = font.width(usesLabel) + 12;
-        int pillsX = cardX + PAD;
+        if (theme.lineTabs) Draw.rect(g, cardX + 1, hy + HEADER_H - 5, cardW - 2, 1, theme.c("card.border"));
         if (nav.focus != null) {
-            theme.tab(g, pillsX, hy + 1, pillW1, 14, nav.mode == Lookup.Mode.RECIPES, over(mx, my, pillsX, hy + 1, pillW1, 14));
-            Draw.text(g, recipesLabel, pillsX + 6, hy + 4, nav.mode == Lookup.Mode.RECIPES ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
-            int p2 = pillsX + pillW1 + 3;
-            theme.tab(g, p2, hy + 1, pillW2, 14, nav.mode == Lookup.Mode.USES, over(mx, my, p2, hy + 1, pillW2, 14));
-            Draw.text(g, usesLabel, p2 + 6, hy + 4, nav.mode == Lookup.Mode.USES ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
+            int mode_y = modeY(theme), mode_h = modeH(theme), mode_x = cardX + PAD;
+            for (Lookup.Mode mode : new Lookup.Mode[] {Lookup.Mode.RECIPES, Lookup.Mode.USES}) {
+                int mw = modeW(font, mode), n = count(mode);
+                boolean active = nav.mode == mode, hot = over(mx, my, mode_x, mode_y, mw, mode_h);
+                theme.tabLine(g, mode_x, mode_y, mw, mode_h, active, hot);
+                String label = tr(mode == Lookup.Mode.RECIPES ? "ryscope.mode.recipes" : "ryscope.mode.uses");
+                int textY = mode_y + (mode_h - 8) / 2;
+                Draw.text(g, label, mode_x + 6, textY, theme.tabLineFg(active, hot));
+                if (n > 0 && modeCounts) Draw.text(g, Integer.toString(n), mode_x + 10 + font.width(label), textY, theme.lineTabs ? theme.c("text.dim") : theme.tabLineFg(active, hot));
+                mode_x += mw + 3;
+            }
             // кнопка «дерево крафта»
-            int treeX = pillsX + pillW1 + pillW2 + 7;
+            int treeX = treeX(font);
             boolean th = over(mx, my, treeX, hy + 1, 15, 14);
             theme.button(g, treeX, hy + 1, 15, 14, th, false);
             int tc = th ? theme.c("accent") : theme.c("text.muted");
@@ -290,10 +435,14 @@ public final class RecipeScreen extends Screen {
             Draw.rect(g, treeX + 7, hy + 5, 1, 6, tc);
             Draw.rect(g, treeX + 7, hy + 10, 2, 1, tc);
         }
-        int infoX = cardX + cardW - PAD - 10, infoY = hy + 3;
-        boolean infoHot = over(mx, my, infoX - 1, infoY - 1, 12, 12);
-        Draw.info(g, infoX, infoY, infoHot ? theme.c("accent") : theme.c("text.dim"));
-
+        boolean closeHot = over(mx, my, closeX(), hy + 1, 14, 14);
+        theme.button(g, closeX(), hy + 1, 14, 14, closeHot, false);
+        Draw.cross(g, closeX() + 4, hy + 4, closeHot ? theme.c("accent") : theme.c("text.muted"));
+        if (nav.focus != null) {
+            boolean starHot = over(mx, my, starX(), hy + 1, 14, 14), marked = Bookmarks.contains(nav.focus);
+            theme.button(g, starX(), hy + 1, 14, 14, starHot, false);
+            Draw.star(g, starX() + 3, hy + 3, marked, marked || starHot ? theme.c("accent") : theme.c("text.muted"));
+        }
         // --- вкладки категорий ---
         int ty = cardY + PAD + HEADER_H;
         int tabsW = cardW - PAD * 2;
@@ -321,12 +470,16 @@ public final class RecipeScreen extends Screen {
         String pageText = (nav.page + 1) + " / " + pages();
         int pageW = font.width(pageText);
         int px = cardX + cardW - PAD - pageW - 22;
-        String shownTitle = Draw.ellipsize(catTitle, px - cardX - PAD - 8);
+        // значок подсказки в строке категории: в шапке его перекрывали вкладки
+        int infoX = px - 15, infoY = ly + 1;
+        boolean infoHot = over(mx, my, infoX - 1, infoY - 1, 12, 12);
+        Draw.info(g, infoX, infoY, infoHot ? theme.c("accent") : theme.c("text.dim"));
+        String shownTitle = Draw.ellipsize(catTitle, infoX - cardX - PAD - 8);
         Draw.text(g, shownTitle, cardX + PAD, ly + 2, theme.c("text.body"));
         stations.clear();
         int stx = cardX + PAD + font.width(shownTitle) + 8;
         for (Stack station : group.category().stations) {
-            if (stx + 12 > px - 8 || stations.size() >= 6) break;
+            if (stx + 12 > infoX - 6 || stations.size() >= 6) break;
             g.pose().pushPose();
             g.pose().translate(stx, ly - 1, 0);
             g.pose().scale(0.75f, 0.75f, 1f);
@@ -359,12 +512,12 @@ public final class RecipeScreen extends Screen {
             if (idx >= recipes.size()) break;
             RecipeView r = recipes.get(idx);
             int plate = r.needsPlate() ? 3 : 0;
-            int rowH = maxH + INNER * 2 + plate * 2;
+            int rowH = maxH + INNER * 2 + plate * 2 + statusH;
             int rx0 = cardX + PAD, rw = cardW - PAD * 2;
             theme.card(g, rx0, by, rw, rowH);
-            int areaW = rw - BUTTON_COL;
+            int areaW = rw - buttonCol;
             int rx = rx0 + Math.max(INNER + plate, (areaW - r.width()) / 2);
-            int ry = by + (rowH - r.height()) / 2;
+            int ry = by + (rowH - statusH - r.height()) / 2;
             if (plate > 0) theme.plate(g, rx - plate, ry - plate, r.width() + plate * 2, r.height() + plate * 2);
             try {
                 r.render(g, theme, rx, ry, mx, my, partialTick);
@@ -390,21 +543,40 @@ public final class RecipeScreen extends Screen {
                 g.pose().popPose();
             }
             if (Minecraft.getInstance().options.advancedItemTooltips && r.id() != null) {
-                Draw.textScaled(g, Draw.ellipsize(r.id().toString(), (int) ((rw - 8) / 0.6f)), rx0 + 4, by + rowH - 7, 0.6f, theme.c("text.dim"));
+                Draw.textScaled(g, Draw.ellipsize(r.id().toString(), (int) ((rw - 8) / 0.6f)), rx0 + 4, by + rowH - statusH - 7, 0.6f, theme.c("text.dim"));
             }
 
-            if (canTransfer) {
-                Transfer tr = transfers.get(r);
-                if (tr != null && tr.status() != Transfer.Status.UNSUPPORTED) {
-                    int bx = rx0 + rw - BUTTON_COL + 2, bby = by + (rowH - 14) / 2;
-                    boolean ok = tr.applicable();
-                    boolean hov = over(mx, my, bx, bby, 14, 14);
-                    theme.button(g, bx, bby, 14, 14, hov, ok);
-                    int fg = ok ? theme.c("accent.text") : theme.c("text.dim");
-                    Draw.rect(g, bx + 6, bby + 3, 2, 8, fg);
-                    Draw.rect(g, bx + 3, bby + 6, 8, 2, fg);
-                    if (!ok) Draw.rect(g, bx + 10, bby + 1, 3, 3, theme.c("state.bad"));
-                    else if (tr.status() == Transfer.Status.PARTIAL) Draw.rect(g, bx + 10, bby + 1, 3, 3, theme.c("state.warn"));
+            Placed row = placed.get(placed.size() - 1);
+            Transfer tr = transfers.get(r);
+            if (canTransfer && tr != null && tr.status() != Transfer.Status.UNSUPPORTED) {
+                int[] b = transferRect(row);
+                boolean ok = tr.applicable();
+                theme.button(g, b[0], b[1], b[2], b[3], over(mx, my, b), ok);
+                int fg = ok ? theme.c("accent.text") : theme.c("text.dim");
+                if (labelled) {
+                    Draw.textCentered(g, tr("ryscope.transfer.button"), b[0] + b[2] / 2, b[1] + 4, fg);
+                } else {
+                    Draw.rect(g, b[0] + 6, b[1] + 3, 2, 8, fg);
+                    Draw.rect(g, b[0] + 3, b[1] + 6, 8, 2, fg);
+                }
+                if (!ok) Draw.rect(g, b[0] + b[2] - 4, b[1] + 1, 3, 3, theme.c("state.bad"));
+                else if (tr.status() == Transfer.Status.PARTIAL) Draw.rect(g, b[0] + b[2] - 4, b[1] + 1, 3, 3, theme.c("state.warn"));
+            }
+            if (canGoal(r)) {
+                int[] b = goalRect(row);
+                boolean set = works.repka.ryscope.runtime.Board.contains(r.outputs().get(0));
+                theme.button(g, b[0], b[1], b[2], b[3], over(mx, my, b), false);
+                Draw.textCentered(g, tr(set ? "ryscope.goals.in" : "ryscope.goals.add"), b[0] + b[2] / 2, b[1] + 3, set ? theme.c("accent") : theme.c("text.body"));
+            }
+            Status status = statusH > 0 ? statuses.get(r) : null;
+            if (status != null) {
+                int sx = rx0 + 4, sy = by + rowH - STATUS_BOX - 3, sw = rw - 8;
+                Draw.roundBox(g, sx, sy, sw, STATUS_BOX, Math.min(theme.r("button.radius"), 3f), theme.c("panel.bg"), theme.c("panel.border"));
+                Draw.dot(g, sx + 4, sy + 4, 4, theme.c(status.color));
+                Draw.textScaled(g, status.head, sx + 12, sy + 3, 0.75f, theme.c("text.primary"));
+                if (!status.tail.isEmpty()) {
+                    float tailX = sx + 12 + font.width(status.head) * 0.75f + 3;
+                    Draw.textScaled(g, Draw.ellipsize(status.tail, (int) ((sx + sw - 4 - tailX) / 0.75f)), tailX, sy + 3, 0.75f, theme.c("text.muted"));
                 }
             }
             by += rowH + GAP;
@@ -457,8 +629,7 @@ public final class RecipeScreen extends Screen {
                 if (!drawn && canTransfer) {
                     for (Placed p : placed) {
                         Transfer tr = transfers.get(p.recipe);
-                        int bx = p.cardX + p.cardW - BUTTON_COL + 2, bby = p.cardY + (p.cardH - 14) / 2;
-                        if (tr != null && tr.status() != Transfer.Status.UNSUPPORTED && over(mx, my, bx, bby, 14, 14)) {
+                        if (tr != null && tr.status() != Transfer.Status.UNSUPPORTED && over(mx, my, transferRect(p))) {
                             if (!tr.lines().isEmpty()) {
                                 g.renderComponentTooltip(font, tr.lines(), mx, my);
                                 continue;
@@ -516,6 +687,11 @@ public final class RecipeScreen extends Screen {
         }
         if (parent instanceof AbstractContainerScreen<?> acs && (transferAge++ % 10 == 0 || transfers.isEmpty())) {
             for (Placed p : placed) {
+                try {
+                    statuses.put(p.recipe, statusOf(p.recipe));
+                } catch (Throwable t) {
+                    statuses.remove(p.recipe);
+                }
                 Transfer tr;
                 try {
                     tr = p.recipe.transfer(acs, false, true);
@@ -572,22 +748,30 @@ public final class RecipeScreen extends Screen {
             return true;
         }
         Font font = Minecraft.getInstance().font;
+        Theme clickTheme = ThemeManager.get();
+        if (over(mx, my, closeX(), cardY + PAD + 1, 14, 14)) {
+            onClose();
+            return true;
+        }
         // режимы
         if (nav.focus != null) {
-            String recipesLabel = Component.translatable("ryscope.mode.recipes").getString();
-            String usesLabel = Component.translatable("ryscope.mode.uses").getString();
-            int pillW1 = font.width(recipesLabel) + 12, pillW2 = font.width(usesLabel) + 12;
-            int pillsX = cardX + PAD;
             int hy = cardY + PAD + 1;
-            if (over(mx, my, pillsX, hy, pillW1, 14)) {
+            if (over(mx, my, starX(), hy, 14, 14)) {
+                boolean added = Bookmarks.toggle(nav.focus);
+                Overlay.toast(tr(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed"));
+                return true;
+            }
+            int modeTop = modeY(clickTheme), modeBottom = modeH(clickTheme);
+            int recipesW = modeW(font, Lookup.Mode.RECIPES);
+            if (over(mx, my, cardX + PAD, modeTop, recipesW, modeBottom)) {
                 switchMode(Lookup.Mode.RECIPES);
                 return true;
             }
-            if (over(mx, my, pillsX + pillW1 + 3, hy, pillW2, 14)) {
+            if (over(mx, my, cardX + PAD + recipesW + 3, modeTop, modeW(font, Lookup.Mode.USES), modeBottom)) {
                 switchMode(Lookup.Mode.USES);
                 return true;
             }
-            if (over(mx, my, pillsX + pillW1 + pillW2 + 7, hy, 15, 14)) {
+            if (over(mx, my, treeX(font), hy, 15, 14)) {
                 TreeScreen.open(nav.focus);
                 return true;
             }
@@ -615,11 +799,19 @@ public final class RecipeScreen extends Screen {
             setPage(nav.page + 1);
             return true;
         }
+        // в цели
+        if (button == 0) {
+            for (Placed p : placed) {
+                if (!canGoal(p.recipe) || !over(mx, my, goalRect(p))) continue;
+                boolean added = works.repka.ryscope.runtime.Board.toggle(p.recipe.outputs().get(0), 1);
+                Overlay.toast(tr(added ? "ryscope.goals.added" : "ryscope.goals.removed"));
+                return true;
+            }
+        }
         // перенос
         if (parent instanceof AbstractContainerScreen<?> acs && button == 0) {
             for (Placed p : placed) {
-                int bx = p.cardX + p.cardW - BUTTON_COL + 2, bby = p.cardY + (p.cardH - 14) / 2;
-                if (!over(mx, my, bx, bby, 14, 14)) continue;
+                if (!over(mx, my, transferRect(p))) continue;
                 Transfer tr = transfers.get(p.recipe);
                 if (tr == null || tr.status() == Transfer.Status.UNSUPPORTED) continue;
                 doTransfer(acs, p.recipe, hasShiftDown());

@@ -40,12 +40,16 @@ import works.repka.ryscore.theme.ThemeManager;
 public final class Overlay {
     private static final int MARGIN = 4;
     private static final int PAD = 5;
-    private static final int SEARCH_H = 14;
+    private static final int SEARCH_H = 16;
     private static final int FOOTER_H = 10;
 
     private static final GridPanel LIST = new GridPanel();
     private static final GridPanel MARKS = new GridPanel();
     private static final GridPanel GOALS = new GridPanel();
+
+    static {
+        MARKS.accentTiles = true;
+    }
     private static EditBox search;
     private static final int[] searchRect = new int[4];
     private static boolean draggingScroll;
@@ -194,7 +198,9 @@ public final class Overlay {
         int maxCols = cfg.maxColumns > 0 ? cfg.maxColumns : 99;
 
         // список справа
-        int avail = sw - MARGIN - (right + MARGIN);
+        boolean flush = ThemeManager.get().flushSidebar;
+        int edge = flush ? 0 : MARGIN;
+        int avail = sw - edge - (right + MARGIN);
         int cols = Math.min(maxCols, (avail - PAD * 2 - 4) / cell);
         if (cols < 3 || rightBottom - rightTop < 80) {
             LIST.hide();
@@ -202,9 +208,10 @@ public final class Overlay {
             LIST.cell = cell;
             LIST.cols = cols;
             LIST.w = cols * cell + PAD * 2 + 4;
-            LIST.x = sw - MARGIN - LIST.w;
-            LIST.y = rightTop;
-            LIST.h = rightBottom - rightTop;
+            LIST.x = sw - edge - LIST.w;
+            // прижатая панель идёт на всю высоту, если сверху и снизу не мешают чужие кнопки
+            LIST.y = flush && rightTop == MARGIN ? 0 : rightTop;
+            LIST.h = (flush && rightBottom == sh - MARGIN ? sh : rightBottom) - LIST.y;
             searchRect[0] = LIST.x + PAD;
             int footerTop = LIST.y + LIST.h - PAD - FOOTER_H - 2;
             searchRect[1] = cfg.searchBottom ? footerTop - SEARCH_H : LIST.y + PAD;
@@ -215,9 +222,9 @@ public final class Overlay {
             LIST.gridW = cols * cell;
             LIST.gridH = (cfg.searchBottom ? searchRect[1] - 4 : footerTop) - LIST.gridY;
             EditBox box = search();
-            box.setX(searchRect[0] + 5);
-            box.setY(searchRect[1] + 3);
-            box.setWidth(searchRect[2] - 22);
+            box.setX(searchRect[0] + 16);
+            box.setY(searchRect[1] + 4);
+            box.setWidth(searchRect[2] - 32);
         }
 
         // закладки слева
@@ -295,13 +302,22 @@ public final class Overlay {
         if (LIST.visible()) {
             SearchService.Results results = SearchService.results();
             LIST.setItems(results.stacks);
-            theme.panel(g, LIST.x, LIST.y, LIST.w, LIST.h);
+            theme.sidebar(g, LIST.x, LIST.y, LIST.w, LIST.h);
             EditBox box = search();
             theme.input(g, searchRect[0], searchRect[1], searchRect[2], searchRect[3], box.isFocused() || highlight);
+            Draw.magnifier(g, searchRect[0] + 5, searchRect[1] + 4, theme.c("text.dim"));
+            renderChips(g, theme, box);
             box.setTextColor(theme.c("input.fg") & 0xFFFFFF);
             box.render(g, mx, my, partialTick);
+            if (box.getValue().isEmpty() && !box.isFocused()) {
+                String key = Keys.label(Keys.SEARCH);
+                float keyW = font.width(key) * 0.75f;
+                if (keyW < searchRect[2] / 3f) {
+                    Draw.textScaled(g, key, searchRect[0] + searchRect[2] - 5 - keyW, searchRect[1] + 5, 0.75f, theme.c("text.dim"));
+                }
+            }
             if (!box.getValue().isEmpty()) {
-                int cx = searchRect[0] + searchRect[2] - 10, cy = searchRect[1] + 4;
+                int cx = searchRect[0] + searchRect[2] - 10, cy = searchRect[1] + 5;
                 boolean ch = mx >= cx - 2 && mx < cx + 8 && my >= cy - 2 && my < cy + 8;
                 int cc = ch ? theme.c("accent") : theme.c("text.dim");
                 for (int i = 0; i < 6; i++) {
@@ -323,7 +339,6 @@ public final class Overlay {
                     count = Component.translatable("ryscope.search.fuzzy", count).getString();
                 }
                 listCount = count;
-                if (!LIST.paged || LIST.pages() <= 1) Draw.textScaled(g, count, LIST.x + PAD, fy + 2, 0.75f, theme.c("text.dim"));
             }
             // кнопка настроек: три «ползунка»
             gearRect[0] = LIST.x + LIST.w - PAD - 10;
@@ -337,18 +352,24 @@ public final class Overlay {
                 helpIcon[0] = listInfo[0] - 13;
                 helpIcon[1] = fy;
                 Draw.question(g, helpIcon[0], helpIcon[1], overInfo(helpIcon, mx, my) ? theme.c("accent") : theme.c("text.dim"));
-                if (LIST.paged && LIST.pages() > 1) {
-                    String pageText = (LIST.page() + 1) + "/" + LIST.pages();
-                    int textW = Math.round(font.width(pageText) * 0.75f);
-                    pageArrows[0] = LIST.x + PAD;
-                    pageArrows[1] = LIST.x + PAD + 16 + textW;
+                // слева счётчик и страница, справа стрелки: как в макете
+                boolean many = LIST.paged && LIST.pages() > 1;
+                String footer = many ? listCount + " · " + (LIST.page() + 1) + " / " + LIST.pages() : listCount;
+                int textEnd = helpIcon[0] - 4;
+                if (many) {
+                    pageArrows[0] = helpIcon[0] - 18;
+                    pageArrows[1] = helpIcon[0] - 10;
                     pageArrows[2] = fy;
-                    boolean prevHot = mx >= pageArrows[0] - 2 && mx < pageArrows[0] + 7 && my >= fy - 2 && my < fy + 12;
-                    boolean nextHot = mx >= pageArrows[1] - 2 && mx < pageArrows[1] + 7 && my >= fy - 2 && my < fy + 12;
-                    Draw.textScaled(g, "<", pageArrows[0], fy + 2, 0.75f, prevHot ? theme.c("accent") : theme.c("text.dim"));
-                    Draw.textScaled(g, pageText, pageArrows[0] + 8, fy + 2, 0.75f, theme.c("text.dim"));
-                    Draw.textScaled(g, ">", pageArrows[1], fy + 2, 0.75f, nextHot ? theme.c("accent") : theme.c("text.dim"));
+                    textEnd = pageArrows[0] - 4;
+                    boolean prevHot = mx >= pageArrows[0] - 2 && mx < pageArrows[0] + 6 && my >= fy - 2 && my < fy + 12;
+                    boolean nextHot = mx >= pageArrows[1] - 2 && mx < pageArrows[1] + 6 && my >= fy - 2 && my < fy + 12;
+                    Draw.chevron(g, pageArrows[0], fy + 2, false, prevHot ? theme.c("accent") : theme.c("text.muted"));
+                    Draw.chevron(g, pageArrows[1], fy + 2, true, nextHot ? theme.c("accent") : theme.c("text.muted"));
                 }
+                int footerW = textEnd - LIST.x - PAD;
+                // в узкой панели номер страницы важнее общего числа
+                if (many && font.width(footer) * 0.75f > footerW) footer = (LIST.page() + 1) + " / " + LIST.pages();
+                if (font.width(footer) * 0.75f <= footerW) Draw.textScaled(g, footer, LIST.x + PAD, fy + 2, 0.75f, theme.c("text.muted"));
             }
             boolean gearHover = mx >= gearRect[0] - 2 && mx < gearRect[0] + 12 && my >= gearRect[1] - 2 && my < gearRect[1] + 12;
             int gc = gearHover ? theme.c("accent") : theme.c("text.dim");
@@ -373,6 +394,25 @@ public final class Overlay {
             goalsInfo[1] = GOALS.y + PAD;
             Draw.info(g, goalsInfo[0], goalsInfo[1], overInfo(goalsInfo, mx, my) ? theme.c("accent") : theme.c("text.dim"));
             GOALS.render(g, theme, mx, my, false);
+        }
+    }
+
+    /** Операторы запроса лежат на цветных плашках. Текст, не влезший в поле, остаётся просто цветным. */
+    private static void renderChips(GuiGraphics g, Theme theme, EditBox box) {
+        String value = box.getValue();
+        Font font = Minecraft.getInstance().font;
+        if (value.isEmpty() || font.width(value) > box.getInnerWidth()) return;
+        for (Query.Term t : Query.parse(value).terms()) {
+            String kind = switch (t.kind) {
+                case MOD -> "mod";
+                case TAG -> "tag";
+                case TOOLTIP, ID, OPERATOR -> "fn";
+                default -> null;
+            };
+            if (kind == null || t.start >= t.end) continue;
+            int x0 = box.getX() + font.width(value.substring(0, t.start));
+            int x1 = box.getX() + font.width(value.substring(0, Math.min(t.end, value.length())));
+            theme.chip(g, x0 - 3, searchRect[1] + 2, x1 - x0 + 5, SEARCH_H - 4, kind);
         }
     }
 

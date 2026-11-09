@@ -168,7 +168,16 @@ public final class NativeRecipe implements RecipeView {
         for (SlotW s : slots) {
             int sx = x + s.x, sy = y + s.y, size = s.size();
             boolean hover = mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size;
-            theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty());
+            int stateBorder = 0;
+            if (!s.output && missingBadges && crafting && !s.ing.isEmpty()) {
+                // рамка показывает наличие: зелёная есть, янтарная не хватает
+                boolean terminal = works.repka.ryscope.runtime.Ae2Terminal.active();
+                boolean lacking = terminal
+                    ? works.repka.ryscope.runtime.Ae2Terminal.stateOf(s.ing) != works.repka.ryscope.runtime.Ae2Terminal.State.HAVE
+                    : !InventoryView.has(s.ing);
+                if (terminal || InventoryView.tracking()) stateBorder = theme.c(lacking ? "slot.miss.border" : "slot.have.border");
+            }
+            theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateBorder);
             Stack shown = s.ing.shown(now);
             if (shown == null) continue;
             int ix = sx + (size - 16) / 2, iy = sy + (size - 16) / 2;
