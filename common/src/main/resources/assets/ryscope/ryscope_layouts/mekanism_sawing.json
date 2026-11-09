@@ -1,0 +1,64 @@
+{
+  "for": [
+    "mekanism:sawing"
+  ],
+  "title": "block.mekanism.precision_sawmill",
+  "icon": "mekanism:precision_sawmill",
+  "stations": [
+    "mekanism:precision_sawmill"
+  ],
+  "size": [
+    124,
+    42
+  ],
+  "order": 45,
+  "widgets": [
+    {
+      "type": "slot",
+      "source": "input",
+      "at": [
+        0,
+        6
+      ]
+    },
+    {
+      "type": "arrow",
+      "at": [
+        28,
+        10
+      ],
+      "width": 22
+    },
+    {
+      "type": "slot",
+      "source": "main_output",
+      "at": [
+        58,
+        2
+      ],
+      "output": true,
+      "large": true
+    },
+    {
+      "type": "slot",
+      "source": "secondary_output",
+      "at": [
+        88,
+        6
+      ],
+      "output": true,
+      "large": false
+    },
+    {
+      "type": "text",
+      "text": "{secondary_chance|percent}",
+      "at": [
+        90,
+        32
+      ],
+      "if": "secondary_chance"
+    }
+  ],
+  "time_default": 200,
+  "energy_per_tick": 20
+}

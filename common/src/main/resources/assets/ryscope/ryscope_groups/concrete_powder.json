@@ -1,0 +1,7 @@
+{
+  "tags": [
+    "c:concrete_powders"
+  ],
+  "match": "minecraft:.*_concrete_powder",
+  "name": "ryscope.group.concrete_powder"
+}

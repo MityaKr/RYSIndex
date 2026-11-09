@@ -1,0 +1,46 @@
+{
+  "for": [
+    "ae2:charger"
+  ],
+  "title": "block.ae2.charger",
+  "icon": "ae2:charger",
+  "stations": [
+    "ae2:charger",
+    "ae2:crank"
+  ],
+  "size": [
+    124,
+    30
+  ],
+  "order": 47,
+  "widgets": [
+    {
+      "type": "slot",
+      "source": "ingredient",
+      "at": [
+        18,
+        6
+      ]
+    },
+    {
+      "type": "arrow",
+      "at": [
+        50,
+        10
+      ],
+      "width": 22
+    },
+    {
+      "type": "slot",
+      "source": "result",
+      "at": [
+        84,
+        2
+      ],
+      "output": true,
+      "large": true
+    }
+  ],
+  "time_default": 200,
+  "energy_per_tick": 8
+}

@@ -1,0 +1,66 @@
+{
+  "for": [
+    "create:milling"
+  ],
+  "title": "create.recipe.milling",
+  "icon": "create:millstone",
+  "stations": [
+    "create:millstone"
+  ],
+  "size": [
+    152,
+    56
+  ],
+  "order": 40,
+  "widgets": [
+    {
+      "type": "slots",
+      "source": "ingredients",
+      "at": [
+        0,
+        4
+      ],
+      "columns": 3,
+      "max": 6
+    },
+    {
+      "type": "arrow",
+      "at": [
+        65,
+        14
+      ],
+      "width": 22
+    },
+    {
+      "type": "slots",
+      "source": "results",
+      "at": [
+        92,
+        4
+      ],
+      "columns": 3,
+      "max": 6,
+      "output": true
+    },
+    {
+      "type": "text",
+      "text": "{processing_time|ticks}",
+      "at": [
+        0,
+        47
+      ],
+      "if": "processing_time"
+    },
+    {
+      "type": "text",
+      "text": "{heat_requirement|name}",
+      "at": [
+        64,
+        47
+      ],
+      "if": "heat_requirement"
+    }
+  ],
+  "time": "processing_time",
+  "time_default": 100
+}

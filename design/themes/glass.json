@@ -1,0 +1,57 @@
+{
+  "id": "ryscope:glass",
+  "name": "Glass",
+  "font": "minecraft:default",
+  "colors": {
+    "overlay": "#0a141e",
+    "overlay.alpha": 0.28,
+    "panel.bg": "#ffffff",
+    "panel.alpha": 0.12,
+    "panel.border": "#ffffff",
+    "panel.border.alpha": 0.35,
+    "card.bg": "#141e2d",
+    "card.alpha": 0.55,
+    "slot.bg": "#000000",
+    "slot.alpha": 0.28,
+    "slot.border": "#ffffff",
+    "slot.border.alpha": 0.18,
+    "input.bg": "#000000",
+    "input.alpha": 0.3,
+    "button.bg": "#ffffff",
+    "button.alpha": 0.12,
+    "text.primary": "#ffffff",
+    "text.body": "#ffffff",
+    "text.muted": "#ffffff",
+    "text.muted.alpha": 0.75,
+    "accent": "#7fe3ff",
+    "accent.text": "#10233a",
+    "state.ok": "#b6ffc9",
+    "state.warn": "#ffd166",
+    "state.bad": "#ffb3c7",
+    "tooltip.bg": "#141e2d",
+    "tooltip.alpha": 0.85,
+    "tooltip.border": "#ffffff"
+  },
+  "metrics": {
+    "panel.radius": 20,
+    "card.radius": 20,
+    "slot.radius": 9,
+    "button.radius": 999,
+    "tab.style": "pill",
+    "bevel": 0,
+    "slot.size": 18,
+    "slot.gap": 3,
+    "missing.alpha": 0.45
+  },
+  "textures": {
+    "slot": "ryscope:textures/gui/glass/slot.png",
+    "panel": "ryscope:textures/gui/glass/panel.png",
+    "button": "ryscope:textures/gui/glass/button.png"
+  },
+  "effects": {
+    "blur": 18,
+    "blur.fallback.alpha": 0.82,
+    "shadow": true,
+    "animations": "normal"
+  }
+}

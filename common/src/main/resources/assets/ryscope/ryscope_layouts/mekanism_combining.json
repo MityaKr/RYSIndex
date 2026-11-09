@@ -1,0 +1,53 @@
+{
+  "for": [
+    "mekanism:combining"
+  ],
+  "title": "block.mekanism.combiner",
+  "icon": "mekanism:combiner",
+  "stations": [
+    "mekanism:combiner"
+  ],
+  "size": [
+    124,
+    34
+  ],
+  "order": 45,
+  "widgets": [
+    {
+      "type": "slot",
+      "source": "main_input",
+      "at": [
+        0,
+        6
+      ]
+    },
+    {
+      "type": "slot",
+      "source": "extra_input",
+      "at": [
+        20,
+        6
+      ]
+    },
+    {
+      "type": "arrow",
+      "at": [
+        48,
+        10
+      ],
+      "width": 22
+    },
+    {
+      "type": "slot",
+      "source": "output",
+      "at": [
+        78,
+        2
+      ],
+      "output": true,
+      "large": true
+    }
+  ],
+  "time_default": 200,
+  "energy_per_tick": 20
+}

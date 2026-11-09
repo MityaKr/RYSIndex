@@ -1,0 +1,67 @@
+{
+  "for": [
+    "create:sandpaper_polishing"
+  ],
+  "title": "create.recipe.sandpaper_polishing",
+  "icon": "create:sand_paper",
+  "stations": [
+    "create:sand_paper",
+    "create:red_sand_paper"
+  ],
+  "size": [
+    152,
+    36
+  ],
+  "order": 40,
+  "widgets": [
+    {
+      "type": "slots",
+      "source": "ingredients",
+      "at": [
+        0,
+        4
+      ],
+      "columns": 3,
+      "max": 3
+    },
+    {
+      "type": "arrow",
+      "at": [
+        65,
+        4
+      ],
+      "width": 22
+    },
+    {
+      "type": "slots",
+      "source": "results",
+      "at": [
+        92,
+        4
+      ],
+      "columns": 3,
+      "max": 3,
+      "output": true
+    },
+    {
+      "type": "text",
+      "text": "{processing_time|ticks}",
+      "at": [
+        0,
+        27
+      ],
+      "if": "processing_time"
+    },
+    {
+      "type": "text",
+      "text": "{heat_requirement|name}",
+      "at": [
+        64,
+        27
+      ],
+      "if": "heat_requirement"
+    }
+  ],
+  "time": "processing_time",
+  "time_default": 0
+}

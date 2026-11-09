@@ -1,0 +1,19 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "works.repka.ryscope.neoforge.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerCommonPacketListenerImplMixin",
+    "CraftingMenuMixin",
+    "SmithingMenuMixin",
+    "StonecutterMenuMixin",
+    "AbstractFurnaceBlockEntityMixin"
+  ],
+  "client": [
+    "StartEventObserverMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

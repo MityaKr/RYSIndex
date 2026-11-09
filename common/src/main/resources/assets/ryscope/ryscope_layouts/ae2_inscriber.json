@@ -1,0 +1,64 @@
+{
+  "for": [
+    "ae2:inscriber"
+  ],
+  "title": "block.ae2.inscriber",
+  "icon": "ae2:inscriber",
+  "stations": [
+    "ae2:inscriber"
+  ],
+  "size": [
+    124,
+    62
+  ],
+  "order": 46,
+  "widgets": [
+    {
+      "type": "slot",
+      "source": "ingredients.top",
+      "at": [
+        20,
+        0
+      ],
+      "keep_empty": true
+    },
+    {
+      "type": "slot",
+      "source": "ingredients.middle",
+      "at": [
+        42,
+        21
+      ],
+      "keep_empty": true
+    },
+    {
+      "type": "slot",
+      "source": "ingredients.bottom",
+      "at": [
+        20,
+        42
+      ],
+      "keep_empty": true
+    },
+    {
+      "type": "arrow",
+      "at": [
+        66,
+        25
+      ],
+      "width": 22
+    },
+    {
+      "type": "slot",
+      "source": "result",
+      "at": [
+        94,
+        17
+      ],
+      "output": true,
+      "large": true
+    }
+  ],
+  "time_default": 100,
+  "energy_per_tick": 10
+}

@@ -1,0 +1,45 @@
+{
+  "for": [
+    "mekanism:enriching"
+  ],
+  "title": "block.mekanism.enrichment_chamber",
+  "icon": "mekanism:enrichment_chamber",
+  "stations": [
+    "mekanism:enrichment_chamber"
+  ],
+  "size": [
+    124,
+    34
+  ],
+  "order": 45,
+  "widgets": [
+    {
+      "type": "slot",
+      "source": "input",
+      "at": [
+        0,
+        6
+      ]
+    },
+    {
+      "type": "arrow",
+      "at": [
+        28,
+        10
+      ],
+      "width": 22
+    },
+    {
+      "type": "slot",
+      "source": "output",
+      "at": [
+        58,
+        2
+      ],
+      "output": true,
+      "large": true
+    }
+  ],
+  "time_default": 200,
+  "energy_per_tick": 20
+}

@@ -1,0 +1,31 @@
+plugins {
+    id 'net.neoforged.moddev' version '2.0.148' apply false
+}
+
+subprojects {
+    apply plugin: 'java-library'
+
+    group = mod_group
+    version = mod_version
+
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(21)
+    }
+
+    repositories {
+        mavenCentral()
+        maven {
+            name = 'BlameJared (JEI)'
+            url = 'https://maven.blamejared.com'
+            content {
+                includeGroup 'mezz.jei'
+                includeGroup 'net.mezzdev.config'
+            }
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 21
+    }
+}

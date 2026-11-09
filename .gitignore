@@ -1,0 +1,9 @@
+.gradle/
+build/
+run/
+run-server/
+*.iml
+.idea/
+research/
+_stale/
+run-*/

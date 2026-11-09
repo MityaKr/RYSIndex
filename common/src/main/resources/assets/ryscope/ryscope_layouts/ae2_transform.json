@@ -1,0 +1,52 @@
+{
+  "for": [
+    "ae2:transform"
+  ],
+  "title": "ae2.rei_jei_integration.transform_category",
+  "icon": "ae2:fluix_crystal",
+  "stations": [],
+  "size": [
+    152,
+    46
+  ],
+  "order": 48,
+  "widgets": [
+    {
+      "type": "slots",
+      "source": "ingredients",
+      "at": [
+        0,
+        4
+      ],
+      "columns": 3,
+      "max": 6
+    },
+    {
+      "type": "arrow",
+      "at": [
+        65,
+        9
+      ],
+      "width": 22
+    },
+    {
+      "type": "slot",
+      "source": "result",
+      "at": [
+        96,
+        0
+      ],
+      "output": true,
+      "large": true
+    },
+    {
+      "type": "text",
+      "text": "{circumstance.type|name}",
+      "at": [
+        64,
+        30
+      ],
+      "if": "circumstance.type"
+    }
+  ]
+}

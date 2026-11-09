@@ -1,0 +1,283 @@
+package works.repka.ryscope.jei;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import mezz.jei.api.constants.VanillaTypes;
+import mezz.jei.api.ingredients.IIngredientType;
+import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.recipe.IFocus;
+import mezz.jei.api.recipe.IFocusFactory;
+import mezz.jei.api.recipe.IFocusGroup;
+import mezz.jei.api.recipe.IRecipeManager;
+import mezz.jei.api.recipe.RecipeIngredientRole;
+import mezz.jei.api.recipe.category.IRecipeCategory;
+import mezz.jei.api.runtime.IClickableIngredient;
+import mezz.jei.api.runtime.IIngredientManager;
+import mezz.jei.api.runtime.IIngredientVisibility;
+import mezz.jei.api.runtime.IJeiRuntime;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.Rect2i;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
+import works.repka.ryscope.RYScope;
+import works.repka.ryscope.model.Category;
+import works.repka.ryscope.model.ItemRes;
+import works.repka.ryscope.model.RecipeView;
+import works.repka.ryscope.model.Stack;
+import works.repka.ryscope.runtime.Foreign;
+import works.repka.ryscope.runtime.Indexer;
+import works.repka.ryscope.runtime.Lookup;
+import works.repka.ryscope.runtime.Snapshot;
+
+/**
+ * Мост к установленному JEI. JEI сам загружает плагины модов и строит свои индексы;
+ * мост задаёт ему вопросы («рецепты для X», «список ингредиентов») и переводит ответы в модель RYScope.
+ */
+public final class JeiBridge implements Foreign.Source {
+    final IJeiRuntime runtime;
+    private final Map<ResourceLocation, JeiCategory> categories = new HashMap<>();
+
+    public JeiBridge(IJeiRuntime runtime) {
+        this.runtime = runtime;
+        try {
+            runtime.getIngredientVisibility().registerListener(new IIngredientVisibility.IListener() {
+                @Override
+                public <V> void onIngredientVisibilityChanged(ITypedIngredient<V> ingredient, boolean visible) {
+                    Indexer.request("JEI изменил видимость ингредиентов");
+                }
+            });
+        } catch (Throwable t) {
+            RYScope.LOG.debug("Подписка на видимость ингредиентов JEI недоступна: {}", t.toString());
+        }
+    }
+
+    @Override
+    public String name() {
+        return "JEI";
+    }
+
+    // --- преобразование ---
+
+    @Nullable
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public Stack fromTyped(ITypedIngredient<?> typed) {
+        Optional<ItemStack> item = typed.getItemStack();
+        if (item.isPresent()) return item.get().isEmpty() ? null : new ItemRes(item.get());
+        try {
+            IIngredientManager im = runtime.getIngredientManager();
+            IIngredientType type = typed.getType();
+            return new JeiRes(typed, im.getIngredientHelper(type), im.getIngredientRenderer(type));
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public Optional<ITypedIngredient<?>> toTyped(Stack stack) {
+        if (stack instanceof JeiRes<?> jr) return Optional.of(jr.typed);
+        ItemStack item = stack.item();
+        if (item.isEmpty()) return Optional.empty();
+        Optional<ITypedIngredient<ItemStack>> typed = runtime.getIngredientManager().createTypedIngredient(VanillaTypes.ITEM_STACK, item);
+        return typed.map(t -> t);
+    }
+
+    // --- список ресурсов ---
+
+    @Override
+    public List<Stack> stacks() {
+        IIngredientManager im = runtime.getIngredientManager();
+        IIngredientVisibility visibility = runtime.getIngredientVisibility();
+        List<Stack> out = new ArrayList<>();
+        for (ItemStack s : im.getAllItemStacks()) {
+            if (s.isEmpty()) continue;
+            try {
+                if (!visibility.isIngredientVisible(VanillaTypes.ITEM_STACK, s)) continue;
+            } catch (Throwable ignored) {
+                // если видимость определить не удалось, показываем
+            }
+            out.add(new ItemRes(s));
+        }
+        for (IIngredientType<?> type : im.getRegisteredIngredientTypes()) {
+            if (type == VanillaTypes.ITEM_STACK) continue;
+            addAll(out, im, visibility, type);
+        }
+        return out;
+    }
+
+    private <V> void addAll(List<Stack> out, IIngredientManager im, IIngredientVisibility visibility, IIngredientType<V> type) {
+        try {
+            for (V ingredient : im.getAllIngredients(type)) {
+                Optional<ITypedIngredient<V>> typed = im.createTypedIngredient(type, ingredient);
+                if (typed.isEmpty() || !visibility.isIngredientVisible(typed.get())) continue;
+                out.add(new JeiRes<>(typed.get(), im.getIngredientHelper(type), im.getIngredientRenderer(type)));
+            }
+        } catch (Throwable t) {
+            RYScope.LOG.warn("Ингредиенты JEI типа {} пропущены: {}", type.getUid(), t.toString());
+        }
+    }
+
+    @Override
+    public boolean isHidden(Stack stack) {
+        return false;
+    }
+
+    // --- рецепты ---
+
+    private JeiCategory category(IRecipeCategory<?> c) {
+        return categories.computeIfAbsent(c.getRecipeType().getUid(), id -> {
+            JeiCategory jc = new JeiCategory(c, 100 + categories.size());
+            try {
+                runtime.getRecipeManager().createRecipeCatalystLookup(c.getRecipeType()).get().forEach(t -> {
+                    Stack s = fromTyped(t);
+                    if (s != null) jc.stations.add(s);
+                });
+            } catch (Throwable ignored) {
+                // станции необязательны
+            }
+            return jc;
+        });
+    }
+
+    @Override
+    public List<Lookup.Group> find(Stack stack, Lookup.Mode mode, Snapshot snapshot) {
+        Optional<ITypedIngredient<?>> typed = toTyped(stack);
+        if (typed.isEmpty()) return List.of();
+        IFocusFactory ff = runtime.getJeiHelpers().getFocusFactory();
+        List<IFocus<?>> focuses = new ArrayList<>();
+        if (mode == Lookup.Mode.RECIPES) {
+            focuses.add(ff.createFocus(RecipeIngredientRole.OUTPUT, typed.get()));
+        } else {
+            focuses.add(ff.createFocus(RecipeIngredientRole.INPUT, typed.get()));
+            focuses.add(ff.createFocus(RecipeIngredientRole.CATALYST, typed.get()));
+        }
+        return collect(focuses, snapshot);
+    }
+
+    private List<Lookup.Group> collect(List<IFocus<?>> focuses, Snapshot snapshot) {
+        IRecipeManager rm = runtime.getRecipeManager();
+        IFocusGroup group = runtime.getJeiHelpers().getFocusFactory().createFocusGroup(focuses);
+        List<Lookup.Group> out = new ArrayList<>();
+        List<IRecipeCategory<?>> cats = focuses.isEmpty()
+            ? rm.createRecipeCategoryLookup().get().toList()
+            : rm.createRecipeCategoryLookup().limitFocus(focuses).get().toList();
+        for (IRecipeCategory<?> c : cats) {
+            try {
+                if (replaced(c, snapshot)) continue;
+                List<RecipeView> views = views(rm, c, focuses, group, snapshot);
+                if (views.isEmpty()) continue;
+                // категории, которые есть и у нас, сливаются в одну вкладку
+                Category own = snapshot.category(c.getRecipeType().getUid());
+                out.add(new Lookup.Group(own != null ? own : category(c), views));
+            } catch (Throwable t) {
+                RYScope.LOG.warn("Категория JEI {} пропущена: {}", c.getRecipeType().getUid(), t.toString());
+            }
+        }
+        return out;
+    }
+
+    /** Категория JEI целиком заменена раскладкой RYScope с другим id: показывать её второй раз незачем. */
+    private static boolean replaced(IRecipeCategory<?> c, Snapshot snapshot) {
+        ResourceLocation uid = c.getRecipeType().getUid();
+        return !snapshot.hasCategory(uid) && works.repka.ryscope.content.JsonLayout.replacedCategories().contains(uid);
+    }
+
+    private <T> List<RecipeView> views(IRecipeManager rm, IRecipeCategory<T> c, List<IFocus<?>> focuses, IFocusGroup group, Snapshot snapshot) {
+        var lookup = rm.createRecipeLookup(c.getRecipeType());
+        if (!focuses.isEmpty()) lookup = lookup.limitFocus(focuses);
+        boolean overlaps = snapshot.hasCategory(c.getRecipeType().getUid());
+        List<RecipeView> views = new ArrayList<>();
+        lookup.get().forEach(recipe -> {
+            if (overlaps) {
+                // рецепт уже показан нашей раскладкой
+                ResourceLocation id;
+                try {
+                    id = c.getRegistryName(recipe);
+                } catch (Throwable t) {
+                    id = null;
+                }
+                if (id != null && snapshot.recipeIds.contains(id)) return;
+            }
+            views.add(new JeiRecipeView<>(this, c, recipe, group));
+        });
+        return views;
+    }
+
+    @Override
+    public List<Category> categories(Snapshot snapshot) {
+        List<Category> out = new ArrayList<>();
+        runtime.getRecipeManager().createRecipeCategoryLookup().get().forEach(c -> {
+            if (!snapshot.hasCategory(c.getRecipeType().getUid()) && !replaced(c, snapshot)) out.add(category(c));
+        });
+        return out;
+    }
+
+    @Override
+    public List<Lookup.Group> category(Category category) {
+        if (!(category instanceof JeiCategory jc)) return List.of();
+        IFocusGroup empty = runtime.getJeiHelpers().getFocusFactory().getEmptyFocusGroup();
+        List<RecipeView> views = views(runtime.getRecipeManager(), jc.category, List.of(), empty, Snapshot.EMPTY);
+        return views.isEmpty() ? List.of() : List.of(new Lookup.Group(jc, views));
+    }
+
+    @Nullable
+    public Category categoryByUid(ResourceLocation uid) {
+        JeiCategory cached = categories.get(uid);
+        if (cached != null) return cached;
+        return runtime.getRecipeManager().createRecipeCategoryLookup().get()
+            .filter(c -> c.getRecipeType().getUid().equals(uid)).findFirst().map(c -> (Category) category(c)).orElse(null);
+    }
+
+    @Override
+    public java.util.Set<ResourceLocation> hiddenRecipeIds() {
+        java.util.Set<ResourceLocation> out = new java.util.HashSet<>();
+        IRecipeManager rm = runtime.getRecipeManager();
+        java.util.Set<ResourceLocation> visibleCategories = new java.util.HashSet<>();
+        rm.createRecipeCategoryLookup().get().forEach(c -> visibleCategories.add(c.getRecipeType().getUid()));
+        rm.createRecipeCategoryLookup().includeHidden().get().forEach(c ->
+            collectHidden(rm, c, !visibleCategories.contains(c.getRecipeType().getUid()), out));
+        return out;
+    }
+
+    private <T> void collectHidden(IRecipeManager rm, IRecipeCategory<T> c, boolean categoryHidden, java.util.Set<ResourceLocation> out) {
+        try {
+            if (!categoryHidden) {
+                long all = rm.createRecipeLookup(c.getRecipeType()).includeHidden().get().count();
+                long visible = rm.createRecipeLookup(c.getRecipeType()).get().count();
+                if (all == visible) return;
+            }
+            java.util.Set<ResourceLocation> visibleIds = new java.util.HashSet<>();
+            if (!categoryHidden) {
+                rm.createRecipeLookup(c.getRecipeType()).get().forEach(r -> {
+                    ResourceLocation id = c.getRegistryName(r);
+                    if (id != null) visibleIds.add(id);
+                });
+            }
+            rm.createRecipeLookup(c.getRecipeType()).includeHidden().get().forEach(r -> {
+                ResourceLocation id = c.getRegistryName(r);
+                if (id != null && !visibleIds.contains(id)) out.add(id);
+            });
+        } catch (Throwable ignored) {
+            // категория без имён рецептов
+        }
+    }
+
+    // --- чужие экраны ---
+
+    @Override
+    public List<int[]> exclusionAreas(Screen screen) {
+        List<int[]> out = new ArrayList<>();
+        runtime.getScreenHelper().getGuiExclusionAreas(screen).forEach((Rect2i r) -> {
+            if (r != null) out.add(new int[] {r.getX(), r.getY(), r.getWidth(), r.getHeight()});
+        });
+        return out;
+    }
+
+    @Override
+    public Stack stackUnderMouse(Screen screen, double mouseX, double mouseY) {
+        return runtime.getScreenHelper().getClickableIngredientUnderMouse(screen, mouseX, mouseY)
+            .findFirst().map(IClickableIngredient::getTypedIngredient).map(t -> fromTyped(t)).orElse(null);
+    }
+}

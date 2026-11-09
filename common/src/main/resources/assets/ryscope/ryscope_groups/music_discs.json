@@ -1,0 +1,7 @@
+{
+  "tags": [
+    "c:music_discs"
+  ],
+  "match": "minecraft:music_disc_.*",
+  "name": "ryscope.group.music_discs"
+}

@@ -1,0 +1,67 @@
+{
+  "for": [
+    "create:mixing"
+  ],
+  "title": "create.recipe.mixing",
+  "icon": "create:mechanical_mixer",
+  "stations": [
+    "create:mechanical_mixer",
+    "create:basin"
+  ],
+  "size": [
+    152,
+    76
+  ],
+  "order": 40,
+  "widgets": [
+    {
+      "type": "slots",
+      "source": "ingredients",
+      "at": [
+        0,
+        4
+      ],
+      "columns": 3,
+      "max": 9
+    },
+    {
+      "type": "arrow",
+      "at": [
+        65,
+        24
+      ],
+      "width": 22
+    },
+    {
+      "type": "slots",
+      "source": "results",
+      "at": [
+        92,
+        4
+      ],
+      "columns": 3,
+      "max": 9,
+      "output": true
+    },
+    {
+      "type": "text",
+      "text": "{processing_time|ticks}",
+      "at": [
+        0,
+        67
+      ],
+      "if": "processing_time"
+    },
+    {
+      "type": "text",
+      "text": "{heat_requirement|name}",
+      "at": [
+        64,
+        67
+      ],
+      "if": "heat_requirement"
+    }
+  ],
+  "time": "processing_time",
+  "time_default": 100
+}

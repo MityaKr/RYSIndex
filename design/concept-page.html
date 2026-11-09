@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recipe Lens</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=VT323&display=swap">
+<style>
+/* Макет: концепт-документ мода с «встроенными экранами». Экраны — тёмные панели в духе GUI Minecraft, текст — светлая/тёмная тема. */
+:root{
+  --bg:#f3f1ec; --fg:#1d1c1a; --muted:#6a665c; --line:#d9d4c8; --card:#faf9f6;
+  --accent:#2f6fb3; --accent-soft:#dde9f6;
+  --mc-bg:#2b2b31; --mc-panel:#3b3b44; --mc-slot:#1c1c21; --mc-text:#ececf1; --mc-dim:#9c9cab; --mc-gold:#f0c53d; --mc-green:#6fcf6f; --mc-red:#e36b6b; --mc-blue:#6fa7ff; --mc-purple:#c58bff;
+  --font-body:"IBM Plex Sans",system-ui,sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,monospace; --font-mc:"VT323","IBM Plex Mono",monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#17171a;--fg:#ebe8e1;--muted:#9a968c;--line:#2e2e34;--card:#1f1f24;--accent:#6fa7ff;--accent-soft:#1c2a3f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17171a;--fg:#ebe8e1;--muted:#9a968c;--line:#2e2e34;--card:#1f1f24;--accent:#6fa7ff;--accent-soft:#1c2a3f;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);line-height:1.55;font-size:16px}
+.wrap{max-width:980px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:clamp(28px,4vw,42px);line-height:1.1;margin:0 0 8px;text-wrap:balance;font-weight:600}
+h2{font-size:22px;margin:56px 0 6px;text-wrap:balance;font-weight:600}
+h3{font-size:16px;margin:22px 0 6px;font-weight:600}
+p{max-width:70ch;margin:8px 0}
+.lead{color:var(--muted);font-size:17px;max-width:72ch}
+.eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-top:48px}
+.eyebrow+h2{margin-top:4px}
+.part{margin-top:72px;padding-top:16px;border-top:2px solid var(--fg)}
+.part .eyebrow{margin-top:0}
+.toc{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin:20px 0 0;padding:0;list-style:none}
+.toc li a{display:block;padding:9px 12px;border:1px solid var(--line);background:var(--card);color:var(--fg);text-decoration:none;font-size:14px}
+.toc li a:hover{border-color:var(--accent)}
+.toc .n{font-family:var(--font-mono);color:var(--accent);margin-right:8px}
+.why{border-left:3px solid var(--accent);padding:4px 14px;margin:14px 0;background:var(--accent-soft);max-width:70ch}
+.why b{font-weight:600}
+code{font-family:var(--font-mono);font-size:.9em;background:var(--card);border:1px solid var(--line);padding:0 4px}
+pre{font-family:var(--font-mono);font-size:13px;background:var(--card);border:1px solid var(--line);padding:12px;overflow-x:auto;max-width:100%;line-height:1.45}
+table.cmp{border-collapse:collapse;width:100%;font-size:14px;margin:12px 0}
+table.cmp th,table.cmp td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+table.cmp th{font-weight:600;font-size:13px;color:var(--muted)}
+.tbl{overflow-x:auto;max-width:100%}
+.ok{color:#2e8b4a}.no{color:#b23b3b}.half{color:#b8651a}
+.cap{font-size:13px;color:var(--muted);margin:6px 0 0;max-width:70ch}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
+.card{border:1px solid var(--line);background:var(--card);padding:12px 14px}
+.card h4{margin:0 0 4px;font-size:15px;font-weight:600}
+.card p{font-size:14px;margin:0;max-width:none}
+
+/* ===== Экраны мода ===== */
+.mock{background:var(--mc-bg);color:var(--mc-text);font-family:var(--font-mc);font-size:19px;line-height:1.15;border:3px solid #15151a;box-shadow:inset 0 0 0 2px #4a4a55;padding:12px;margin:16px 0;overflow-x:auto;max-width:100%}
+.mock *{box-sizing:border-box}
+.mock .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-bottom:2px solid #4a4a55;padding-bottom:8px;margin-bottom:10px}
+.mock .title{color:var(--mc-gold)}
+.mock .dim{color:var(--mc-dim)}
+.mock .g{color:var(--mc-green)}.mock .r{color:var(--mc-red)}.mock .b{color:var(--mc-blue)}.mock .pu{color:var(--mc-purple)}.mock .y{color:var(--mc-gold)}
+.panel{background:var(--mc-panel);border:2px solid #15151a;box-shadow:inset 2px 2px 0 #55555f,inset -2px -2px 0 #26262c;padding:8px;min-width:0}
+.cols{display:grid;gap:10px}
+.cols.c2{grid-template-columns:1fr 1fr}.cols.c3{grid-template-columns:1fr 1fr 1fr}
+.cols.side{grid-template-columns:1fr 230px}
+@media (max-width:640px){.cols.c2,.cols.c3,.cols.side{grid-template-columns:1fr}}
+.input{background:#111115;border:2px solid #000;box-shadow:inset 2px 2px 0 #050507;padding:4px 8px;color:var(--mc-text);display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+.input .cur{display:inline-block;width:9px;height:18px;background:var(--mc-text);vertical-align:-3px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.input .cur{animation:none}}
+.chip{display:inline-block;padding:0 6px;border:2px solid #000;font-size:17px;line-height:1.3;background:#2a2a33}
+.chip.mod{color:var(--mc-blue);border-color:#2b4a7a}.chip.tag{color:var(--mc-green);border-color:#2f6b2f}.chip.ep{color:var(--mc-gold);border-color:#7a6220}.chip.fn{color:var(--mc-purple);border-color:#5b3a7a}
+.btn{display:inline-block;background:#6d6d78;border:2px solid #000;box-shadow:inset 2px 2px 0 #9a9aa8,inset -2px -2px 0 #3f3f49;padding:2px 10px;color:#fff;font-size:17px}
+.btn.on{background:#3d6a3d;box-shadow:inset 2px 2px 0 #6fa76f,inset -2px -2px 0 #244024}
+.btn.sm{padding:0 6px;font-size:15px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.tab{padding:2px 10px;border:2px solid #000;border-bottom:none;background:#2a2a33;color:var(--mc-dim)}
+.tab.on{background:var(--mc-panel);color:var(--mc-text)}
+.slot{width:40px;height:40px;background:var(--mc-slot);border:2px solid #000;box-shadow:inset 2px 2px 0 #0b0b0e,inset -2px -2px 0 #3a3a44;display:grid;place-items:center;position:relative;flex:none}
+.slot.lg{width:52px;height:52px}
+.slot .cnt{position:absolute;right:2px;bottom:0;font-size:15px;color:#fff;text-shadow:1px 1px #000}
+.slot .ch{position:absolute;left:2px;top:0;font-size:13px;color:var(--mc-gold);text-shadow:1px 1px #000}
+.slot.lock::after{content:"🔒";position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.55);font-size:16px}
+.slot.ghost .it{opacity:.4}
+.slot.hi{outline:2px solid var(--mc-green)}
+.it{width:26px;height:26px;border:2px solid rgba(0,0,0,.6);box-shadow:inset 2px 2px 0 rgba(255,255,255,.25),inset -2px -2px 0 rgba(0,0,0,.35)}
+.slot.lg .it{width:34px;height:34px}
+.it.iron{background:#c9c9cf}.it.gold{background:#f0c53d}.it.red{background:#c0392b}.it.wood{background:#8b5a2b}.it.stone{background:#8a8a88}.it.cobble{background:#6d6d6b}.it.copper{background:#d47c3e}.it.steel{background:#4f5760}.it.diamond{background:#5be3e0}.it.obs{background:#1b1230}.it.lapis{background:#2f5fd1}.it.dust{background:#d7d7d7;clip-path:polygon(20% 80%,50% 30%,80% 80%)}.it.fluid{background:linear-gradient(#3a7bd5,#1b3f7a)}.it.lava{background:linear-gradient(#ff9a3a,#b83a0a)}.it.gas{background:linear-gradient(#b1f0b1,#4aa84a)}.it.energy{background:#ff3b3b}.it.egg{background:#8fbf8f;border-radius:40%}.it.book{background:#5b3a1a}.it.sand{background:#e0d2a0}.it.piston{background:#9a7a4a}.it.glass{background:rgba(180,220,255,.35)}.it.brass{background:#c9a24a}.it.gear{background:#8a6b3a;border-radius:50%}.it.circ{background:#2e8b57}.it.ender{background:#0f6b5a;border-radius:50%}.it.string{background:#eee}.it.bone{background:#e9e4c8}
+.srow{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.arrow{color:var(--mc-dim);font-size:26px;padding:0 6px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:17px}
+.kv .k{color:var(--mc-dim)}
+.bar2{height:10px;background:#111;border:2px solid #000;position:relative;overflow:hidden}
+.bar2 i{position:absolute;inset:0;background:var(--mc-green)}
+.bar2.r i{background:var(--mc-red)}.bar2.y i{background:var(--mc-gold)}
+.tree{list-style:none;margin:0;padding:0}
+.tree li{margin:2px 0;padding-left:16px;border-left:2px solid #4a4a55;position:relative}
+.tree li::before{content:"";position:absolute;left:0;top:14px;width:12px;border-top:2px solid #4a4a55}
+.tree>li{border-left:none;padding-left:0}.tree>li::before{display:none}
+.node{display:inline-flex;gap:8px;align-items:center;padding:2px 6px;background:var(--mc-panel);border:2px solid #15151a;flex-wrap:wrap}
+.node .it{width:20px;height:20px}
+.node.best{outline:2px solid var(--mc-green)}
+.tog{color:var(--mc-dim);width:16px;display:inline-block}
+.note{font-size:16px;color:var(--mc-dim)}
+.hud{background:rgba(0,0,0,.55);border:2px solid #000;padding:6px 8px;display:inline-block;min-width:220px}
+.hud .row{display:flex;justify-content:space-between;gap:10px}
+.pin{background:#2a2a33;border:2px solid #000;padding:6px;display:inline-grid;gap:4px;min-width:150px}
+.mdl{display:flex;flex-direction:column;gap:6px}
+.mdl .line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lnk{color:var(--mc-blue);text-decoration:underline}
+.ii{display:inline-block;width:18px;height:18px;vertical-align:-3px}
+.diag{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;align-items:stretch}
+.box{border:2px solid #15151a;background:var(--mc-panel);padding:6px 8px;font-size:17px}
+.box .h{color:var(--mc-gold)}
+.thr{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.thr span{border:2px solid #000;padding:0 6px;background:#2a2a33;font-size:15px}
+.thr .main{border-color:#7a2a2a;color:var(--mc-red)}.thr .bg{border-color:#2f6b2f;color:var(--mc-green)}
+/* темы */
+.themes{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.th{border:2px solid #000;padding:8px;font-size:17px}
+.th .ttl{margin-bottom:6px}
+.th .s{display:inline-grid;place-items:center;width:34px;height:34px;margin:2px}
+.th.vanilla{background:#c6c6c6;color:#3f3f3f}.th.vanilla .s{background:#8b8b8b;box-shadow:inset 2px 2px 0 #373737,inset -2px -2px 0 #fff}
+.th.flat{background:#1e1f26;color:#e8e8ef}.th.flat .s{background:#2b2d38;border-radius:6px;border:1px solid #3c3f4f}
+.th.glass{background:linear-gradient(135deg,#2b3a55,#4a2b55);color:#fff}.th.glass .s{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);border-radius:4px;backdrop-filter:blur(3px)}
+.th.paper{background:#efe6cf;color:#3b2f1e}.th.paper .s{background:#fff8e6;border:2px solid #8b6b3a}
+/* раскладки */
+.lay{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.lay .scr{height:90px;border:2px solid #000;background:#1a1a20;position:relative;font-size:14px;color:var(--mc-dim)}
+.lay .scr i{position:absolute;background:#3b3b44;border:1px solid #55555f}
+.lay .scr .inv{left:30%;top:25%;width:40%;height:50%;background:#55555f}
+.footer{margin-top:56px;color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="eyebrow" style="margin-top:0">Концепт отдельного мода · Minecraft 1.21.x</p>
+<h1>Recipe Lens: вьюер рецептов нового поколения</h1>
+<p class="lead">Самостоятельный мод-конкурент JEI, EMI и REI: ставится в любую сборку, подхватывает плагины JEI, но выглядит, ощущается и работает иначе. Ниже: принципы, внешний вид, удобство, уникальные возможности с макетами экранов, инструменты для авторов сборок, архитектура, совместимость и дорожная карта. Рабочее имя «Recipe Lens», обсуждаемо.</p>
+
+<ul class="toc">
+<li><a href="#princ"><span class="n">A</span>Принципы</a></li>
+<li><a href="#look"><span class="n">B</span>Внешний вид и темы</a></li>
+<li><a href="#ux"><span class="n">C</span>Удобство: взаимодействие</a></li>
+<li><a href="#f1"><span class="n">01</span>Граф крафта</a></li>
+<li><a href="#f2"><span class="n">02</span>Линза: подсказка где угодно</a></li>
+<li><a href="#f3"><span class="n">03</span>Язык поиска</a></li>
+<li><a href="#f4"><span class="n">04</span>Источники одной вкладкой</a></li>
+<li><a href="#f5"><span class="n">05</span>Ресурсы: жидкости, газы, энергия</a></li>
+<li><a href="#f6"><span class="n">06</span>Доска и список покупок</a></li>
+<li><a href="#f7"><span class="n">07</span>Планировщик производства</a></li>
+<li><a href="#f8"><span class="n">08</span>Сравнение маршрутов</a></li>
+<li><a href="#f9"><span class="n">09</span>Прогрессия и замки</a></li>
+<li><a href="#f10"><span class="n">10</span>Страницы справки</a></li>
+<li><a href="#f11"><span class="n">11</span>Вкладки, история, профили</a></li>
+<li><a href="#dev"><span class="n">D</span>Инструменты для авторов сборок</a></li>
+<li><a href="#api"><span class="n">E</span>API и декларативные категории</a></li>
+<li><a href="#arch"><span class="n">F</span>Архитектура и скорость</a></li>
+<li><a href="#cmp"><span class="n">G</span>Сравнение с JEI / EMI / REI</a></li>
+<li><a href="#road"><span class="n">H</span>Дорожная карта</a></li>
+</ul>
+
+<!-- A -->
+<div class="part" id="princ">
+<p class="eyebrow">A · Принципы</p>
+<h2>Пять правил, по которым принимаются все решения</h2>
+<div class="grid3">
+<div class="card"><h4>Ноль фризов</h4><p>Ничего тяжёлого в главном потоке. Индекс, поиск, граф, подсчёты строятся в фоне; интерфейс открывается мгновенно и дорисовывается.</p></div>
+<div class="card"><h4>Контекст важнее списка</h4><p>Игрок редко хочет «список всего». Он хочет понять предмет, в который смотрит: откуда, зачем, что дальше. Поэтому первая сущность не список, а карточка предмета.</p></div>
+<div class="card"><h4>Всё данные, не код</h4><p>Категории, темы, страницы справки, стадии, единицы измерения описываются JSON в датапаках и ресурспаках. Java-API только там, где без него нельзя.</p></div>
+<div class="card"><h4>Совместимость без компромиссов</h4><p>Плагины JEI работают через слой совместимости с первого дня. Иначе мод никто не поставит: категории Create, Mekanism, AE2 написаны под JEI.</p></div>
+<div class="card"><h4>Красиво по умолчанию, настраиваемо до мелочей</h4><p>Из коробки выглядит современно, но каждый может вернуть «ванильный» вид одной темой. Темы меняются ресурспаком без перезапуска.</p></div>
+</div>
+</div>
+
+<!-- B -->
+<div class="part" id="look">
+<p class="eyebrow">B · Внешний вид</p>
+<h2>Темы, плотность, раскладка</h2>
+<p>У JEI и EMI внешний вид один и зашит в код. Здесь тема — это JSON плюс текстуры в ресурспаке: цвета, рамки слотов, шрифт, скругления, анимации. Четыре встроенные темы, авторы сборок делают свои, игроки переключают в настройках.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Темы</span><span class="dim">меняются без перезапуска</span></div>
+<div class="themes">
+<div class="th vanilla"><div class="ttl">Vanilla</div><span class="s"><span class="it iron"></span></span><span class="s"><span class="it red"></span></span><span class="s"><span class="it wood"></span></span><div style="font-size:15px;margin-top:4px">как инвентарь игры</div></div>
+<div class="th flat"><div class="ttl">Flat Dark <span style="font-size:14px;opacity:.7">(по умолчанию)</span></div><span class="s"><span class="it iron"></span></span><span class="s"><span class="it red"></span></span><span class="s"><span class="it wood"></span></span><div style="font-size:15px;margin-top:4px;opacity:.7">скругления, мягкие тени</div></div>
+<div class="th glass"><div class="ttl">Glass</div><span class="s"><span class="it iron"></span></span><span class="s"><span class="it red"></span></span><span class="s"><span class="it wood"></span></span><div style="font-size:15px;margin-top:4px;opacity:.8">полупрозрачно над миром</div></div>
+<div class="th paper"><div class="ttl">Paper</div><span class="s"><span class="it iron"></span></span><span class="s"><span class="it red"></span></span><span class="s"><span class="it wood"></span></span><div style="font-size:15px;margin-top:4px;opacity:.8">для фэнтези-сборок</div></div>
+</div>
+<div class="cols c2" style="margin-top:12px">
+<div class="panel"><div class="y">Плотность</div><div class="note">Compact: слоты 16 px, 9 колонок, без отступов.<br>Comfortable: 18 px, подписи у категорий.<br>Large: 24 px для 4K и для игры с дивана.</div></div>
+<div class="panel"><div class="y">Анимации</div><div class="note">Плавный скролл списка, подсветка слота при наведении, переход между рецептами «листанием», шанс выпадения как лёгкое мерцание. Всё отключаемо одной галочкой «без анимаций».</div></div>
+</div>
+</div>
+
+<div class="mock">
+<div class="bar"><span class="title">Раскладка панелей</span><span class="dim">перетаскиваются мышью, запоминаются на экран</span></div>
+<div class="lay">
+<div><div class="scr"><i class="inv"></i><i style="right:4%;top:8%;width:22%;height:84%"></i></div><div class="note">Классика: список справа</div></div>
+<div><div class="scr"><i class="inv"></i><i style="left:4%;top:8%;width:22%;height:84%"></i><i style="right:4%;top:8%;width:22%;height:84%"></i></div><div class="note">Два столбца: закладки слева</div></div>
+<div><div class="scr"><i class="inv"></i><i style="left:4%;bottom:4%;width:92%;height:18%"></i></div><div class="note">Лента снизу (широкие экраны)</div></div>
+<div><div class="scr"><i style="left:10%;top:10%;width:80%;height:80%;background:#2f2f3a"></i></div><div class="note">Окно без инвентаря (клавиша)</div></div>
+</div>
+<div class="note" style="margin-top:8px">Панель сама уходит, если экран мода (например, карта AE2-терминала) занимает её место: позиции хранятся по id экрана.</div>
+</div>
+</div>
+
+<!-- C -->
+<div class="part" id="ux">
+<p class="eyebrow">C · Удобство</p>
+<h2>Взаимодействие, которого не хватает</h2>
+<div class="grid3">
+<div class="card"><h4>Перенос в рецепт</h4><p>Клик по «+» на рецепте переносит ингредиенты из инвентаря в сетку крафта или в слоты машины, если экран машины зарегистрировал передатчик. Shift-клик: максимально возможное количество.</p></div>
+<div class="card"><h4>Перетаскивание в поиск</h4><p>Перетащил предмет из инвентаря на панель поиска: фильтр «использует этот предмет». На закладки: закрепил. На слот рецепта: подставил вариант ингредиента.</p></div>
+<div class="card"><h4>Умные подсказки</h4><p>На любом предмете: мод, теги, «участвует в 42 рецептах», «можно скрафтить сейчас», эквиваленты по тегу (все медные слитки разных модов одной строкой).</p></div>
+<div class="card"><h4>Клавиатура и геймпад</h4><p>Полная навигация стрелками и Tab, подписи клавиш на кнопках, поддержка контроллера через стандартные события ввода. Горячие клавиши с конфликт-детектором.</p></div>
+<div class="card"><h4>Правая кнопка везде</h4><p>Контекстное меню на предмете: рецепты, использования, источники, закрепить, в список, сравнить, скопировать id, скрыть.</p></div>
+<div class="card"><h4>Масштаб и шрифты</h4><p>Собственный масштаб интерфейса независимо от GUI Scale игры, чёткий шрифт на любом масштабе, крупный режим доступности с усиленным контрастом и цветобезопасными метками шанса.</p></div>
+</div>
+
+<div class="mock">
+<div class="bar"><span class="title">Карточка предмета · Поршень</span><span class="dim">ПКМ: меню · Ctrl+C: id</span></div>
+<div class="tabs"><span class="tab on">Рецепты 3</span><span class="tab">Использования 41</span><span class="tab">Источники 2</span><span class="tab">Справка</span><span class="tab">Граф</span></div>
+<div class="cols side">
+<div class="panel">
+<div class="srow" style="justify-content:space-between"><span>Верстак</span><span class="dim">1 / 3 · ◂ ▸</span></div>
+<div class="srow" style="margin-top:6px">
+<div style="display:grid;grid-template-columns:repeat(3,40px);gap:2px">
+<div class="slot hi"><span class="it wood"></span></div><div class="slot hi"><span class="it wood"></span></div><div class="slot hi"><span class="it wood"></span></div>
+<div class="slot hi"><span class="it cobble"></span></div><div class="slot hi"><span class="it iron"></span></div><div class="slot hi"><span class="it cobble"></span></div>
+<div class="slot hi"><span class="it cobble"></span></div><div class="slot ghost"><span class="it red"></span></div><div class="slot hi"><span class="it cobble"></span></div>
+</div>
+<span class="arrow">→</span><div class="slot lg"><span class="it piston"></span></div>
+<span class="btn" title="Перенести">+</span>
+</div>
+<div class="note" style="margin-top:8px"><span class="g">8 из 9</span> есть в инвентаре · не хватает <span class="it red ii"></span> редстоун ×1 <span class="lnk">(есть в сундуке в 6 блоках)</span></div>
+</div>
+<div class="panel"><div class="y">Подсказка</div><div class="kv"><span class="k">Мод</span><span>Minecraft</span><span class="k">Теги</span><span>#c:pistons</span><span class="k">Рецептов</span><span>3</span><span class="k">Статус</span><span class="y">почти можно</span></div><div class="note" style="margin-top:6px">Ингредиенты в инвентаре подсвечены зелёным, недостающие полупрозрачны.</div></div>
+</div>
+</div>
+</div>
+
+<!-- 01 -->
+<p class="eyebrow" id="f1">Фича 01</p>
+<h2>Граф крафта</h2>
+<p>Предмет открывается не страницей, а деревом зависимостей. Узлы сворачиваются; у предметов с несколькими рецептами переключатель прямо в узле; то, что уже есть у игрока, помечается и не раскрывается. Внизу считается сырьё. Для сборок с прогрессией подсвечивается самый короткий доступный путь.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Граф: Маяк ×1</span><span><span class="btn sm on">Короткий путь</span> <span class="btn sm">Все варианты</span> <span class="btn sm">Сырьё</span></span></div>
+<div class="cols side">
+<div class="panel">
+<ul class="tree">
+<li><span class="node best"><span class="tog">▾</span><span class="it glass"></span>Маяк <span class="dim">· верстак</span></span>
+ <ul class="tree">
+ <li><span class="node"><span class="tog">▸</span><span class="it glass"></span>Стекло ×5 <span class="g">✓ есть: 12</span></span></li>
+ <li><span class="node best"><span class="tog">▾</span><span class="it ender"></span>Звезда Незера ×1 <span class="dim">· дроп</span></span>
+  <ul class="tree"><li><span class="node"><span class="it egg"></span>Иссушитель <span class="dim">100 %</span> <span class="btn sm">как призвать</span></span></li></ul>
+ </li>
+ <li><span class="node best"><span class="tog">▾</span><span class="it obs"></span>Обсидиан ×3 <span class="dim">· рецепт 1 из 2</span> <span class="btn sm">◂ ▸</span></span>
+  <ul class="tree"><li><span class="node"><span class="it lava"></span>Лава + вода <span class="dim">· в мире</span></span></li></ul>
+ </li>
+ </ul>
+</li>
+</ul>
+</div>
+<div class="panel"><div class="y">Сырьё</div><div class="kv"><span class="k">Стекло</span><span>5 <span class="g">✓</span></span><span class="k">Обсидиан</span><span>3</span><span class="k">Звезда Незера</span><span>1</span></div><div class="note" style="margin-top:8px">Глубина 3 · Станций: 1 · Мобов: 1</div><div class="note">Shift-клик по корню: свернуть всё, что уже есть.</div></div>
+</div>
+</div>
+<p class="cap">В EMI есть похожее дерево, но без учёта инвентаря и хранилищ и без выбора рецепта внутри узла. Здесь дерево — основной режим, а не кнопка сбоку.</p>
+
+<!-- 02 -->
+<p class="eyebrow" id="f2">Фича 02</p>
+<h2>Линза: подсказка где угодно</h2>
+<p>Фирменная фича, давшая имя. Зажал клавишу (по умолчанию Alt) и навёл на что угодно: предмет в любом инвентаре, блок в мире, моба, жидкость в баке, предмет в руке другого игрока. Появляется компактная карточка с главным: что это, откуда, самый короткий рецепт, что в него можно положить. Не нужно открывать ни инвентарь, ни вьюер.</p>
+
+<div class="mock">
+<div class="cols c2">
+<div><div class="dim" style="margin-bottom:6px">Блок в мире</div>
+<div class="hud"><div class="row"><span class="y">Механический пресс</span><span class="dim">Create</span></div><div class="row"><span class="dim">Принимает</span><span>слитки, листы, лава</span></div><div class="row"><span class="dim">Рецептов</span><span>86</span></div><div class="row"><span class="dim">Нужно</span><span>вращение ≥ 16 об/мин</span></div><div class="dim" style="margin-top:4px">[R] рецепты · [U] использования · [G] граф</div></div></div>
+<div><div class="dim" style="margin-bottom:6px">Моб</div>
+<div class="hud"><div class="row"><span class="y">Скелет-иссушитель</span><span class="dim">Minecraft</span></div><div class="srow" style="margin:4px 0"><div class="slot"><span class="it bone"></span><span class="cnt">0-2</span></div><div class="slot"><span class="it dust"></span><span class="ch">2.5%</span></div><div class="slot"><span class="it steel"></span><span class="ch">8%</span></div></div><div class="row"><span class="dim">Где</span><span>крепость Незера</span></div><div class="dim" style="margin-top:4px">[R] все дропы · Alt+ЛКМ закрепить</div></div></div>
+</div>
+<div class="note" style="margin-top:10px">Линза работает и в чужих GUI: наведение на слот любого контейнера даёт ту же карточку. Это хук на рендер подсказки, не на экран.</div>
+</div>
+
+<!-- 03 -->
+<p class="eyebrow" id="f3">Фича 03</p>
+<h2>Язык поиска</h2>
+<p>Маленький язык запросов с подсветкой, автодополнением и сохранением пресетов. Ищет по всем загруженным языкам одновременно (игрок с русским клиентом находит предмет по английскому названию и наоборот), прощает одну опечатку, понимает транслит.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Поиск</span><span class="dim">Ctrl+F · Tab дополнить · Ctrl+S сохранить пресет</span></div>
+<div class="input"><span class="chip mod">@create</span><span class="chip fn">uses:#c:ingots/copper</span><span class="chip fn">craftable</span><span class="chip tag">-#c:ores</span><span>лист<span class="cur"></span></span></div>
+<div class="panel" style="margin-top:8px">
+<div class="kv">
+<span class="k">@mod</span><span>предметы мода</span>
+<span class="k">#tag</span><span>по тегу</span>
+<span class="k">uses:X / from:X</span><span>где X ингредиент / что делается из X</span>
+<span class="k">in:create:pressing</span><span>рецепты конкретной категории</span>
+<span class="k">drop:mob, loot:chest</span><span>источники</span>
+<span class="k">craftable, almost</span><span>есть всё / не хватает одного</span>
+<span class="k">stage:3, stage:≤3</span><span>стадия прогрессии (если сборка их задаёт)</span>
+<span class="k">has:nbt, has:chance, has:fluid</span><span>свойства рецепта</span>
+<span class="k">$ingredient</span><span>подсказка по компонентам (как в JEI)</span>
+<span class="k">-слово, "фраза", a|b</span><span>исключение, точная фраза, или</span>
+</div>
+</div>
+<div class="srow" style="margin-top:8px"><span class="dim">Пресеты:</span><span class="btn sm">Могу сейчас</span><span class="btn sm">Еда</span><span class="btn sm">Create без латуни</span><span class="btn sm">+</span></div>
+</div>
+
+<!-- 04 -->
+<p class="eyebrow" id="f4">Фича 04</p>
+<h2>Источники одной вкладкой</h2>
+<p>Встроенная замена Just Enough Resources: дроп мобов, лут сундуков и структур, руды по высотам и биомам, торговля жителей, рыбалка, бартер с пиглинами, награды продвижений. Собирается из loot-таблиц и worldgen напрямую; для модов с нестандартным дропом (Malum, Ars Nouveau) есть API «поставщика источников».</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Источники: Алмаз</span><span class="dim">5 типов</span></div>
+<div class="cols c3">
+<div class="panel"><div class="y">Руды</div><div class="srow" style="margin-top:6px"><div class="slot"><span class="it diamond"></span></div><div><div>Алмазная руда</div><div class="dim">Y −64…16, пик −59</div></div></div><div class="bar2" style="margin-top:6px"><i style="width:65%;left:5%;right:auto;width:30%"></i></div><div class="note">любой биом Оверворлда</div></div>
+<div class="panel"><div class="y">Лут</div><div>Сундук бастиона <span class="dim">16 %</span></div><div>Сокровищница <span class="dim">7 %</span></div><div>Крепость Энда <span class="dim">3 %</span></div><div class="note" style="margin-top:6px">+ 4 ещё</div></div>
+<div class="panel"><div class="y">Торговля и мобы</div><div>Оружейник ур. 4 <span class="dim">← 8 изумрудов</span></div><div class="dim" style="margin-top:6px">Мобы: нет · Рыбалка: нет</div></div>
+</div>
+</div>
+
+<!-- 05 -->
+<p class="eyebrow" id="f5">Фича 05</p>
+<h2>Ресурсы первого класса: жидкости, газы, энергия, тепло</h2>
+<p>JEI знает предметы и жидкости, всё остальное моды рисуют сами по-своему. Здесь «ресурс» — абстракция: предмет, жидкость, газ Mekanism, энергия, тепло, вращение Create, мана. У каждого свой рендер, единицы и конвертация. Игрок выбирает, в чём показывать энергию (FE, RF, J, EU), и все рецепты всех модов показываются в одном.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Обогатительная камера · Mekanism</span><span class="dim">единицы: <span class="btn sm on">FE</span> <span class="btn sm">J</span></span></div>
+<div class="panel"><div class="srow">
+<div class="slot"><span class="it iron"></span></div><span class="arrow">→</span><div class="slot lg"><span class="it dust"></span><span class="cnt">2</span></div>
+<div style="margin-left:14px" class="kv"><span class="k">Энергия</span><span>20 FE/т · всего 200 FE</span><span class="k">Время</span><span>10 т (0,5 с)</span><span class="k">Ресурсы</span><span><span class="it energy ii"></span> энергия</span></div>
+</div></div>
+<div class="note" style="margin-top:8px">Для жидкостей: mB или ведра, для Create: SU и об/мин, для тепла: °C или K. Конвертация описана в JSON <code>lens/units/*.json</code>, моды добавляют свои.</div>
+</div>
+
+<!-- 06 -->
+<p class="eyebrow" id="f6">Фича 06</p>
+<h2>Доска и список покупок</h2>
+<p>Закладка — не иконка, а рецепт-стикер, видимый поверх мира. Несколько стикеров складываются в список покупок: сколько сырья нужно всего, сколько уже есть в инвентаре, в ближайших сундуках и в хранилищах модов (AE2, Refined Storage, Sophisticated Storage через API). Прогресс обновляется по мере сборки, список переживает перезаход.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Доска</span><span class="dim">A закрепить · Shift+A в список</span></div>
+<div class="cols c2">
+<div><div class="dim" style="margin-bottom:6px">Стикеры (HUD, можно сдвинуть)</div>
+<div class="srow" style="align-items:flex-start">
+<div class="pin"><div class="y">Поршень ×12</div><div class="srow"><div class="slot"><span class="it wood"></span><span class="cnt">36</span></div><div class="slot"><span class="it cobble"></span><span class="cnt">48</span></div><div class="slot"><span class="it iron"></span><span class="cnt">12</span></div><div class="slot"><span class="it red"></span><span class="cnt">12</span></div></div><div class="bar2"><i style="width:50%"></i></div><div class="dim" style="font-size:15px">6 / 12</div></div>
+<div class="pin"><div class="y">Маяк</div><div class="srow"><div class="slot"><span class="it glass"></span><span class="cnt">5</span></div><div class="slot"><span class="it obs"></span><span class="cnt">3</span></div><div class="slot"><span class="it ender"></span></div></div><div class="bar2 y"><i style="width:60%"></i></div></div>
+</div></div>
+<div class="panel"><div class="y">Список покупок</div><div class="kv" style="margin-top:6px">
+<span class="k">Доски</span><span><span class="g">64 / 36</span> ✓</span>
+<span class="k">Булыжник</span><span><span class="g">48 / 48</span> ✓</span>
+<span class="k">Железо</span><span><span class="r">7 / 12</span> · ещё 5 <span class="dim">(сундук: 3, RS: 0)</span></span>
+<span class="k">Редстоун</span><span><span class="r">0 / 12</span> · <span class="lnk">источники</span></span>
+<span class="k">Звезда Незера</span><span><span class="r">0 / 1</span></span>
+</div><div class="srow" style="margin-top:8px"><span class="btn sm">Запросить в хранилище</span><span class="btn sm">В чат</span><span class="btn sm">Очистить</span></div></div>
+</div>
+</div>
+
+<!-- 07 -->
+<p class="eyebrow" id="f7">Фича 07</p>
+<h2>Планировщик производства</h2>
+<p>Калькулятор в духе Factorio внутри игры и на реальных рецептах: цель «N предметов в час», планировщик раскладывает цепочку по машинам, считает количество машин с учётом времени рецептов, энергию и жидкости, подсвечивает узкое место. Время и энергия берутся из рецептов и из машин, которые публикуют их через API.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Планировщик</span><span class="dim">цель: Латунный лист (Create) · 600 / ч</span></div>
+<div class="panel">
+<div class="kv" style="grid-template-columns:auto auto auto 1fr;gap:4px 14px">
+<span class="dim">Машина</span><span class="dim">Шт.</span><span class="dim">Загрузка</span><span class="dim">Поток</span>
+<span>Механический пресс</span><span>1</span><span><div class="bar2" style="width:80px"><i style="width:34%"></i></div></span><span>600 / ч</span>
+<span class="r">Механический смеситель (латунь)</span><span class="r">4</span><span><div class="bar2 r" style="width:80px"><i style="width:97%"></i></div></span><span>600 / ч · <span class="r">узкое место</span></span>
+<span>Дробилка (цинк)</span><span>2</span><span><div class="bar2" style="width:80px"><i style="width:58%"></i></div></span><span>300 / ч</span>
+</div>
+<div class="note" style="margin-top:8px">Вращение: ≈ 1024 SU · Сырьё/ч: медь 300, цинк 300 · Лава для разогрева: 1 B</div>
+<div class="srow" style="margin-top:8px"><span class="btn sm on">Короткий</span><span class="btn sm">Дешёвый по энергии</span><span class="btn sm">Только один мод</span><span class="btn sm">→ Список покупок</span></div>
+</div>
+</div>
+
+<!-- 08 -->
+<p class="eyebrow" id="f8">Фича 08</p>
+<h2>Сравнение маршрутов</h2>
+<p>Один предмет делается тремя способами в разных модах. Экран ставит их рядом в одинаковых единицах: сырьё на единицу, время, энергия, число машин. Игрок выбирает осознанно, автор сборки видит, где баланс поехал.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Сравнение: Стальной слиток</span><span class="dim">3 маршрута</span></div>
+<div class="cols c3">
+<div class="panel"><div class="y">Immersive Eng. · Домна</div><div class="srow" style="margin:6px 0"><div class="slot"><span class="it iron"></span></div><div class="slot"><span class="it dust"></span></div><span class="arrow">→</span><div class="slot"><span class="it steel"></span></div></div><div class="kv"><span class="k">Время</span><span>60 с</span><span class="k">Энергия</span><span>0</span><span class="k">Побочно</span><span>шлак</span></div></div>
+<div class="panel" style="outline:2px solid var(--mc-green)"><div class="y">Create · Смешивание</div><div class="srow" style="margin:6px 0"><div class="slot"><span class="it iron"></span></div><div class="slot"><span class="it dust"></span><span class="cnt">2</span></div><span class="arrow">→</span><div class="slot"><span class="it steel"></span></div></div><div class="kv"><span class="k">Время</span><span>10 с</span><span class="k">Энергия</span><span>SU</span><span class="k">Побочно</span><span>нет</span></div><div class="g" style="margin-top:4px">● можно сейчас</div></div>
+<div class="panel"><div class="y">Mekanism · Инфузер</div><div class="srow" style="margin:6px 0"><div class="slot"><span class="it iron"></span></div><div class="slot"><span class="it gas"></span></div><span class="arrow">→</span><div class="slot"><span class="it steel"></span></div></div><div class="kv"><span class="k">Время</span><span>10 с</span><span class="k">Энергия</span><span>400 FE/т</span><span class="k">Побочно</span><span>нет</span></div></div>
+</div>
+</div>
+
+<!-- 09 -->
+<p class="eyebrow" id="f9">Фича 09</p>
+<h2>Прогрессия и замки (для сборок, которые этого хотят)</h2>
+<p>Мод сам не навязывает прогрессию, но даёт стандарт: стадии задаются тегом или датапаком, а завершённость приходит от поставщика (встроенные: продвижения; через API: FTB Quests, Game Stages, KubeJS). Закрытый рецепт показывается с замком и ссылкой на условие. Серверная сторона решает, что видно: скрытые рецепты не уходят клиенту вовсе, так что обойти их ресурспаком нельзя.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Электрический мотор</span><span><span class="chip ep">Стадия 2</span> <span class="dim">вы: стадия 2</span></span></div>
+<div class="tabs"><span class="tab on">Верстак</span><span class="tab dim">🔒 Сборщик (3)</span></div>
+<div class="cols c2">
+<div class="panel"><div class="srow"><div class="slot"><span class="it copper"></span><span class="cnt">4</span></div><div class="slot"><span class="it iron"></span></div><div class="slot"><span class="it red"></span></div><span class="arrow">→</span><div class="slot lg"><span class="it gear"></span></div></div><div class="note" style="margin-top:8px"><span class="g">● Доступно</span> · открыто продвижением «Электрик»</div></div>
+<div class="panel" style="opacity:.85"><div class="srow"><div class="slot lock"><span class="it circ"></span></div><div class="slot lock"><span class="it copper"></span></div><span class="arrow">→</span><div class="slot lg"><span class="it gear"></span><span class="cnt">4</span></div></div><div class="note" style="margin-top:8px"><span class="r">🔒 Стадия 3</span> · условие: квест <span class="lnk">«Первая машина»</span> <span class="btn sm">открыть</span></div></div>
+</div>
+<div class="note" style="margin-top:10px">Фильтр списка: <span class="btn sm on">Доступно</span> <span class="btn sm">Следующая стадия</span> <span class="btn sm">Всё</span></div>
+</div>
+
+<!-- 10 -->
+<p class="eyebrow" id="f10">Фича 10</p>
+<h2>Страницы справки у предмета</h2>
+<p>У JEI «Сведения» — голый текст. Здесь вкладка «Справка» принимает лёгкий markdown из датапака: иконки предметов в тексте, ссылки на другие предметы, категории, продвижения, страницы Patchouli и GuideME, предупреждения, 3D-схемы мультиблоков. Авторы модов могут поставлять справку в своём jar, авторы сборок переопределять её.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Механический сборщик</span><span class="tabs" style="margin:0"><span class="tab">Рецепты</span><span class="tab">Использования</span><span class="tab on">Справка</span></span></div>
+<div class="panel mdl">
+<div class="line"><span class="y">Многоблочный верстак Create.</span></div>
+<div class="line">Ставится сеткой до 9×9, стрелки указывают на выход. Нужна <span class="lnk">кинетическая энергия</span> и <span class="it red ii"></span> <span class="lnk">редстоун-сигнал</span> для запуска.</div>
+<div class="line"><span class="r">Внимание:</span> предметы в соседних сборщиках складываются только по направлению стрелок.</div>
+<div class="line">См. также: <span class="lnk">▸ Ponder-сцена</span> · <span class="lnk">▸ GuideME: Create, стр. 4</span></div>
+<div class="srow"><div class="slot"><span class="it wood"></span></div><div class="slot"><span class="it brass"></span></div><div class="slot"><span class="it wood"></span></div><span class="dim">схема 3×3, вращается мышью</span></div>
+</div>
+</div>
+<pre>// data/&lt;mod или сборка&gt;/lens/pages/create/mechanical_crafter.json
+{ "target": "create:mechanical_crafter",
+  "body": [
+    { "p": "Многоблочный верстак Create." },
+    { "p": "Нужна [[page:create:kinetics|кинетическая энергия]] и [[item:minecraft:redstone]] сигнал." },
+    { "warn": "Предметы складываются только по направлению стрелок." },
+    { "links": [ {"ponder":"create:mechanical_crafter"}, {"guide":"create:guide#4"} ] },
+    { "structure": "create:structures/crafter_3x3" } ] }</pre>
+
+<!-- 11 -->
+<p class="eyebrow" id="f11">Фича 11</p>
+<h2>Вкладки, история, профили</h2>
+<p>Навигация как в браузере: назад/вперёд, вкладки с открытыми предметами, история за сессию, поиск по истории. Закладки, пресеты поиска и раскладка панелей хранятся в профиле, который можно привязать к миру, к серверу или сделать глобальным, и экспортировать одним файлом.</p>
+
+<div class="mock">
+<div class="tabs"><span class="tab">◂</span><span class="tab">▸</span><span class="tab on">Маяк</span><span class="tab">Сталь</span><span class="tab">Поршень</span><span class="tab dim">+</span></div>
+<div class="cols c2">
+<div class="panel"><div class="dim">История</div><div>Маяк ← Звезда Незера ← Иссушитель ← Череп</div><div class="dim" style="margin-top:4px">Ctrl+T вкладка · Ctrl+Z назад · Ctrl+H история</div></div>
+<div class="panel"><div class="dim">Профиль</div><div>Сервер «play.example.net» <span class="dim">· 14 закладок · 3 пресета</span></div><div class="srow" style="margin-top:4px"><span class="btn sm">Экспорт</span><span class="btn sm">Сделать глобальным</span></div></div>
+</div>
+</div>
+
+<!-- D -->
+<div class="part" id="dev">
+<p class="eyebrow">D · Для авторов сборок</p>
+<h2>Инструменты, которых нет ни у кого</h2>
+<p>Автор сборки проводит во вьюере больше времени, чем игрок, но все три существующих вьюера сделаны только для игрока. Режим разработчика включается в конфиге и добавляет вкладку на каждом рецепте и глобальные отчёты.</p>
+
+<div class="mock">
+<div class="bar"><span class="title">Рецепт · create:pressing/brass_sheet</span><span class="tabs" style="margin:0"><span class="tab">Вид</span><span class="tab on">Dev</span></span></div>
+<div class="panel"><div class="kv">
+<span class="k">Id</span><span>create:pressing/brass_sheet</span>
+<span class="k">Тип</span><span>create:pressing</span>
+<span class="k">Происхождение</span><span class="y">kubejs/server_scripts/c12_create.js:214</span> <span class="dim">(переопределил create.jar)</span></span>
+<span class="k">Оригинал</span><span class="lnk">показать diff</span></span>
+<span class="k">Теги входа</span><span>#c:ingots/brass → 3 предмета</span>
+<span class="k">Конфликты</span><span class="r">1: тот же вход в create:pressing/zinc_sheet</span></span>
+<span class="k">Достижимость</span><span class="g">да, глубина 4 от сырья</span>
+</div><div class="srow" style="margin-top:8px"><span class="btn sm">Копировать JSON</span><span class="btn sm">Копировать KubeJS</span><span class="btn sm">Открыть файл</span><span class="btn sm">Перезагрузить</span></div></div>
+<div class="cols c3" style="margin-top:10px">
+<div class="box"><div class="h">Отчёт: недостижимые</div>412 предметов без источника. Экспорт в CSV / JSON.</div>
+<div class="box"><div class="h">Отчёт: конфликты</div>23 пары рецептов с одинаковым входом в одной категории.</div>
+<div class="box"><div class="h">Отчёт: циклы и баланс</div>Циклы А→Б→А с прибылью, рецепты поздних стадий дешевле ранних.</div>
+</div>
+<div class="note" style="margin-top:8px">Плюс: экспорт всей базы рецептов в автономный HTML-сайт для вики сборки, скриншот рецепта в PNG одной клавишей, горячая перезагрузка датапака с подсветкой изменившихся рецептов.</div>
+</div>
+</div>
+
+<!-- E -->
+<div class="part" id="api">
+<p class="eyebrow">E · API</p>
+<h2>Декларативные категории и Java-API</h2>
+<p>Два уровня. Для 80 % случаев категория описывается JSON-раскладкой: где слоты, где прогресс, какие поля рецепта куда. Один шаблон покрывает все рецепты с такой формой, и его можно положить в датапак без единой строки Java. Для оставшихся 20 % (кастомный рендер, анимации, интерактив) есть Java-API, плюс слой совместимости для плагинов JEI.</p>
+
+<div class="mock">
+<div class="cols c2">
+<div class="panel"><div class="y" style="margin-bottom:6px">Результат</div>
+<div class="bar" style="border:none;padding:0;margin:0 0 6px"><span>Печь</span><span class="dim">10 с · 0,1 опыта</span></div>
+<div class="srow"><div class="slot"><span class="it iron"></span></div><div style="width:60px"><div class="bar2 y"><i style="width:60%"></i></div><div class="dim" style="text-align:center;font-size:15px">🔥</div></div><div class="slot lg"><span class="it iron"></span></div></div>
+<div class="note" style="margin-top:6px">Катализаторы: печь, плавильня, коптильня (зависит от типа)</div></div>
+<div class="panel" style="font-family:var(--font-mono);font-size:12px;line-height:1.4;white-space:pre;overflow-x:auto">{ "id": "lens:cooking",
+  "for": ["minecraft:smelting",
+          "minecraft:blasting"],
+  "title": "{recipe.type.name}",
+  "size": [120, 40],
+  "widgets": [
+    { "slot": "ingredient", "at": [4,12] },
+    { "progress": "arrow", "at": [28,12], "w": 36,
+      "duration": "{cookingtime}" },
+    { "icon": "flame", "at": [40,26] },
+    { "slot": "result", "at": [84,8], "large": true } ],
+  "footer": "{cookingtime|ticks→s} · {experience} опыта",
+  "catalysts": "@recipe-type-blocks" }</div>
+</div>
+</div>
+
+<h3>Java-API в двух словах</h3>
+<pre>@LensPlugin
+public final class CreateLensPlugin implements LensPluginEntry {
+  public void register(LensRegistry r) {
+    r.resource(KineticResource.TYPE, new KineticRenderer());        // новый тип ресурса (SU, об/мин)
+    r.category(PressingCategory.ID, Layout.fromJson("create:lens/pressing")); // можно и из JSON
+    r.transfer(MechanicalCrafterScreen.class, new CrafterTransfer()); // перенос в слоты машины
+    r.sources(new PonderSourceProvider());                           // «Источники» из своих данных
+    r.stageProvider(new AdvancementStages());                        // поставщик прогрессии
+    r.units("create:su", Units.of("SU", 1.0));
+  }
+}</pre>
+<p class="cap">Слой совместимости: реализация интерфейсов <code>IModPlugin</code>, <code>IRecipeCategory</code>, <code>IRecipeTransferHandler</code> JEI поверх собственного ядра, как это делает EMI. Без него мод никто не поставит, поэтому он в первой же версии.</p>
+</div>
+
+<!-- F -->
+<div class="part" id="arch">
+<p class="eyebrow">F · Архитектура</p>
+<h2>Почему будет быстрее</h2>
+<div class="mock">
+<div class="bar"><span class="title">Внутреннее устройство</span><span class="dim">клиент + сервер</span></div>
+<div class="diag">
+<div class="box"><div class="h">1. Снимок</div>RecipeManager, теги, loot, worldgen, плагины → неизменяемый граф «ресурс → рецепты». Пересобирается только по событию.</div>
+<div class="box"><div class="h">2. Индекс в фоне</div>Имена на всех языках, теги, моды, стадии. Отдельный поток; UI открывается сразу с полосой «индексация».</div>
+<div class="box"><div class="h">3. Кэш на диск</div>Ключ: хэш списка модов + датапаков + языков. Повторный вход: читаем индекс, не строим.</div>
+<div class="box"><div class="h">4. Инкрементальность</div><code>/reload</code> и смена датапака пересчитывают только затронутые узлы графа и их подсказки.</div>
+<div class="box"><div class="h">5. Виртуальный рендер</div>Рисуются только видимые слоты; батчинг иконок одним draw-call-ом на тип; кэш отрендеренных подсказок.</div>
+<div class="box"><div class="h">6. Сервер решает</div>Видимость рецептов и стадии синхронизируются с сервера; клиент не получает то, что ему не положено видеть.</div>
+</div>
+<div class="thr"><span class="main">главный поток: рендер, ввод</span><span class="bg">фон: индекс, граф, поиск, планировщик</span><span class="bg">фон: кэш</span><span class="bg">сеть: стадии, видимость</span></div>
+</div>
+<p>Платформа: NeoForge 1.21.1 первой, абстракция платформы с самого начала (свой тонкий слой, не Architectury), чтобы Fabric-порт был переносом одного модуля, а не переписыванием. Минимальная версия Java та же, что у игры.</p>
+</div>
+
+<!-- G -->
+<div class="part" id="cmp">
+<p class="eyebrow">G · Сравнение</p>
+<h2>Что уже есть у конкурентов</h2>
+<p>Честная таблица. Где я не проверял код конкурентов, написано «проверить»: часть этого стоит уточнить декомпиляцией EMI и REI перед тем, как обещать уникальность.</p>
+<div class="tbl"><table class="cmp">
+<tr><th>Возможность</th><th>JEI</th><th>EMI</th><th>REI</th><th>Recipe Lens</th></tr>
+<tr><td>Совместимость с плагинами JEI</td><td class="ok">родная</td><td class="ok">слой</td><td class="ok">слой</td><td class="ok">слой</td></tr>
+<tr><td>Темы и ресурспак-оформление</td><td class="no">нет</td><td class="no">нет</td><td class="half">частично (цвета)</td><td class="ok">JSON + текстуры</td></tr>
+<tr><td>Дерево крафта</td><td class="no">нет</td><td class="half">есть, базовое</td><td class="half">через аддоны</td><td class="ok">основной режим + инвентарь + выбор рецепта</td></tr>
+<tr><td>Линза в мире и в чужих GUI</td><td class="no">нет</td><td class="no">нет</td><td class="no">нет</td><td class="ok">да</td></tr>
+<tr><td>Источники (замена JER)</td><td class="no">отдельный мод</td><td class="no">проверить аддоны</td><td class="no">проверить аддоны</td><td class="ok">встроено + API</td></tr>
+<tr><td>Единая модель ресурсов и единиц</td><td class="half">предметы, жидкости</td><td class="half">+ кастомные стаки</td><td class="half">+ кастомные</td><td class="ok">+ конвертация единиц</td></tr>
+<tr><td>Закладки, «крафтабельно»</td><td class="half">закладки</td><td class="ok">избранное, крафтабельно</td><td class="ok">избранное</td><td class="ok">+ HUD-стикеры + хранилища</td></tr>
+<tr><td>Список покупок с подсчётом</td><td class="no">нет</td><td class="half">счётчики в дереве</td><td class="no">нет</td><td class="ok">да</td></tr>
+<tr><td>Планировщик производительности</td><td class="no">нет</td><td class="no">нет</td><td class="no">нет</td><td class="ok">да</td></tr>
+<tr><td>Сравнение маршрутов</td><td class="no">нет</td><td class="no">нет</td><td class="no">нет</td><td class="ok">да</td></tr>
+<tr><td>Стадии с серверной видимостью</td><td class="no">нет</td><td class="no">нет</td><td class="no">нет</td><td class="ok">стандарт + API</td></tr>
+<tr><td>Справка с иконками и ссылками</td><td class="half">текст</td><td class="half">текст</td><td class="half">текст</td><td class="ok">markdown + схемы</td></tr>
+<tr><td>Декларативные категории (JSON)</td><td class="no">Java</td><td class="no">Java</td><td class="no">Java</td><td class="ok">JSON, Java опционально</td></tr>
+<tr><td>Dev-режим: происхождение, diff, отчёты</td><td class="no">нет</td><td class="no">нет</td><td class="no">нет</td><td class="ok">да</td></tr>
+<tr><td>Индекс в фоне и кэш на диск</td><td class="no">главный поток</td><td class="half">проверить</td><td class="half">проверить</td><td class="ok">да</td></tr>
+<tr><td>Многоязычный поиск с опечатками</td><td class="no">текущий язык</td><td class="half">синонимы</td><td class="no">текущий</td><td class="ok">все языки + fuzzy</td></tr>
+</table></div>
+</div>
+
+<!-- H -->
+<div class="part" id="road">
+<p class="eyebrow">H · Дорожная карта</p>
+<h2>Как это строить, чтобы дожить до релиза</h2>
+<p>Главный риск такого мода не идеи, а объём: конкуренты развивались годами. Поэтому порядок такой, чтобы каждая стадия была полезна сама по себе и ставилась в сборки.</p>
+<div class="grid3">
+<div class="card"><h4>0. Разблокировать сборку</h4><p>Сейчас maven NeoForge недоступен ни из облака, ни с ПК, и Gradle-проект собрать негде. Варианты: другой выход в сеть для разового скачивания зависимостей, оффлайн-кэш Gradle, перенос в сеть, где maven открыт. Без этого всё остальное остаётся картинками.</p></div>
+<div class="card"><h4>1. Ядро + совместимость (MVP)</h4><p>Граф ресурсов, индекс в фоне, кэш, список предметов, рецепты/использования, слой JEI-плагинов, тема Flat Dark и Vanilla. Цель: заменить JEI в любой сборке без потерь.</p></div>
+<div class="card"><h4>2. Фирменные фичи</h4><p>Линза, граф крафта, язык поиска, источники, доска и список покупок, ресурсы и единицы. Здесь мод начинает отличаться.</p></div>
+<div class="card"><h4>3. Для авторов</h4><p>JSON-категории, страницы справки, dev-режим, стадии с сервером, экспорт в HTML. Привлекает авторов сборок, которые приводят игроков.</p></div>
+<div class="card"><h4>4. Расширение</h4><p>Планировщик, сравнение маршрутов, профили, геймпад, Fabric-порт.</p></div>
+<div class="card"><h4>Что проверить до старта</h4><p>Декомпилировать EMI (слой JEI-совместимости, дерево) и REI, посмотреть, как они решают перенос в слоты и что из «уникального» уже есть. Это день работы с CFR, и он сэкономит недели.</p></div>
+</div>
+</div>
+
+<div class="footer">Макеты условные: цвета предметов, цифры и проценты подобраны для наглядности. Названия модов и машин настоящие, поведение их API нужно проверять по коду до реализации.</div>
+</div>
+
+</body>
+</html>

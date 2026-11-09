@@ -1,0 +1,4 @@
+{
+  "match": ".*:.*_smithing_template",
+  "name": "ryscope.group.smithing_templates"
+}

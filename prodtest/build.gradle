@@ -1,0 +1,35 @@
+plugins {
+    id 'net.neoforged.moddev'
+}
+
+// Проверка «как у игрока»: в папке модов только собранный jar RYScope (и моды из -PextraMods).
+// Отдельного JEI нет: он должен подняться из вложенного jar.
+neoForge {
+    version = neoforge_version
+    runs {
+        autotest {
+            client()
+            // -PrunDir=<папка>: отдельная игровая папка, например копия настроек большой сборки
+            gameDirectory = project.file(project.findProperty('runDir') ?: 'run')
+            if (project.findProperty('extraMods') != null) jvmArgument '-Xmx' + (project.findProperty('heap') ?: '8G')
+            systemProperty 'ryscope.autotest', project.findProperty('autotest') ?: 'default'
+            programArguments.addAll '--width', '1280', '--height', '720'
+            if (project.findProperty('asyncFail') != null) systemProperty 'ryscope.test.asyncFail', 'true'
+            if (project.findProperty('plan') != null) systemProperty 'ryscope.autotest.plan', project.findProperty('plan')
+            if (project.findProperty('compare') != null) systemProperty 'ryscope.autotest.compare', project.findProperty('compare')
+            if (project.findProperty('cats') != null) systemProperty 'ryscope.autotest.cats', project.findProperty('cats')
+        }
+    }
+}
+
+dependencies {
+    runtimeOnly files(rootProject.file("neoforge/build/libs/${mod_id}-neoforge-${minecraft_version}-${mod_version}.jar"))
+    if (project.findProperty('extraMods') != null) {
+        runtimeOnly fileTree(dir: project.findProperty('extraMods'), include: '*.jar',
+            excludes: ['jei-*.jar', 'mezz_config*.jar', 'ryscope-*.jar'])
+    }
+}
+
+tasks.matching { it.name == 'runAutotest' }.configureEach {
+    dependsOn ':neoforge:build'
+}
