@@ -43,7 +43,7 @@ public final class NativeRecipe implements RecipeView {
         }
     }
 
-    private enum DecoType { ARROW, FLAME, TEXT, PLUS, SHAPELESS }
+    private enum DecoType { ARROW, FLAME, TEXT, PLUS, SHAPELESS, FLOW }
 
     private record Deco(DecoType type, int x, int y, int w, String text) {}
 
@@ -66,6 +66,18 @@ public final class NativeRecipe implements RecipeView {
     public long energy;
     /** false для обмена и других способов получения, которые не являются рецептом (торговля). */
     public boolean crafting = true;
+    /** Размеры слотов: у рецептов игры они как в макете, 24 и 32. */
+    public int slotSize = SLOT, largeSize = LARGE;
+
+    private int sizeOf(SlotW s) {
+        return s.large ? largeSize : slotSize;
+    }
+
+    /** Стрелка с подписью под ней, как в макете. {@code w} ширина колонки, {@code y} её середина. */
+    public NativeRecipe flow(int x, int y, int w, String caption) {
+        decos.add(new Deco(DecoType.FLOW, x, y, w, caption));
+        return this;
+    }
 
     @Override
     public boolean isCrafting() {
@@ -162,11 +174,16 @@ public final class NativeRecipe implements RecipeView {
                 }
                 case TEXT -> Draw.text(g, d.text, dx, dy, theme.c("text.muted"));
                 case SHAPELESS -> shapelessIcon(g, dx, dy, theme.c("text.dim"));
+                case FLOW -> {
+                    works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.ARROW, dx + d.w / 2f - 5.5f, dy - 9.5f, 11f, theme.c("text.muted"));
+                    float cw = Draw.labelWidth(d.text, 11, works.repka.ryscore.ui.Type.Weight.REGULAR);
+                    Draw.label(g, d.text, dx + (d.w - cw) / 2f, dy + 9f, 11, works.repka.ryscore.ui.Type.Weight.REGULAR, theme.c("text.muted"));
+                }
             }
         }
         float missingAlpha = theme.m("missing.alpha", 0.45f);
         for (SlotW s : slots) {
-            int sx = x + s.x, sy = y + s.y, size = s.size();
+            int sx = x + s.x, sy = y + s.y, size = sizeOf(s);
             boolean hover = mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size;
             int stateBorder = 0;
             if (!s.output && missingBadges && crafting && !s.ing.isEmpty()) {
@@ -177,7 +194,8 @@ public final class NativeRecipe implements RecipeView {
                     : !InventoryView.has(s.ing);
                 if (terminal || InventoryView.tracking()) stateBorder = theme.c(lacking ? "slot.miss.border" : "slot.have.border");
             }
-            theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateBorder);
+            if (slotSize > SLOT) theme.slotRounded(g, sx, sy, size, s.large ? 10f : 8f, hover && !s.ing.isEmpty(), stateBorder);
+            else theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateBorder);
             Stack shown = s.ing.shown(now);
             if (shown == null) continue;
             int ix = sx + (size - 16) / 2, iy = sy + (size - 16) / 2;
@@ -199,10 +217,10 @@ public final class NativeRecipe implements RecipeView {
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 250);
                 Draw.rect(g, sx + 1, sy + 1, size - 2, size - 2, Draw.alpha(theme.c("slot.bg"), 1f - missingAlpha));
-                Draw.rect(g, sx + size - 5, sy + 1, 4, 4, theme.c("state.bad"));
+                if (slotSize == SLOT) Draw.rect(g, sx + size - 5, sy + 1, 4, 4, theme.c("state.bad"));
                 g.pose().popPose();
             }
-            if (s.ing.options.size() > 1) {
+            if (s.ing.options.size() > 1 && slotSize == SLOT) {
                 // несколько взаимозаменяемых вариантов
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 250);
@@ -236,7 +254,7 @@ public final class NativeRecipe implements RecipeView {
     @Override
     public Stack stackAt(int x, int y, int mouseX, int mouseY) {
         for (SlotW s : slots) {
-            int sx = x + s.x, sy = y + s.y, size = s.size();
+            int sx = x + s.x, sy = y + s.y, size = sizeOf(s);
             if (mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size) {
                 return s.ing.shown(System.currentTimeMillis());
             }

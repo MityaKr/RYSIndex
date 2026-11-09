@@ -32,6 +32,8 @@ import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.SearchService;
 import works.repka.ryscore.theme.Theme;
 import works.repka.ryscore.theme.ThemeManager;
+import works.repka.ryscore.ui.Field;
+import works.repka.ryscore.ui.Type.Weight;
 
 /**
  * Панели поверх экранов с инвентарём: список ресурсов с поиском справа, закладки слева.
@@ -40,17 +42,24 @@ import works.repka.ryscore.theme.ThemeManager;
 public final class Overlay {
     private static final int MARGIN = 4;
     private static final int PAD = 5;
-    private static final int SEARCH_H = 16;
+    private static final int SEARCH_H = 20;
+    private static final int SIDE_PAD = 9;
+    private static final int SIDE_BOTTOM = 8;
+    private static final int FILTER_H = 14;
+    private static final int FILTER_ALL = 0, FILTER_CRAFTABLE = 1, FILTER_BOOKMARKS = 2;
+    private static int filter = FILTER_ALL;
+    private static int footerY, filterRowY, marksTop = -1;
+    private static final int[][] filterRects = new int[3][2];
+    private static final int[] showAllRect = new int[2];
     private static final int FOOTER_H = 10;
 
     private static final GridPanel LIST = new GridPanel();
     private static final GridPanel MARKS = new GridPanel();
-    private static final GridPanel GOALS = new GridPanel();
 
     static {
         MARKS.accentTiles = true;
     }
-    private static EditBox search;
+    private static Field search;
     private static final int[] searchRect = new int[4];
     private static boolean draggingScroll;
     private static String toast;
@@ -67,8 +76,7 @@ public final class Overlay {
     private static works.repka.ryscope.runtime.Snapshot tagCacheFor;
     private static final int[] gearRect = new int[4];
     /** Поле имени папки закладок, пока идёт переименование. */
-    private static EditBox folderEdit;
-    private static final int[] goalsInfo = new int[2];
+    private static Field folderEdit;
     private static final int[] helpIcon = new int[2];
     private static String listCount = "";
     private static final int[] listInfo = new int[2];
@@ -101,8 +109,7 @@ public final class Overlay {
     private static EditBox search() {
         if (search == null) {
             Minecraft mc = Minecraft.getInstance();
-            search = new EditBox(mc.font, 0, 0, 100, 10, Component.empty());
-            search.setBordered(false);
+            search = new Field(100, 10);
             search.setMaxLength(256);
             search.setHint(Component.translatable("ryscope.search.hint"));
             search.setFormatter(Overlay::highlight);
@@ -197,80 +204,68 @@ public final class Overlay {
         LIST.paged = cfg.listPaged;
         int maxCols = cfg.maxColumns > 0 ? cfg.maxColumns : 99;
 
-        // список справа
+        // панель справа: размеры из макета, половина пикселя на единицу GUI
         boolean flush = ThemeManager.get().flushSidebar;
         int edge = flush ? 0 : MARGIN;
+        // карточка рецептов сама встаёт левее панели, панель из-за неё не сжимается
+        if (screen instanceof RecipeScreen) right = Math.min(right, sw - edge - MARGIN - (maxCols == 99 ? 8 : maxCols) * cell - 16);
         int avail = sw - edge - (right + MARGIN);
-        int cols = Math.min(maxCols, (avail - PAD * 2 - 4) / cell);
+        int cols = Math.min(maxCols, (avail - 16) / cell);
+        List<Stack> marks = Bookmarks.list();
         if (cols < 3 || rightBottom - rightTop < 80) {
             LIST.hide();
+            MARKS.hide();
         } else {
             LIST.cell = cell;
             LIST.cols = cols;
-            LIST.w = cols * cell + PAD * 2 + 4;
+            LIST.w = cols * cell + 16;
             LIST.x = sw - edge - LIST.w;
-            // прижатая панель идёт на всю высоту, если сверху и снизу не мешают чужие кнопки
             LIST.y = flush && rightTop == MARGIN ? 0 : rightTop;
             LIST.h = (flush && rightBottom == sh - MARGIN ? sh : rightBottom) - LIST.y;
-            searchRect[0] = LIST.x + PAD;
-            int footerTop = LIST.y + LIST.h - PAD - FOOTER_H - 2;
-            searchRect[1] = cfg.searchBottom ? footerTop - SEARCH_H : LIST.y + PAD;
-            searchRect[2] = LIST.w - PAD * 2;
+            int innerX = LIST.x + SIDE_PAD, top = LIST.y + SIDE_PAD;
+            int bottom = LIST.y + LIST.h - SIDE_BOTTOM;
+            boolean anyMarks = cfg.bookmarksPanel && (!marks.isEmpty() || Bookmarks.folders().size() > 1 || folderEdit != null);
+            if (anyMarks) {
+                int gridY = bottom - 21;
+                int header = gridY - 4 - 7;
+                marksTop = header - 6;
+                MARKS.cell = cell;
+                MARKS.cols = cols;
+                MARKS.w = LIST.w - 8;
+                MARKS.x = LIST.x + 4;
+                MARKS.y = header - 2 - PAD;
+                MARKS.h = bottom - MARKS.y;
+                MARKS.gridX = innerX;
+                MARKS.gridY = gridY;
+                MARKS.gridW = cols * cell;
+                MARKS.gridH = 23;
+                MARKS.setItems(marks);
+                bottom = marksTop - 6;
+            } else {
+                MARKS.hide();
+                marksTop = -1;
+            }
+            footerY = bottom - 8;
+            int filterY = cfg.searchBottom ? top : top + SEARCH_H + 6;
+            filterRowY = filterY;
+            int gridTop = filterY + FILTER_H + 6;
+            searchRect[0] = innerX;
+            searchRect[1] = cfg.searchBottom ? footerY - 6 - SEARCH_H : top;
+            searchRect[2] = LIST.w - SIDE_PAD * 2;
             searchRect[3] = SEARCH_H;
-            LIST.gridX = LIST.x + PAD;
-            LIST.gridY = cfg.searchBottom ? LIST.y + PAD : LIST.y + PAD + SEARCH_H + 4;
+            LIST.gridX = innerX;
+            LIST.gridY = gridTop;
             LIST.gridW = cols * cell;
-            LIST.gridH = (cfg.searchBottom ? searchRect[1] - 4 : footerTop) - LIST.gridY;
+            LIST.gridH = (cfg.searchBottom ? searchRect[1] - 6 : footerY - 6) - gridTop + 2;
             EditBox box = search();
-            box.setX(searchRect[0] + 16);
-            box.setY(searchRect[1] + 4);
-            box.setWidth(searchRect[2] - 32);
+            box.setX(searchRect[0] + 18);
+            box.setY(searchRect[1] + 5);
+            box.setWidth(searchRect[2] - 44);
         }
 
-        // закладки слева
-        List<Stack> marks = Bookmarks.list();
+        // панель кнопок FTB занимает верх левой колонки
         int availL = left - MARGIN - MARGIN;
-        int colsL = Math.min(maxCols, (availL - PAD * 2 - 4) / cell);
-        // панель кнопок FTB занимает верх левой колонки, закладки и недавние идут под ней
-        leftTop = Dock.layout(screen, MARGIN, colsL >= 2 ? colsL * cell + PAD * 2 + 4 : availL, leftTop, leftBottom);
-        boolean anyMarks = !marks.isEmpty() || Bookmarks.folders().size() > 1 || folderEdit != null;
-        if (!cfg.bookmarksPanel || !anyMarks || colsL < 2 || leftBottom - leftTop < PAD * 2 + 12 + cell) {
-            MARKS.hide();
-        } else {
-            MARKS.cell = cell;
-            MARKS.cols = colsL;
-            MARKS.w = colsL * cell + PAD * 2 + 4;
-            MARKS.x = MARGIN;
-            MARKS.y = leftTop;
-            int rows = Math.max(1, (marks.size() + colsL - 1) / colsL);
-            MARKS.h = Math.min(leftBottom - leftTop, PAD * 2 + 14 + rows * cell);
-            MARKS.gridX = MARKS.x + PAD;
-            MARKS.gridY = MARKS.y + PAD + 14;
-            MARKS.gridW = colsL * cell;
-            MARKS.gridH = MARKS.y + MARKS.h - PAD - MARKS.gridY;
-            MARKS.setItems(marks);
-        }
-
-        // цели: под закладками, не больше двух рядов
-        List<Stack> goals = new ArrayList<>();
-        for (works.repka.ryscope.runtime.Board.Goal goal : works.repka.ryscope.runtime.Board.goals()) goals.add(goal.stack);
-        int top = MARKS.visible() ? MARKS.y + MARKS.h + MARGIN : leftTop;
-        if (goals.isEmpty() || colsL < 2 || top + PAD * 2 + 12 + cell > leftBottom) {
-            GOALS.hide();
-        } else {
-            GOALS.cell = cell;
-            GOALS.cols = colsL;
-            GOALS.w = colsL * cell + PAD * 2 + 4;
-            GOALS.x = MARGIN;
-            GOALS.y = top;
-            int rows = Math.min(2, (goals.size() + colsL - 1) / colsL);
-            GOALS.h = PAD * 2 + 12 + rows * cell;
-            GOALS.gridX = GOALS.x + PAD;
-            GOALS.gridY = GOALS.y + PAD + 12;
-            GOALS.gridW = colsL * cell;
-            GOALS.gridH = rows * cell;
-            GOALS.setItems(goals);
-        }
+        Dock.layout(screen, MARGIN, Math.min(availL, 8 * 20 + 14), leftTop, leftBottom);
     }
 
     /** Панели и их содержимое. Рисуется до слотов экрана, чтобы подсказки игры оставались сверху. */
@@ -297,123 +292,188 @@ public final class Overlay {
         layout(screen);
         Theme theme = ThemeManager.get();
         boolean animate = Config.get().animations && !theme.reducedMotion;
-        Font font = Minecraft.getInstance().font;
-
-        if (LIST.visible()) {
-            SearchService.Results results = SearchService.results();
-            LIST.setItems(results.stacks);
-            theme.sidebar(g, LIST.x, LIST.y, LIST.w, LIST.h);
-            EditBox box = search();
-            theme.input(g, searchRect[0], searchRect[1], searchRect[2], searchRect[3], box.isFocused() || highlight);
-            Draw.magnifier(g, searchRect[0] + 5, searchRect[1] + 4, theme.c("text.dim"));
-            renderChips(g, theme, box);
-            box.setTextColor(theme.c("input.fg") & 0xFFFFFF);
-            box.render(g, mx, my, partialTick);
-            if (box.getValue().isEmpty() && !box.isFocused()) {
-                String key = Keys.label(Keys.SEARCH);
-                float keyW = font.width(key) * 0.75f;
-                if (keyW < searchRect[2] / 3f) {
-                    Draw.textScaled(g, key, searchRect[0] + searchRect[2] - 5 - keyW, searchRect[1] + 5, 0.75f, theme.c("text.dim"));
-                }
-            }
-            if (!box.getValue().isEmpty()) {
-                int cx = searchRect[0] + searchRect[2] - 10, cy = searchRect[1] + 5;
-                boolean ch = mx >= cx - 2 && mx < cx + 8 && my >= cy - 2 && my < cy + 8;
-                int cc = ch ? theme.c("accent") : theme.c("text.dim");
-                for (int i = 0; i < 6; i++) {
-                    Draw.rect(g, cx + i, cy + i, 1, 1, cc);
-                    Draw.rect(g, cx + 5 - i, cy + i, 1, 1, cc);
-                }
-            }
-            LIST.render(g, theme, mx, my, animate);
-
-            int fy = LIST.y + LIST.h - PAD - FOOTER_H + 1;
-            if (Indexer.state() == Indexer.State.BUILDING) {
-                int bw = LIST.w - PAD * 2;
-                Draw.round(g, LIST.x + PAD, fy + 7, bw, 2, 1f, theme.c("slot.bg"));
-                Draw.round(g, LIST.x + PAD, fy + 7, Math.max(2, bw * Indexer.progress()), 2, 1f, theme.c("accent"));
-                Draw.textScaled(g, Component.translatable(Indexer.step()).getString(), LIST.x + PAD, fy - 1, 0.75f, theme.c("text.muted"));
-            } else {
-                String count = String.format("%,d", results.stacks.size()).replace(',', ' ');
-                if (results.exactCount < results.stacks.size() && !results.query.isEmpty()) {
-                    count = Component.translatable("ryscope.search.fuzzy", count).getString();
-                }
-                listCount = count;
-            }
-            // кнопка настроек: три «ползунка»
-            gearRect[0] = LIST.x + LIST.w - PAD - 10;
-            gearRect[1] = fy;
-            gearRect[2] = 10;
-            gearRect[3] = 10;
-            listInfo[0] = gearRect[0] - 15;
-            listInfo[1] = fy;
-            if (Indexer.state() != Indexer.State.BUILDING) {
-                Draw.info(g, listInfo[0], listInfo[1], overInfo(listInfo, mx, my) ? theme.c("accent") : theme.c("text.dim"));
-                helpIcon[0] = listInfo[0] - 13;
-                helpIcon[1] = fy;
-                Draw.question(g, helpIcon[0], helpIcon[1], overInfo(helpIcon, mx, my) ? theme.c("accent") : theme.c("text.dim"));
-                // слева счётчик и страница, справа стрелки: как в макете
-                boolean many = LIST.paged && LIST.pages() > 1;
-                String footer = many ? listCount + " · " + (LIST.page() + 1) + " / " + LIST.pages() : listCount;
-                int textEnd = helpIcon[0] - 4;
-                if (many) {
-                    pageArrows[0] = helpIcon[0] - 18;
-                    pageArrows[1] = helpIcon[0] - 10;
-                    pageArrows[2] = fy;
-                    textEnd = pageArrows[0] - 4;
-                    boolean prevHot = mx >= pageArrows[0] - 2 && mx < pageArrows[0] + 6 && my >= fy - 2 && my < fy + 12;
-                    boolean nextHot = mx >= pageArrows[1] - 2 && mx < pageArrows[1] + 6 && my >= fy - 2 && my < fy + 12;
-                    Draw.chevron(g, pageArrows[0], fy + 2, false, prevHot ? theme.c("accent") : theme.c("text.muted"));
-                    Draw.chevron(g, pageArrows[1], fy + 2, true, nextHot ? theme.c("accent") : theme.c("text.muted"));
-                }
-                int footerW = textEnd - LIST.x - PAD;
-                // в узкой панели номер страницы важнее общего числа
-                if (many && font.width(footer) * 0.75f > footerW) footer = (LIST.page() + 1) + " / " + LIST.pages();
-                if (font.width(footer) * 0.75f <= footerW) Draw.textScaled(g, footer, LIST.x + PAD, fy + 2, 0.75f, theme.c("text.muted"));
-            }
-            boolean gearHover = mx >= gearRect[0] - 2 && mx < gearRect[0] + 12 && my >= gearRect[1] - 2 && my < gearRect[1] + 12;
-            int gc = gearHover ? theme.c("accent") : theme.c("text.dim");
-            if (Indexer.state() != Indexer.State.BUILDING) {
-                for (int i = 0; i < 3; i++) {
-                    Draw.rect(g, gearRect[0], fy + 2 + i * 3, 9, 1, gc);
-                    Draw.rect(g, gearRect[0] + (i == 1 ? 5 : 2), fy + 1 + i * 3, 2, 3, gc);
-                }
-            }
-        }
-
-        if (MARKS.visible()) {
-            theme.panel(g, MARKS.x, MARKS.y, MARKS.w, MARKS.h);
-            renderFolderTabs(g, theme, mx, my);
-            MARKS.render(g, theme, mx, my, animate);
-        }
+        if (LIST.visible()) renderSidebar(g, theme, mx, my, partialTick, animate);
         Dock.render(g, theme, mx, my);
-        if (GOALS.visible()) {
-            theme.panel(g, GOALS.x, GOALS.y, GOALS.w, GOALS.h);
-            Draw.textScaled(g, Component.translatable("ryscope.goals").getString(), GOALS.x + PAD + 1, GOALS.y + PAD + 2, 0.75f, theme.c("text.muted"));
-            goalsInfo[0] = GOALS.x + GOALS.w - PAD - 10;
-            goalsInfo[1] = GOALS.y + PAD;
-            Draw.info(g, goalsInfo[0], goalsInfo[1], overInfo(goalsInfo, mx, my) ? theme.c("accent") : theme.c("text.dim"));
-            GOALS.render(g, theme, mx, my, false);
+        if (screen instanceof AbstractContainerScreen<?>) {
+            Stickers.drawRow(g, theme, 36, screen.height - 14, LIST.visible() ? LIST.x - 6 : screen.width - 4, hostBounds(screen));
+        } else {
+            Stickers.forget();
         }
     }
 
-    /** Операторы запроса лежат на цветных плашках. Текст, не влезший в поле, остаётся просто цветным. */
-    private static void renderChips(GuiGraphics g, Theme theme, EditBox box) {
-        String value = box.getValue();
-        Font font = Minecraft.getInstance().font;
-        if (value.isEmpty() || font.width(value) > box.getInnerWidth()) return;
-        for (Query.Term t : Query.parse(value).terms()) {
-            String kind = switch (t.kind) {
-                case MOD -> "mod";
-                case TAG -> "tag";
-                case TOOLTIP, ID, OPERATOR -> "fn";
-                default -> null;
-            };
-            if (kind == null || t.start >= t.end) continue;
-            int x0 = box.getX() + font.width(value.substring(0, t.start));
-            int x1 = box.getX() + font.width(value.substring(0, Math.min(t.end, value.length())));
-            theme.chip(g, x0 - 3, searchRect[1] + 2, x1 - x0 + 5, SEARCH_H - 4, kind);
+    private static void renderSidebar(GuiGraphics g, Theme t, int mx, int my, float partialTick, boolean animate) {
+        SearchService.updateCraftable();
+        SearchService.Results results = SearchService.results();
+        LIST.setItems(filter == FILTER_BOOKMARKS ? Bookmarks.list() : results.stacks);
+        t.sidebar(g, LIST.x, LIST.y, LIST.w, LIST.h);
+
+        // поиск
+        Field box = (Field) search();
+        boolean active = box.isFocused() || highlight;
+        if (t.beveled()) t.input(g, searchRect[0], searchRect[1], searchRect[2], searchRect[3], active);
+        else Draw.roundBox(g, searchRect[0], searchRect[1], searchRect[2], searchRect[3], 5f, t.c("input.bg"), active ? t.c("accent") : t.c("input.border"));
+        Draw.magnifier(g, searchRect[0] + 6, searchRect[1] + 6, t.c("text.muted"));
+        applySpans(box, t);
+        box.setTextColor(t.c("input.fg") & 0xFFFFFF);
+        box.render(g, mx, my, partialTick);
+        int fieldRight = searchRect[0] + searchRect[2] - 6;
+        float cy = searchRect[1] + SEARCH_H / 2f;
+        if (box.getValue().isEmpty()) {
+            String key = Keys.label(Keys.SEARCH).replace(" + ", "+");
+            float keyW = Draw.labelWidth(key, 11, Weight.REGULAR);
+            if (keyW < searchRect[2] / 3f) Draw.label(g, key, fieldRight - keyW, cy, 11, Weight.REGULAR, t.c("text.dim"));
+        } else {
+            int cx = searchRect[0] + searchRect[2] - 11, ccy = searchRect[1] + 6;
+            boolean hot = mx >= cx - 2 && mx < cx + 9 && my >= ccy - 2 && my < ccy + 9;
+            Draw.cross(g, cx, ccy, hot ? t.c("accent") : t.c("text.dim"));
         }
+
+        renderFilters(g, t, mx, my);
+        LIST.render(g, t, mx, my, animate);
+
+        // подвал: счётчик и страницы
+        float fy = footerY + 4f;
+        int right = LIST.x + LIST.w - SIDE_PAD;
+        if (Indexer.state() == Indexer.State.BUILDING) {
+            int bw = LIST.w - SIDE_PAD * 2;
+            Draw.round(g, LIST.x + SIDE_PAD, footerY + 7, bw, 2, 1f, t.c("slot.bg"));
+            Draw.round(g, LIST.x + SIDE_PAD, footerY + 7, Math.max(2, bw * Indexer.progress()), 2, 1f, t.c("accent"));
+            Draw.label(g, Component.translatable(Indexer.step()).getString(), LIST.x + SIDE_PAD, footerY + 2, 11, Weight.REGULAR, t.c("text.muted"));
+        } else {
+            int n = LIST.items().size();
+            String number = String.format("%,d", n).replace(',', ' ');
+            String count = plural("ryscope.count.items", n, number);
+            if (results.exactCount < results.stacks.size() && !results.query.isEmpty()) count = Component.translatable("ryscope.search.fuzzy", count).getString();
+            listCount = count;
+            boolean many = LIST.paged && LIST.pages() > 1;
+            String footer = many ? count + " · " + Component.translatable("ryscope.list.page", LIST.page() + 1, LIST.pages()).getString() : count;
+            int textEnd = right;
+            if (many) {
+                pageArrows[1] = right - 3;
+                pageArrows[0] = pageArrows[1] - 8;
+                pageArrows[2] = footerY;
+                textEnd = pageArrows[0] - 4;
+                boolean prevHot = mx >= pageArrows[0] - 2 && mx < pageArrows[0] + 6 && my >= footerY - 2 && my < footerY + 12;
+                boolean nextHot = mx >= pageArrows[1] - 2 && mx < pageArrows[1] + 6 && my >= footerY - 2 && my < footerY + 12;
+                Draw.label(g, "‹", pageArrows[0], fy, 13, Weight.REGULAR, prevHot ? t.c("accent") : t.c("button.fg"));
+                Draw.label(g, "›", pageArrows[1], fy, 13, Weight.REGULAR, nextHot ? t.c("accent") : t.c("button.fg"));
+            }
+            Draw.label(g, Draw.ellipsize(footer, textEnd - LIST.x - SIDE_PAD, 12, Weight.REGULAR), LIST.x + SIDE_PAD, fy, 12, Weight.REGULAR, t.c("text.muted"));
+        }
+
+        if (MARKS.visible()) renderMarks(g, t, mx, my, animate);
+    }
+
+    private static String plural(String key, int n, String shown) {
+        int a = Math.abs(n) % 100, b = a % 10;
+        String form = a >= 11 && a <= 14 ? "many" : b == 1 ? "one" : b >= 2 && b <= 4 ? "few" : "many";
+        return Component.translatable(key + "." + form, shown).getString();
+    }
+
+    private static void renderFilters(GuiGraphics g, Theme t, int mx, int my) {
+        Config cfg = Config.get();
+        float cy = filterRowY + FILTER_H / 2f;
+        int right = LIST.x + LIST.w - SIDE_PAD;
+        // настройки и подсказки в правом конце ряда
+        gearRect[0] = right - 12;
+        gearRect[1] = filterRowY + 2;
+        gearRect[2] = 10;
+        gearRect[3] = 10;
+        boolean gearHot = mx >= gearRect[0] - 2 && mx < gearRect[0] + 12 && my >= gearRect[1] - 2 && my < gearRect[1] + 12;
+        works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.GEAR, gearRect[0], filterRowY + 3, 8f, gearHot ? t.c("accent") : t.c("text.muted"));
+        listInfo[0] = gearRect[0] - 14;
+        listInfo[1] = filterRowY + 2;
+        helpIcon[0] = listInfo[0] - 12;
+        helpIcon[1] = filterRowY + 2;
+        Draw.info(g, listInfo[0], listInfo[1], overInfo(listInfo, mx, my) ? t.c("accent") : t.c("text.dim"));
+        Draw.question(g, helpIcon[0], helpIcon[1], overInfo(helpIcon, mx, my) ? t.c("accent") : t.c("text.dim"));
+        int limit = helpIcon[0] - 4;
+        String[] keys = {"ryscope.filter.all", "ryscope.filter.craftable", "ryscope.filter.bookmarks"};
+        String[] counts = {"", Integer.toString(SearchService.craftable()), Integer.toString(Bookmarks.list().size())};
+        int x = LIST.x + SIDE_PAD;
+        boolean withCounts = true;
+        for (int pass = 0; pass < 2; pass++) {
+            float total = 0;
+            for (int i = 0; i < 3; i++) total += tabWidth(Component.translatable(keys[i]).getString(), withCounts ? counts[i] : "", i) + (i > 0 ? 3 : 0);
+            if (x + total <= limit) break;
+            withCounts = false;
+        }
+        for (int i = 0; i < 3; i++) {
+            String label = Component.translatable(keys[i]).getString();
+            String count = withCounts ? counts[i] : "";
+            int w = (int) Math.ceil(tabWidth(label, count, i));
+            filterRects[i][0] = x;
+            filterRects[i][1] = w;
+            if (x + w > limit) {
+                filterRects[i][1] = 0;
+                continue;
+            }
+            boolean active = filter == i;
+            boolean hot = mx >= x && mx < x + w && my >= filterRowY && my < filterRowY + FILTER_H;
+            if (active) Draw.round(g, x, filterRowY, w, FILTER_H, 4f, t.c("filter.active.bg"));
+            else if (hot) Draw.round(g, x, filterRowY, w, FILTER_H, 4f, Draw.alpha(t.c("filter.active.bg"), 0.5f));
+            Weight weight = active ? Weight.MEDIUM : Weight.REGULAR;
+            Draw.label(g, label, x + 6, cy, 12.5f, weight, active ? t.c("text.primary") : t.c("text.muted"));
+            if (!count.isEmpty()) {
+                float tw = Draw.labelWidth(label + " ", 12.5f, weight);
+                Draw.label(g, count, x + 6 + tw, cy, 12.5f, Weight.REGULAR, i == FILTER_CRAFTABLE ? t.c("state.ok") : t.c("text.muted"));
+            }
+            x += w + 3;
+        }
+        if (!cfg.overlayEnabled) return;
+    }
+
+    private static float tabWidth(String label, String count, int index) {
+        Weight weight = filter == index ? Weight.MEDIUM : Weight.REGULAR;
+        float w = Draw.labelWidth(label, 12.5f, weight) + 12;
+        if (!count.isEmpty()) w += Draw.labelWidth(" " + count, 12.5f, Weight.REGULAR);
+        return w;
+    }
+
+    private static void setFilter(int index) {
+        filter = index;
+        SearchService.setFilter(index == FILTER_CRAFTABLE ? "craftable" : "");
+        LIST.resetScroll();
+    }
+
+    private static void renderMarks(GuiGraphics g, Theme t, int mx, int my, boolean animate) {
+        Draw.round(g, LIST.x + SIDE_PAD, marksTop, LIST.w - SIDE_PAD * 2, 0.5f, 0.02f, t.c("panel.border"));
+        float cy = marksTop + 6 + 4;
+        if (Bookmarks.folders().size() > 1 || folderEdit != null) {
+            renderFolderTabs(g, t, mx, my);
+        } else {
+            Draw.label(g, Component.translatable("ryscope.bookmarks").getString(), LIST.x + SIDE_PAD, cy, 12, Weight.REGULAR, t.c("text.muted"));
+            String all = Component.translatable("ryscope.bookmarks.show_all").getString();
+            float allW = Draw.labelWidth(all, 12, Weight.REGULAR);
+            float ax = LIST.x + LIST.w - SIDE_PAD - allW;
+            showAllRect[0] = (int) ax;
+            showAllRect[1] = (int) Math.ceil(allW);
+            boolean hot = mx >= ax && mx < ax + allW && my >= cy - 5 && my < cy + 5;
+            Draw.label(g, all, ax, cy, 12, Weight.REGULAR, hot ? t.c("accent") : t.c("text.muted"));
+        }
+        MARKS.render(g, t, mx, my, animate);
+    }
+
+    /** Чипы и цвета запроса в поле поиска. */
+    private static void applySpans(Field box, Theme t) {
+        String value = box.getValue();
+        List<Field.Span> spans = new ArrayList<>();
+        int[] colors = new int[value.length()];
+        if (!value.isEmpty()) {
+            for (Query.Term term : Query.parse(value).terms()) {
+                String kind = switch (term.kind) {
+                    case MOD -> "mod";
+                    case TAG -> "tag";
+                    case TOOLTIP, ID, OPERATOR -> "fn";
+                    default -> null;
+                };
+                int end = Math.min(term.end, value.length());
+                if (kind != null && term.start < end) spans.add(new Field.Span(term.start, end, kind));
+                int color = kind != null ? t.c("chip." + kind + ".fg") : term.negated ? t.c("state.bad") : 0;
+                for (int i = term.start; i < end; i++) colors[i] = color;
+            }
+        }
+        box.setSpans(spans, colors);
     }
 
     private static boolean overInfo(int[] rect, double mx, double my) {
@@ -434,8 +494,6 @@ public final class Overlay {
             text = (LIST.paged ? Component.translatable("ryscope.list.count", listCount).getString() + " · " : "")
                 + Component.translatable("ryscope.list.keys", Keys.label(Keys.RECIPES), Keys.label(Keys.USES),
                     Keys.label(Keys.BOOKMARK), Keys.label(Keys.TREE)).getString();
-        } else if (GOALS.visible() && overInfo(goalsInfo, mx, my)) {
-            text = Component.translatable("ryscope.goals.help").getString();
         }
         if (text == null) return;
         g.pose().pushPose();
@@ -477,8 +535,8 @@ public final class Overlay {
             int split = raw.indexOf(" — ");
             String[] parts = split < 0 ? new String[] {raw, ""} : new String[] {raw.substring(0, split), raw.substring(split + 3)};
             lines.add(parts);
-            keyW = Math.max(keyW, Math.round(font.width(parts[0]) * 0.75f));
-            textW = Math.max(textW, Math.round(font.width(parts[1]) * 0.75f));
+            keyW = Math.max(keyW, Math.round(Draw.widthScaled(parts[0], 0.75f)));
+            textW = Math.max(textW, Math.round(Draw.widthScaled(parts[1], 0.75f)));
         }
         int w = keyW + textW + 20, h = lines.size() * 9 + 10;
         int x = Math.max(4, LIST.x - w - 4), y = LIST.y;
@@ -500,17 +558,17 @@ public final class Overlay {
         Theme theme = ThemeManager.get();
         Font font = Minecraft.getInstance().font;
         int maxText = Math.max(80, screen.width - 40);
-        List<FormattedCharSequence> lines = font.split(Component.literal(toast), maxText);
+        List<String> lines = Draw.wrap(toast, maxText);
         if (lines.size() > 3) lines = lines.subList(0, 3);
         int textW = 0;
-        for (FormattedCharSequence line : lines) textW = Math.max(textW, font.width(line));
+        for (String line : lines) textW = Math.max(textW, Draw.width(line));
         int w = textW + 16, h = 6 + lines.size() * 10;
         int x = (screen.width - w) / 2, y = screen.height - 18 - h;
         g.pose().pushPose();
         g.pose().translate(0, 0, 400);
         theme.tooltipBox(g, x, y, w, h);
         for (int i = 0; i < lines.size(); i++) {
-            g.drawString(font, lines.get(i), x + 8, y + 4 + i * 10, theme.c("text.primary"), false);
+            Draw.text(g, lines.get(i), x + 8, y + 4 + i * 10, theme.c("text.primary"));
         }
         g.pose().popPose();
     }
@@ -611,7 +669,7 @@ public final class Overlay {
     }
 
     private static int folderNatural(int index) {
-        int w = Math.round(Minecraft.getInstance().font.width(folderLabel(index)) * 0.75f) + 10;
+        int w = Math.round(Draw.widthScaled(folderLabel(index), 0.75f)) + 10;
         return Math.max(FOLDER_TAB_MIN, Math.min(FOLDER_TAB_MAX, w));
     }
 
@@ -680,7 +738,7 @@ public final class Overlay {
                 continue;
             }
             String label = Draw.ellipsize(folderLabel(index), (int) ((tw - 6) / 0.75f));
-            float textW = Minecraft.getInstance().font.width(label) * 0.75f;
+            float textW = Draw.widthScaled(label, 0.75f);
             Draw.textScaled(g, label, tx + (tw - textW) / 2f, top + 3, 0.75f, current ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
         }
         int plusX = folderPlusX();
@@ -729,8 +787,7 @@ public final class Overlay {
 
     private static void startFolderRename() {
         if (search != null) search.setFocused(false);
-        folderEdit = new EditBox(Minecraft.getInstance().font, 0, 0, 40, 10, Component.empty());
-        folderEdit.setBordered(false);
+        folderEdit = new Field(40, 10);
         folderEdit.setMaxLength(24);
         folderEdit.setValue(Bookmarks.current().name);
         folderEdit.setFocused(true);
@@ -807,7 +864,7 @@ public final class Overlay {
     private static Stack ownStackAt(double mx, double my) {
         Stack s = LIST.at(mx, my);
         if (s == null) s = MARKS.at(mx, my);
-        if (s == null) s = GOALS.at(mx, my);
+        if (s == null) s = Stickers.stackAt(mx, my);
         return s;
     }
 
@@ -891,7 +948,7 @@ public final class Overlay {
     /** Для автотеста: центр первой ячейки панели целей. */
     @Nullable
     public static int[] goalCenterForTest() {
-        return GOALS.visible() ? new int[] {GOALS.gridX + GOALS.cell / 2, GOALS.gridY + GOALS.cell / 2} : null;
+        return Stickers.firstCenter();
     }
 
     /** Ресурс под курсором в панели списка (для модов, которые спрашивают об этом через JEI). */
@@ -900,13 +957,19 @@ public final class Overlay {
         return LIST.at(mouseX(), mouseY());
     }
 
+    /** Левый край правой панели: карточка рецептов встаёт перед ним. */
+    public static int sidebarLeft(Screen screen) {
+        layout(screen);
+        return LIST.visible() ? LIST.x : screen.width;
+    }
+
     /** Показать в списке элемент с этим номером. */
     public static void revealInList(int index) {
         LIST.reveal(index);
     }
 
     public static boolean isOver(double mx, double my) {
-        return LIST.contains(mx, my) || MARKS.contains(mx, my) || GOALS.contains(mx, my) || Dock.contains(mx, my);
+        return LIST.contains(mx, my) || MARKS.contains(mx, my) || Stickers.goalAt(mx, my) != null || Dock.contains(mx, my);
     }
 
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
@@ -949,6 +1012,19 @@ public final class Overlay {
             saveSearch();
         }
         if (!isOver(mx, my)) return false;
+        if (LIST.visible() && my >= filterRowY && my < filterRowY + FILTER_H) {
+            for (int i = 0; i < 3; i++) {
+                if (filterRects[i][1] > 0 && mx >= filterRects[i][0] && mx < filterRects[i][0] + filterRects[i][1]) {
+                    setFilter(button == 0 && filter == i ? FILTER_ALL : i);
+                    return true;
+                }
+            }
+        }
+        if (MARKS.visible() && Bookmarks.folders().size() <= 1 && folderEdit == null && my >= marksTop && my < MARKS.gridY
+            && mx >= showAllRect[0] && mx < showAllRect[0] + showAllRect[1]) {
+            setFilter(FILTER_BOOKMARKS);
+            return true;
+        }
         if (overMarksHeader(mx, my)) return marksHeaderClicked(mx, my, button);
         if (LIST.visible() && mx >= gearRect[0] - 2 && mx < gearRect[0] + 12 && my >= gearRect[1] - 2 && my < gearRect[1] + 12) {
             Minecraft.getInstance().setScreen(new SettingsScreen(screen));
@@ -983,12 +1059,12 @@ public final class Overlay {
             Dock.click(mx, my, button);
             return true;
         }
-        if (GOALS.contains(mx, my)) {
+        if (Stickers.goalAt(mx, my) != null) {
             // левая кнопка открывает дерево крафта цели, правая снимает её с доски
-            Stack goal = GOALS.at(mx, my);
-            if (goal != null && button == 0) {
+            Stack goal = Stickers.stackAt(mx, my);
+            if (button == 0) {
                 TreeScreen.open(goal);
-            } else if (goal != null && button == 1) {
+            } else if (button == 1) {
                 works.repka.ryscope.runtime.Board.toggle(goal, 1);
                 toast(Component.translatable("ryscope.goals.removed").getString());
             }

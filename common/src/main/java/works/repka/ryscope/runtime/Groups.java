@@ -1,5 +1,6 @@
 package works.repka.ryscope.runtime;
 
+import works.repka.ryscore.ui.Draw;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -111,9 +112,9 @@ public final class Groups {
             Font font = Minecraft.getInstance().font;
             String text = expanded ? "−" : Integer.toString(count);
             g.pose().pushPose();
-            g.pose().translate(x + 16 - font.width(text) * 0.6f, y + 10, 200);
+            g.pose().translate(x + 16 - Draw.width(text) * 0.6f, y + 10, 200);
             g.pose().scale(0.6f, 0.6f, 1f);
-            g.fill(-1, -1, font.width(text) + 1, 9, 0xD0000000);
+            g.fill(-1, -1, Draw.width(text) + 1, 9, 0xD0000000);
             g.drawString(font, text, 0, 0, 0xFFFFD166, false);
             g.pose().popPose();
         }

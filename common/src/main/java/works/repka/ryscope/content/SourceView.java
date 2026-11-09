@@ -94,12 +94,12 @@ public final class SourceView implements RecipeView {
                 String count = d.min == d.max ? Integer.toString(d.max) : d.min + "-" + d.max;
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 200);
-                Draw.textScaled(g, count, sx + 18 - font.width(count) * 0.75f, sy + 11, 0.75f, 0xFFFFFFFF);
+                Draw.textScaled(g, count, sx + 18 - Draw.widthScaled(count, 0.75f), sy + 11, 0.75f, 0xFFFFFFFF);
                 g.pose().popPose();
             }
             String pct = percent(d.chance);
             int color = d.chance >= 0.5f ? theme.c("text.body") : d.chance >= 0.05f ? theme.c("text.muted") : theme.c("state.warn");
-            Draw.textScaled(g, pct, sx + 9 - font.width(pct) * 0.3f, sy + 19, 0.6f, color);
+            Draw.textScaled(g, pct, sx + 9 - Draw.width(pct) * 0.3f, sy + 19, 0.6f, color);
             if (d.note != null) {
                 // условие обозначено не только цветом: точка в углу и строка в подсказке
                 Draw.rect(g, sx + 1, sy + 1, 3, 3, theme.c("accent"));
@@ -107,7 +107,7 @@ public final class SourceView implements RecipeView {
         }
         if (drops.size() > shown) {
             String more = "+" + (drops.size() - shown);
-            Draw.textScaled(g, more, x + width() - font.width(more) * 0.75f, y + 6, 0.75f, theme.c("text.dim"));
+            Draw.textScaled(g, more, x + width() - Draw.widthScaled(more, 0.75f), y + 6, 0.75f, theme.c("text.dim"));
         }
     }
 

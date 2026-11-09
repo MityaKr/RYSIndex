@@ -122,7 +122,7 @@ public final class SettingsScreen extends Screen {
         theme.panel(g, px, py, pw, ph);
         Draw.text(g, title.getString(), px + PAD, py + PAD, theme.c("text.primary"));
         String version = "RYScope";
-        Draw.textScaled(g, version, px + pw - PAD - font.width(version) * 0.75f, py + PAD + 2, 0.75f, theme.c("text.dim"));
+        Draw.textScaled(g, version, px + pw - PAD - Draw.widthScaled(version, 0.75f), py + PAD + 2, 0.75f, theme.c("text.dim"));
 
         String note = null;
         int y = py + PAD + 18;
@@ -137,7 +137,7 @@ public final class SettingsScreen extends Screen {
             }
             Draw.text(g, tr(o.key), px + PAD, y + 6, theme.c("text.body"));
             String value = o.value.get();
-            int vw = font.width(value) + 12;
+            int vw = Draw.width(value) + 12;
             int vx = px + pw - PAD - vw;
             boolean on = value.equals(tr("ryscope.settings.on"));
             theme.button(g, vx, y + 3, vw, 14, hov, on);

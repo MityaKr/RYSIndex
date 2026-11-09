@@ -168,7 +168,7 @@ public final class TreeScreen extends Screen {
             }
             if (n.options != null && n.options.size() > 0 && !(n.parent != null && n.satisfied())) {
                 String sw = (n.choice + 1) + "/" + n.options.size();
-                int sww = font.width(sw);
+                int sww = Draw.width(sw);
                 int sx = right - sww - 22;
                 boolean h1 = over(mx, my, sx - 2, y + 3, 10, 13), h2 = over(mx, my, sx + sww + 12, y + 3, 10, 13);
                 Draw.chevron(g, sx, y + 6, false, h1 ? theme.c("accent") : theme.c("text.dim"));
@@ -190,7 +190,7 @@ public final class TreeScreen extends Screen {
                 }
             }
             if (!state.isEmpty()) {
-                int sw = Math.round(font.width(state) * 0.75f);
+                int sw = Math.round(Draw.widthScaled(state, 0.75f));
                 Draw.textScaled(g, state, right - sw, y + 7, 0.75f, stateColor);
                 right -= sw + 6;
             }
@@ -218,14 +218,14 @@ public final class TreeScreen extends Screen {
                 String count = r.need >= 1000 ? (r.need / 1000) + "k" : Long.toString(r.need);
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 200);
-                Draw.textScaled(g, count, rx + 19 - font.width(count) * 0.75f, fy + 28, 0.75f, 0xFFFFFFFF);
+                Draw.textScaled(g, count, rx + 19 - Draw.widthScaled(count, 0.75f), fy + 28, 0.75f, 0xFFFFFFFF);
                 g.pose().popPose();
                 if (over(mx, my, rx, fy + 14, 20, 20)) rawHover = r.stack;
                 rx += 23;
             }
             // кнопка «в закладки»
             String pin = Component.translatable("ryscope.tree.pin").getString();
-            int bw = font.width(pin) + 12, bx = px + pw - PAD - bw, bby = fy + 4;
+            int bw = Draw.width(pin) + 12, bx = px + pw - PAD - bw, bby = fy + 4;
             theme.button(g, bx, bby, bw, 13, over(mx, my, bx, bby, bw, 13), false);
             Draw.text(g, pin, bx + 6, bby + 3, theme.c("text.body"));
         }
@@ -237,7 +237,7 @@ public final class TreeScreen extends Screen {
         }
         boolean pinned = Board.contains(tree.root.stack);
         String goal = Component.translatable(pinned ? "ryscope.tree.unpin_goal" : "ryscope.tree.pin_goal").getString();
-        int gw = font.width(goal) + 12, gx = px + pw - PAD - gw, gy = py + ph - 13 - 2;
+        int gw = Draw.width(goal) + 12, gx = px + pw - PAD - gw, gy = py + ph - 13 - 2;
         if (tree.raw.isEmpty()) gy = fy + 17;
         goalRect[0] = gx;
         goalRect[1] = gy;
@@ -255,11 +255,11 @@ public final class TreeScreen extends Screen {
 
     /** Кнопки «Кратчайший», «План» и «Сравнить» слева от счётчика количества: x и ширина плана, сравнения, кратчайшего. */
     private int[] toolRects(Font font) {
-        int planW = font.width(Component.translatable("ryscope.tree.plan").getString()) + 10;
-        int cmpW = font.width(Component.translatable("ryscope.tree.compare").getString()) + 10;
+        int planW = Draw.width(Component.translatable("ryscope.tree.plan").getString()) + 10;
+        int cmpW = Draw.width(Component.translatable("ryscope.tree.compare").getString()) + 10;
         int cmpX = px + pw - PAD - 64 - 8 - cmpW;
         int planX = cmpX - 4 - planW;
-        int shortW = font.width(Component.translatable("ryscope.tree.shortest").getString()) + 10;
+        int shortW = Draw.width(Component.translatable("ryscope.tree.shortest").getString()) + 10;
         return new int[] {planX, planW, cmpX, cmpW, planX - 4 - shortW, shortW};
     }
 
@@ -317,7 +317,7 @@ public final class TreeScreen extends Screen {
         }
         if (!tree.raw.isEmpty()) {
             String pin = Component.translatable("ryscope.tree.pin").getString();
-            int bw = font.width(pin) + 12, bx = px + pw - PAD - bw, bby = fy + 4;
+            int bw = Draw.width(pin) + 12, bx = px + pw - PAD - bw, bby = fy + 4;
             if (over(mx, my, bx, bby, bw, 13)) {
                 int added = 0;
                 for (CraftTree.Raw r : tree.raw.values()) {
@@ -340,7 +340,7 @@ public final class TreeScreen extends Screen {
             int right = px + pw - PAD;
             if (n.options != null && !n.options.isEmpty() && !(n.parent != null && n.satisfied())) {
                 String sw = (n.choice + 1) + "/" + n.options.size();
-                int sww = font.width(sw);
+                int sww = Draw.width(sw);
                 int sx = right - sww - 22;
                 if (over(mx, my, sx - 2, 0, 10, height)) {
                     tree.cycleChoice(n, -1);

@@ -169,7 +169,7 @@ public final class CompareScreen extends Screen {
         Draw.textScaled(g, sub, px + PAD + 22, py + PAD + 9, 0.75f, theme.c("text.muted"));
         if (routes.size() > cols) {
             String page = (first + 1) + "–" + (first + cols) + " / " + routes.size();
-            int w = font.width(page);
+            int w = Draw.width(page);
             int nx = px + pw - PAD - w - 22;
             Draw.chevron(g, nx, py + PAD + 1, false, theme.c("text.muted"));
             Draw.text(g, page, nx + 11, py + PAD + 1, theme.c("text.muted"));
@@ -201,7 +201,7 @@ public final class CompareScreen extends Screen {
                 String count = Units.compact(raw.need);
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 200);
-                Draw.textScaled(g, count, sx + 19 - font.width(count) * 0.6f, sy + 14, 0.6f, 0xFFFFFFFF);
+                Draw.textScaled(g, count, sx + 19 - Draw.width(count) * 0.6f, sy + 14, 0.6f, 0xFFFFFFFF);
                 g.pose().popPose();
                 if (over(mx, my, sx, sy, 20, 20)) hover = raw.stack;
                 i++;
@@ -246,7 +246,7 @@ public final class CompareScreen extends Screen {
     private static int row(GuiGraphics g, Theme theme, int x, int y, int w, String label, String value) {
         Font font = Minecraft.getInstance().font;
         Draw.textScaled(g, label, x, y + 2, 0.75f, theme.c("text.muted"));
-        Draw.textScaled(g, value, x + w - 12 - font.width(value) * 0.75f, y + 2, 0.75f, theme.c("text.body"));
+        Draw.textScaled(g, value, x + w - 12 - Draw.widthScaled(value, 0.75f), y + 2, 0.75f, theme.c("text.body"));
         return y + 11;
     }
 

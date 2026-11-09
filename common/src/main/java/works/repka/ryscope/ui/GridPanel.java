@@ -149,9 +149,10 @@ public final class GridPanel {
         int first = (int) (scroll / cell);
         int last = paged ? first + rowsPerPage() - 1 : (int) ((scroll + gridH) / cell);
         boolean tiled = cell >= 18;
-        int tile = tiled ? cell - 1 : cell;
-        int pad = (tile - 16) / 2;
-        float itemScale = cell > 20 ? (cell - 4) / 16f : 1f;
+        // ячейка из макета: 41 пиксель при шаге 46
+        float tile = cell == 23 ? 20.5f : cell - 2f;
+        int pad = (int) ((tile - 16) / 2);
+        float itemScale = cell > 24 ? (cell - 7) / 16f : 1f;
         float scaledPad = (tile - 16 * itemScale) / 2f;
         g.enableScissor(gridX, gridY, gridX + gridW, gridY + gridH);
         if (tiled) {
@@ -167,7 +168,7 @@ public final class GridPanel {
                     count++;
                 }
             }
-            theme.slots(g, tile, tileXy, count, accentTiles ? Draw.mix(theme.c("slot.border"), theme.c("accent"), 0.3f) : theme.c("slot.border"));
+            theme.cells(g, tile, tileXy, count, accentTiles ? theme.c("cell.mark.border") : theme.c("cell.border"));
         }
         for (int row = first; row <= last; row++) {
             int cy = gridY + row * cell - Math.round(scroll);
@@ -176,7 +177,7 @@ public final class GridPanel {
                 if (idx >= items.size()) break;
                 int cx = gridX + col * cell;
                 if (idx == hovered) {
-                    if (tiled) theme.slot(g, cx, cy, tile, true);
+                    if (tiled) Draw.roundBox(g, cx, cy, tile, tile, theme.m("cell.radius", 7f) / 2f, theme.c("cell.bg"), theme.c("accent"));
                     else theme.hover(g, cx, cy, cell);
                 }
                 Stack s = items.get(idx);

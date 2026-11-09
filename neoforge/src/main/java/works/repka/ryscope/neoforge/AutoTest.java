@@ -163,6 +163,10 @@ final class AutoTest {
             command("tp @s 0.5 -60 0.5 0 0");
             command("fill -3 -60 -3 3 -56 6 minecraft:air");
         }, 30);
+        if ("design".equals(System.getProperty("ryscope.autotest"))) {
+            buildDesign();
+            return;
+        }
         if ("ui".equals(System.getProperty("ryscope.autotest"))) {
             buildUi();
             return;
@@ -1133,6 +1137,36 @@ final class AutoTest {
             var zombie = works.repka.ryscope.content.LootContent.forEntity(net.minecraft.world.entity.EntityType.ZOMBIE);
             RYScope.LOG.info("[ui] зомби показывает: {}", zombie == null ? "нет" : zombie.outputs().stream().map(o -> o.id().toString()).toList());
         }, 2);
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    /** Та же сцена, что в макете: снимки сравниваются с design/Main.dc.html при окне 1280×800 и масштабе 2. */
+    private static void buildDesign() {
+        step("design: setup", () -> {
+            while (works.repka.ryscope.runtime.Bookmarks.folders().size() > 1) works.repka.ryscope.runtime.Bookmarks.removeActive();
+            for (Stack s : new ArrayList<>(works.repka.ryscope.runtime.Bookmarks.list())) works.repka.ryscope.runtime.Bookmarks.toggle(s);
+            for (var item : List.of(Items.STONE, Items.SAND, Items.SLIME_BALL, Items.DIAMOND, Items.OBSIDIAN, Items.COPPER_INGOT, Items.GRAVEL, Items.AMETHYST_SHARD)) {
+                works.repka.ryscope.runtime.Bookmarks.toggle(new ItemRes(new ItemStack(item)));
+            }
+            works.repka.ryscope.runtime.Board.goals().clear();
+            works.repka.ryscope.runtime.Board.toggle(new ItemRes(new ItemStack(Items.PISTON)), 12);
+            works.repka.ryscope.runtime.Board.toggle(new ItemRes(new ItemStack(Items.BEACON)), 3);
+            Config.get().listPaged = true;
+            Config.get().searchBottom = false;
+            Overlay.setSearch("");
+            mc().setScreen(new InventoryScreen(mc().player));
+        }, 30);
+        shot("design_inventory");
+        step("design: chips", () -> Overlay.setSearch("@create #c:plates лист"), 12);
+        shot("design_search");
+        step("design: recipe", () -> {
+            Overlay.setSearch("");
+            RecipeScreen.clearTabs();
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES);
+        }, 30);
+        shot("design_recipe");
+        step("design: lens", () -> mc().setScreen(null), 10);
+        shot("design_world");
         step("quit", () -> mc().stop(), 0);
     }
 

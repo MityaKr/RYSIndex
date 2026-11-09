@@ -1,12 +1,14 @@
 package works.repka.ryscope.ui;
 
-import works.repka.ryscore.ui.Draw;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.EnumMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntConsumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -16,46 +18,54 @@ import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import works.repka.ryscope.client.Keys;
+import works.repka.ryscope.content.HelpContent;
 import works.repka.ryscope.model.Category;
+import works.repka.ryscope.model.Ing;
 import works.repka.ryscope.model.RecipeView;
 import works.repka.ryscope.model.RecipeView.Transfer;
 import works.repka.ryscope.model.Stack;
-import works.repka.ryscope.platform.Platform;
 import works.repka.ryscope.runtime.Bookmarks;
 import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.Lookup.Group;
 import works.repka.ryscore.theme.Theme;
 import works.repka.ryscore.theme.ThemeManager;
+import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Type.Weight;
 
-/** Карточка предмета: рецепты и использования по категориям, с историей переходов. */
+/**
+ * Карточка предмета, размеры из {@code design/Main.dc.html}. Числа в единицах GUI: половина пикселя макета.
+ * Шапка, разделы, строка категории, рецепт, строка наличия.
+ */
 public final class RecipeScreen extends Screen {
-    // отступы и высоты частей карточки; на низких экранах сжимаются, чтобы помещалось больше рецептов
-    private int PAD = 10;
-    private int HEADER_H = 24;
-    private int TABS_H = 24;
-    private int TITLE_H = 14;
-    private int FOOTER_H = 12;
-    private static final int INNER = 6;
-    private static final int GAP = 4;
-    private static final int BUTTON_ICON = 20;
-    private static final int STATUS_H = 16;
-    private static final int STATUS_BOX = 12;
-    /** Ширина колонки кнопок справа от рецепта: подписанные кнопки, если хватает места, иначе значок. */
-    private int buttonCol = BUTTON_ICON;
-    private boolean labelled;
-    /** Хватает ли шапке места на числа рядом с названиями вкладок. */
-    private boolean modeCounts = true;
-    private int statusH;
+    private static final int CARD_W = 260;
+    private static final int PAD_X = 9;
+    private static final float HEADER_H = 44f;
+    private static final float TABS_H = 24.5f;
+    private static final int BODY_TOP = 8;
+    private static final int GAP = 7;
+    private static final int STRIP_H = 22;
     private static final int TAB_W = 22;
-    private static final int MIN_CARD_W = 290;
+    private static final int MAX_TABS = 11;
+    private static final int ROW_H_CATEGORY = 9;
+    private static final int STATUS_H = 27;
+    private static final int BOTTOM = 9;
+    private static final int BUTTONS_W = 50;
+    private static final int MANY_RECIPES = 6;
 
-    // --- вкладки открытых предметов: живут, пока игрок в мире ---
+    /** Разделы карточки. Пятый, «Граф», открывает дерево крафта. */
+    private enum Section { RECIPES, USES, SOURCES, HELP }
 
     private record Tab(Stack stack, Lookup.Mode mode) {}
 
+    private record Hit(int x, int y, int w, int h, IntConsumer action) {}
+
+    private record Status(String head, String tail, String link, String color) {}
+
+    private record Placed(RecipeView recipe, int x, int y, int rowX, int rowY, int rowW, int rowH) {}
+
+    private record StationSpot(Stack stack, int x, int y) {}
+
     private static final List<Tab> TABS = new ArrayList<>();
-    private static final int MAX_TABS = 11;
-    private static final int STRIP_H = 22;
 
     private static void remember(Stack stack, Lookup.Mode mode) {
         for (int i = 0; i < TABS.size(); i++) {
@@ -76,24 +86,147 @@ public final class RecipeScreen extends Screen {
         return TABS.size();
     }
 
+    private static final class Nav {
+        @Nullable final Stack focus;
+        Section section;
+        final Map<Section, List<Group>> sections;
+        List<Group> groups;
+        int group;
+        int page;
+
+        Nav(@Nullable Stack focus, Section section, Map<Section, List<Group>> sections) {
+            this.focus = focus;
+            this.section = section;
+            this.sections = sections;
+            this.groups = sections.get(section);
+        }
+    }
+
+    @Nullable
+    private final Screen parent;
+    private final Deque<Nav> history = new ArrayDeque<>();
+    private Nav nav;
+    private int cardX, cardY, cardW, cardH;
+    private int perPage = 1, rowH;
+    private int widestCard;
+    private int tabScroll;
+    private int stripY;
+    private boolean strip;
+    private final List<Hit> hits = new ArrayList<>();
+    private final List<StationSpot> stations = new ArrayList<>();
+    private final List<Placed> placed = new ArrayList<>();
+    private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
+    private final Map<RecipeView, Status> statuses = new IdentityHashMap<>();
+    private int transferAge;
+
+    private RecipeScreen(@Nullable Screen parent, Nav nav) {
+        super(Component.translatable("ryscope.recipes.title"));
+        this.parent = parent;
+        this.nav = nav;
+    }
+
+    private static String tr(String key, Object... args) {
+        return Component.translatable(key, args).getString();
+    }
+
+    /** Формы множественного числа: окончание ключа one, few или many. */
+    private static String plural(String key, int n) {
+        int a = Math.abs(n) % 100, b = a % 10;
+        String form = a >= 11 && a <= 14 ? "many" : b == 1 ? "one" : b >= 2 && b <= 4 ? "few" : "many";
+        return tr(key + "." + form, n);
+    }
+
+    private static Map<Section, List<Group>> split(Stack stack) {
+        Map<Section, List<Group>> out = new EnumMap<>(Section.class);
+        for (Section s : Section.values()) out.put(s, new ArrayList<>());
+        for (Group g : Lookup.find(stack, Lookup.Mode.RECIPES)) {
+            boolean crafting = false;
+            for (RecipeView r : g.recipes()) crafting |= r.isCrafting();
+            Section s = g.category().id.equals(HelpContent.CATEGORY) ? Section.HELP : crafting ? Section.RECIPES : Section.SOURCES;
+            out.get(s).add(g);
+        }
+        for (Group g : Lookup.find(stack, Lookup.Mode.USES)) {
+            (g.category().id.equals(HelpContent.CATEGORY) ? out.get(Section.HELP) : out.get(Section.USES)).add(g);
+        }
+        return out;
+    }
+
+    private static int total(List<Group> groups) {
+        int sum = 0;
+        for (Group g : groups) sum += g.recipes().size();
+        return sum;
+    }
+
+    /** Открывает рецепты или использования ресурса. Если их нет, показывает уведомление и ничего не открывает. */
+    public static boolean open(Stack stack, Lookup.Mode mode) {
+        Stack focus = stack.withAmount(1);
+        Map<Section, List<Group>> sections = split(focus);
+        Section wanted = mode == Lookup.Mode.RECIPES ? Section.RECIPES : Section.USES;
+        Section section = wanted;
+        if (sections.get(section).isEmpty()) {
+            section = null;
+            for (Section s : new Section[] {Section.RECIPES, Section.SOURCES, Section.USES, Section.HELP}) {
+                if (!sections.get(s).isEmpty()) {
+                    section = s;
+                    break;
+                }
+            }
+            if (section == null) {
+                Overlay.toast(tr("ryscope.recipes.none", stack.name()));
+                return false;
+            }
+            if (section == Section.USES || wanted == Section.USES) {
+                Overlay.toast(tr(mode == Lookup.Mode.RECIPES ? "ryscope.recipes.only_uses" : "ryscope.recipes.only_recipes"));
+            }
+        }
+        remember(focus, section == Section.USES ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
+        show(Minecraft.getInstance(), new Nav(focus, section, sections));
+        return true;
+    }
+
+    public static boolean openCategory(Category category) {
+        List<Group> groups = Lookup.category(category);
+        if (groups.isEmpty()) return false;
+        Map<Section, List<Group>> sections = new EnumMap<>(Section.class);
+        for (Section s : Section.values()) sections.put(s, s == Section.RECIPES ? groups : List.of());
+        show(Minecraft.getInstance(), new Nav(null, Section.RECIPES, sections));
+        return true;
+    }
+
+    private static void show(Minecraft mc, Nav nav) {
+        if (mc.screen instanceof RecipeScreen rs) {
+            rs.history.push(rs.nav);
+            rs.nav = nav;
+            rs.tabScroll = 0;
+            rs.transfers.clear();
+            rs.statuses.clear();
+        } else {
+            mc.setScreen(new RecipeScreen(mc.screen, nav));
+        }
+    }
+
     /** Ресурс, рецепты которого сейчас показаны, или null для просмотра категории. */
     @Nullable
     public Stack focus() {
         return nav.focus;
     }
 
-    /** Сколько первых вкладок не помещается по ширине карточки: показываем самые свежие. */
-    private int tabStart() {
-        return Math.max(0, TABS.size() - Math.max(1, cardW / TAB_W));
+    public int[] cardBounds() {
+        return new int[] {cardX, cardY, cardW, cardH};
     }
 
-    private int itemTabAt(double mx, double my) {
-        if (TABS.isEmpty()) return -1;
-        int y = cardY - STRIP_H + 1;
-        if (my < y || my >= y + 20 || mx < cardX) return -1;
-        int i = (int) ((mx - cardX) / TAB_W);
-        int index = tabStart() + i;
-        return index < TABS.size() && mx - cardX - i * TAB_W < TAB_W - 2 ? index : -1;
+    private Group group() {
+        return nav.groups.get(Math.min(nav.group, nav.groups.size() - 1));
+    }
+
+    private int pages() {
+        return Math.max(1, (group().recipes().size() + perPage - 1) / perPage);
+    }
+
+    // --- вкладки открытых предметов над карточкой ---
+
+    private int tabStart() {
+        return Math.max(0, TABS.size() - Math.max(1, cardW / TAB_W));
     }
 
     private int currentTab() {
@@ -118,109 +251,380 @@ public final class RecipeScreen extends Screen {
         }
         Tab next = TABS.get(Math.min(index, TABS.size() - 1));
         if (open(next.stack, next.mode)) {
-            // закрытая вкладка не должна возвращаться по «назад»
             if (!history.isEmpty()) history.pop();
         } else {
             onClose();
         }
     }
 
-    private static final class Nav {
-        @Nullable Stack focus;
-        Lookup.Mode mode;
-        List<Group> groups;
-        int group;
-        int page;
-        /** Сколько рецептов и использований: считается один раз на предмет. */
-        @Nullable int[] counts;
+    // --- раскладка ---
 
-        Nav(@Nullable Stack focus, Lookup.Mode mode, List<Group> groups) {
-            this.focus = focus;
-            this.mode = mode;
-            this.groups = groups;
+    private boolean categoryStrip() {
+        return nav.groups.size() > 1;
+    }
+
+    private int chromeHeight() {
+        return (int) Math.ceil(HEADER_H + (nav.focus != null ? TABS_H : 0)) + BODY_TOP + ROW_H_CATEGORY + GAP + STATUS_H + GAP + BOTTOM;
+    }
+
+    private void relayout() {
+        List<RecipeView> recipes = group().recipes();
+        int maxW = 124, maxH = 20;
+        for (RecipeView r : recipes) {
+            maxW = Math.max(maxW, r.width());
+            maxH = Math.max(maxH, r.height());
+        }
+        int plate = !recipes.isEmpty() && recipes.get(0).needsPlate() ? 3 : 0;
+        rowH = Math.max(maxH + plate * 2, 30);
+        widestCard = Math.max(widestCard, Math.max(CARD_W, maxW + plate * 2 + BUTTONS_W + 8 + PAD_X * 2));
+        cardW = Math.min(width - 8, widestCard);
+        int sidebar = Overlay.sidebarLeft(this);
+        // как в макете: карточка смещена вправо внутри свободной части, чтобы слева было видно инвентарь
+        cardX = Math.max(categoryStrip() ? 28 : 4, Math.min(sidebar - cardW - 4, (sidebar - cardW) * 5 / 6));
+        strip = TABS.size() > 1;
+        cardY = Math.max(strip ? STRIP_H + 2 : 4, height * 36 / 400);
+        int chrome = chromeHeight();
+        int avail = height - cardY - 4 - chrome;
+        // немного рецептов листаются по одному, как в макете; длинные списки занимают всю высоту
+        int fit = Math.max(1, (avail + GAP) / (rowH + GAP));
+        perPage = recipes.size() <= MANY_RECIPES ? 1 : Math.min(recipes.size(), fit);
+        int needed = chrome + perPage * (rowH + GAP) - GAP;
+        cardH = Math.min(height - cardY - 4, needed);
+        nav.page = Math.max(0, Math.min(nav.page, pages() - 1));
+    }
+
+    @Override
+    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        g.fill(0, 0, width, height, ThemeManager.get().c("overlay"));
+    }
+
+    private void hit(int x, int y, int w, int h, IntConsumer action) {
+        hits.add(new Hit(x, y, w, h, action));
+    }
+
+    private static boolean over(double mx, double my, int x, int y, int w, int h) {
+        return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    @Override
+    public void render(GuiGraphics g, int mx, int my, float partialTick) {
+        Theme t = ThemeManager.get();
+        hits.clear();
+        relayout();
+        renderBackground(g, mx, my, partialTick);
+        Overlay.renderBackground(this, g, mx, my, partialTick);
+        t.panel(g, cardX, cardY, cardW, cardH);
+        renderStrip(g, t, mx, my);
+        renderHeader(g, t, mx, my);
+        float y = cardY + HEADER_H;
+        if (nav.focus != null) {
+            renderSections(g, t, mx, my, y);
+            y += TABS_H;
+        }
+        int by = (int) Math.ceil(y) + BODY_TOP;
+        Category hoveredTab = null;
+        if (categoryStrip()) hoveredTab = renderCategories(g, t, mx, my);
+        renderCategoryRow(g, t, mx, my, by);
+        by += ROW_H_CATEGORY + GAP;
+        renderRecipes(g, t, mx, my, partialTick, by);
+
+        Overlay.renderTop(this, g, mx, my, partialTick);
+        renderTooltips(g, t, mx, my, hoveredTab);
+    }
+
+    private void renderStrip(GuiGraphics g, Theme t, int mx, int my) {
+        if (!strip) return;
+        stripY = cardY - STRIP_H + 1;
+        int start = tabStart();
+        for (int i = start; i < TABS.size(); i++) {
+            int sx = cardX + (i - start) * TAB_W, index = i;
+            Tab tab = TABS.get(i);
+            boolean current = nav.focus != null && tab.stack.same(nav.focus);
+            t.tab(g, sx, stripY, TAB_W - 2, 20, current, over(mx, my, sx, stripY, TAB_W - 2, 20));
+            tab.stack.render(g, sx + 2, stripY + 2);
+            hit(sx, stripY, TAB_W - 2, 20, button -> {
+                if (button != 0) closeTab(index);
+                else if (nav.focus == null || !tab.stack.same(nav.focus)) open(tab.stack, tab.mode);
+            });
         }
     }
 
-    private record Placed(RecipeView recipe, int x, int y, int cardX, int cardY, int cardW, int cardH) {}
+    private void renderHeader(GuiGraphics g, Theme t, int mx, int my) {
+        int iconX = cardX + PAD_X;
+        int iconY = cardY + 12;
+        Draw.roundBox(g, iconX, iconY, 23, 23, 5f, t.c("slot.bg"), t.c("card.border"));
+        Stack shown = nav.focus;
+        if (shown != null) shown.render(g, iconX + 4, iconY + 4);
+        else group().category().renderIcon(g, iconX + 4, iconY + 4);
+        int buttonY = cardY + 14;
+        int closeX = cardX + cardW - PAD_X - 18, starX = closeX - 18 - 7;
+        boolean closeHot = over(mx, my, closeX, buttonY, 18, 18);
+        iconButton(g, t, closeX, buttonY, closeHot);
+        Draw.cross(g, closeX + 5, buttonY + 5, closeHot ? t.c("accent") : t.c("button.fg"));
+        hit(closeX, buttonY, 18, 18, b -> onClose());
+        if (shown != null) {
+            boolean starHot = over(mx, my, starX, buttonY, 18, 18), marked = Bookmarks.contains(shown);
+            iconButton(g, t, starX, buttonY, starHot);
+            Draw.star(g, starX + 5, buttonY + 5, marked, marked || starHot ? t.c("accent") : t.c("button.fg"));
+            hit(starX, buttonY, 18, 18, b -> Overlay.toast(tr(Bookmarks.toggle(nav.focus) ? "ryscope.bookmark.added" : "ryscope.bookmark.removed")));
+        }
+        float textX = iconX + 23 + 7;
+        float room = starX - 7 - textX;
+        String title = shown != null ? shown.name().getString() : group().category().title.getString();
+        Draw.label(g, Draw.ellipsize(title, room, 20, Weight.SEMIBOLD), textX, cardY + 15f, 20, Weight.SEMIBOLD, t.c("text.primary"));
+        // подзаголовок переносится на вторую строку, как в макете; место под неё есть всегда, поэтому карточка не прыгает
+        float subY = cardY + 26f;
+        for (String line : Draw.wrapLabel(subtitle(), room, 12, Weight.REGULAR, 2)) {
+            Draw.label(g, line, textX, subY, 12, Weight.REGULAR, t.c("text.muted"));
+            subY += 8f;
+        }
+    }
 
-    private record StationSpot(Stack stack, int x, int y) {}
+    private void iconButton(GuiGraphics g, Theme t, int x, int y, boolean hot) {
+        Draw.roundBox(g, x, y, 18, 18, 4.5f, hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg"), t.c("button.border"));
+    }
 
-    private final List<StationSpot> stations = new ArrayList<>();
+    private String subtitle() {
+        if (nav.focus == null) return plural("ryscope.count.recipes", total(nav.groups));
+        StringBuilder out = new StringBuilder(nav.focus.id().toString());
+        List<String> tags = nav.focus.tags();
+        if (!tags.isEmpty()) out.append(" · #").append(tags.get(0));
+        out.append(" · ").append(plural("ryscope.count.recipes", total(nav.sections.get(Section.RECIPES))));
+        out.append(" · ").append(plural("ryscope.count.uses", total(nav.sections.get(Section.USES))));
+        return out.toString();
+    }
 
+    private void renderSections(GuiGraphics g, Theme t, int mx, int my, float y) {
+        Draw.round(g, cardX + 0.5f, y + TABS_H - 0.5f, cardW - 1, 0.5f, 0.02f, t.c("card.border"));
+        int x = cardX + PAD_X;
+        int top = (int) y, h = (int) Math.ceil(TABS_H);
+        for (Section s : Section.values()) {
+            List<Group> groups = nav.sections.get(s);
+            int count = total(groups);
+            String label = tr("ryscope.section." + s.name().toLowerCase(java.util.Locale.ROOT));
+            x = sectionTab(g, t, mx, my, x, top, h, label, s != Section.HELP ? count : -1, nav.section == s, count > 0 ? b -> switchSection(s) : null);
+        }
+        sectionTab(g, t, mx, my, x, top, h, tr("ryscope.section.graph"), -1, false, b -> TreeScreen.open(nav.focus));
+    }
+
+    private int sectionTab(GuiGraphics g, Theme t, int mx, int my, int x, int top, int h, String label, int count, boolean active, @Nullable IntConsumer action) {
+        Weight weight = active ? Weight.MEDIUM : Weight.REGULAR;
+        String number = count >= 0 ? Integer.toString(count) : "";
+        // ширина как у текста в одну строку, а число стоит под названием: так вкладки выглядят в макете
+        float natural = Draw.labelWidth(number.isEmpty() ? label : label + " " + number, 13, weight);
+        int w = (int) Math.ceil(natural) + 12;
+        boolean hot = action != null && over(mx, my, x, top, w, h);
+        t.tabLine(g, x, top, w, h, active, hot);
+        Draw.label(g, label, x + 6, top + 7.5f, 13, weight, active || hot ? t.c("text.primary") : t.c("text.muted"));
+        if (!number.isEmpty()) Draw.label(g, number, x + 6, top + 15.5f, 13, Weight.REGULAR, t.c("text.muted"));
+        if (action != null) hit(x, top, w, h, action);
+        return x + w + 2;
+    }
+
+    /** Значки категорий столбцом слева от карточки: сама карточка остаётся как в макете. */
     @Nullable
-    private final Screen parent;
-    private final Deque<Nav> history = new ArrayDeque<>();
-    private Nav nav;
-    private int cardX, cardY, cardW, cardH;
-    private int perPage = 1;
-    /** Ширина карточки за это открытие: только растёт, иначе окно дёргается при смене вкладки. */
-    private int widestCard;
-    private int tabScroll;
-    private final List<Placed> placed = new ArrayList<>();
-    private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
-    private final Map<RecipeView, Status> statuses = new IdentityHashMap<>();
-    private int transferAge;
-
-    private RecipeScreen(@Nullable Screen parent, Nav nav) {
-        super(Component.translatable("ryscope.recipes.title"));
-        this.parent = parent;
-        this.nav = nav;
-    }
-
-    /** Открывает рецепты или использования ресурса. Если их нет, показывает уведомление и ничего не открывает. */
-    public static boolean open(Stack stack, Lookup.Mode mode) {
-        Minecraft mc = Minecraft.getInstance();
-        List<Group> groups = Lookup.find(stack, mode);
-        if (groups.isEmpty()) {
-            // игрок чаще хочет увидеть хоть что-то: пробуем второй режим
-            Lookup.Mode other = mode == Lookup.Mode.RECIPES ? Lookup.Mode.USES : Lookup.Mode.RECIPES;
-            List<Group> alt = Lookup.find(stack, other);
-            if (alt.isEmpty()) {
-                Overlay.toast(Component.translatable("ryscope.recipes.none", stack.name()).getString());
-                return false;
+    private Category renderCategories(GuiGraphics g, Theme t, int mx, int my) {
+        int x = cardX - 25, top = cardY + 8;
+        int visible = Math.max(1, (height - top - 4) / 24);
+        tabScroll = Math.max(0, Math.min(tabScroll, Math.max(0, nav.groups.size() - visible)));
+        if (nav.group < tabScroll) tabScroll = nav.group;
+        if (nav.group >= tabScroll + visible) tabScroll = nav.group - visible + 1;
+        Category hovered = null;
+        for (int i = tabScroll; i < Math.min(nav.groups.size(), tabScroll + visible); i++) {
+            int ty = top + (i - tabScroll) * 24, index = i;
+            boolean hov = over(mx, my, x, ty, 22, 22);
+            t.tab(g, x, ty, 22, 22, i == nav.group, hov);
+            try {
+                nav.groups.get(i).category().renderIcon(g, x + 3, ty + 3);
+            } catch (Throwable ignored) {
+                // значок чужой категории
             }
-            Overlay.toast(Component.translatable(mode == Lookup.Mode.RECIPES ? "ryscope.recipes.only_uses" : "ryscope.recipes.only_recipes").getString());
-            groups = alt;
-            mode = other;
+            if (hov) hovered = nav.groups.get(i).category();
+            hit(x, ty, 22, 22, b -> setGroup(index));
         }
-        Nav nav = new Nav(stack.withAmount(1), mode, groups);
-        remember(nav.focus, mode);
-        show(mc, nav);
-        return true;
+        return hovered;
     }
 
-    public static boolean openCategory(Category category) {
-        List<Group> groups = Lookup.category(category);
-        if (groups.isEmpty()) return false;
-        show(Minecraft.getInstance(), new Nav(null, Lookup.Mode.RECIPES, groups));
-        return true;
-    }
-
-    private static void show(Minecraft mc, Nav nav) {
-        if (mc.screen instanceof RecipeScreen rs) {
-            rs.history.push(rs.nav);
-            rs.nav = nav;
-            rs.tabScroll = 0;
-            rs.transfers.clear();
-        } else {
-            mc.setScreen(new RecipeScreen(mc.screen, nav));
+    private void renderCategoryRow(GuiGraphics g, Theme t, int mx, int my, int y) {
+        Group group = group();
+        float cy = y + ROW_H_CATEGORY / 2f;
+        int x = cardX + PAD_X;
+        stations.clear();
+        Stack mainStation = group.category().stations.isEmpty() ? null : group.category().stations.get(0);
+        if (mainStation != null) {
+            renderSmall(g, mainStation, x, y);
+            stations.add(new StationSpot(mainStation, x, y));
+        }
+        float textX = x + (mainStation != null ? 13 : 0);
+        int pageRight = cardX + cardW - PAD_X;
+        String pageText = (nav.page + 1) + " / " + pages();
+        float pageW = Draw.labelWidth(pageText, 13, Weight.REGULAR);
+        float nextX = pageRight - 5, prevX = nextX - 10;
+        boolean multi = pages() > 1;
+        int prevC = multi && over(mx, my, (int) prevX - 2, y - 1, 8, 11) ? t.c("accent") : t.c("button.fg");
+        int nextC = multi && over(mx, my, (int) nextX - 2, y - 1, 8, 11) ? t.c("accent") : t.c("button.fg");
+        Draw.label(g, "‹", prevX, cy, 13, Weight.REGULAR, prevC);
+        Draw.label(g, "›", nextX, cy, 13, Weight.REGULAR, nextC);
+        Draw.label(g, pageText, prevX - 5 - pageW, cy, 13, Weight.REGULAR, t.c("text.muted"));
+        hit((int) prevX - 2, y - 1, 8, 11, b -> setPage(nav.page - 1));
+        hit((int) nextX - 2, y - 1, 8, 11, b -> setPage(nav.page + 1));
+        float titleRoom = prevX - 5 - pageW - 8 - textX;
+        String title = Draw.ellipsize(group.category().title.getString(), titleRoom, 13, Weight.REGULAR);
+        Draw.label(g, title, textX, cy, 13, Weight.REGULAR, t.c("text.secondary"));
+        // остальные станции, на которых делается то же самое
+        float stx = textX + Draw.labelWidth(title, 13, Weight.REGULAR) + 6;
+        for (int i = 1; i < group.category().stations.size() && stations.size() < 6; i++) {
+            if (stx + 9 > prevX - 5 - pageW - 6) break;
+            Stack station = group.category().stations.get(i);
+            renderSmall(g, station, (int) stx, y);
+            stations.add(new StationSpot(station, (int) stx, y));
+            stx += 11;
         }
     }
 
-    public int[] cardBounds() {
-        return new int[] {cardX, cardY, cardW, cardH};
+    private static void renderSmall(GuiGraphics g, Stack stack, int x, int y) {
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0);
+        g.pose().scale(0.5625f, 0.5625f, 1f);
+        try {
+            stack.render(g, 0, 0);
+        } catch (Throwable ignored) {
+            // чужой рендер
+        }
+        g.pose().popPose();
     }
 
-    private Group group() {
-        return nav.groups.get(Math.min(nav.group, nav.groups.size() - 1));
+    private void renderRecipes(GuiGraphics g, Theme t, int mx, int my, float partialTick, int top) {
+        placed.clear();
+        List<RecipeView> recipes = group().recipes();
+        boolean canTransfer = parent instanceof AbstractContainerScreen<?>;
+        works.repka.ryscope.content.NativeRecipe.missingBadges = true;
+        works.repka.ryscope.runtime.Ae2Terminal.setActive(parent instanceof AbstractContainerScreen<?> host ? host.getMenu() : null);
+        int rowX = cardX + PAD_X, rowW = cardW - PAD_X * 2;
+        int by = top;
+        for (int i = 0; i < perPage; i++) {
+            int idx = nav.page * perPage + i;
+            if (idx >= recipes.size()) break;
+            RecipeView r = recipes.get(idx);
+            int plate = r.needsPlate() ? 3 : 0;
+            int rx = rowX + plate, ry = by + (rowH - r.height()) / 2;
+            if (plate > 0) t.plate(g, rx - plate, ry - plate, r.width() + plate * 2, r.height() + plate * 2);
+            try {
+                r.render(g, t, rx, ry, mx, my, partialTick);
+            } catch (Throwable th) {
+                Draw.text(g, "?", rx, ry, t.c("state.bad"));
+            }
+            Placed row = new Placed(r, rx, ry, rowX, by, rowW, rowH);
+            placed.add(row);
+            renderLock(g, t, r, rowX, by, rowW);
+            if (Minecraft.getInstance().options.advancedItemTooltips && r.id() != null) {
+                Draw.label(g, Draw.ellipsize(r.id().toString(), rowW, 9, Weight.REGULAR), rowX, by + rowH + 2, 9, Weight.REGULAR, t.c("text.dim"));
+            }
+            renderButtons(g, t, row, mx, my, canTransfer);
+            by += rowH + GAP;
+        }
+        renderStatus(g, t, placed.isEmpty() ? null : placed.get(0).recipe, rowX, rowW, by);
     }
 
-    private int pages() {
-        return Math.max(1, (group().recipes().size() + perPage - 1) / perPage);
+    private void renderLock(GuiGraphics g, Theme t, RecipeView r, int x, int y, int w) {
+        works.repka.ryscope.runtime.Stages.Stage lock = works.repka.ryscope.runtime.Stages.lockOf(r, group().category());
+        if (lock == null) return;
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 260);
+        Draw.round(g, x, y, w, rowH, t.r("card.radius"), Draw.alpha(t.c("card.bg"), 0.78f));
+        String text = tr("ryscope.stage.locked", lock.title());
+        float textW = Draw.labelWidth(text, 13, Weight.MEDIUM);
+        float cx = x + (w - textW) / 2f;
+        Draw.lock(g, (int) cx - 11, y + rowH / 2 - 8, t.c("state.warn"));
+        Draw.label(g, text, cx, y + rowH / 2f - 5, 13, Weight.MEDIUM, t.c("text.primary"));
+        String need = works.repka.ryscope.runtime.Stages.requirement(lock);
+        if (!need.isEmpty()) {
+            String shown = Draw.ellipsize(need, w - 12, 11, Weight.REGULAR);
+            Draw.label(g, shown, x + (w - Draw.labelWidth(shown, 11, Weight.REGULAR)) / 2f, y + rowH / 2f + 6, 11, Weight.REGULAR, t.c("text.muted"));
+        }
+        g.pose().popPose();
     }
 
-    /** Строка под рецептом: сколько ингредиентов есть и чего не хватает. */
-    private record Status(String head, String tail, String color) {}
+    private boolean canGoal(RecipeView r) {
+        return nav.focus != null && r.isCrafting() && !r.outputs().isEmpty();
+    }
+
+    private void renderButtons(GuiGraphics g, Theme t, Placed row, int mx, int my, boolean canTransfer) {
+        RecipeView r = row.recipe;
+        int x = row.rowX + row.rowW - BUTTONS_W;
+        Transfer tr = transfers.get(r);
+        boolean transfer = canTransfer && (tr == null || tr.status() != Transfer.Status.UNSUPPORTED);
+        boolean goal = canGoal(r);
+        int total = (transfer ? 20 : 0) + (transfer && goal ? 4 : 0) + (goal ? 17 : 0);
+        int y = row.rowY + (row.rowH - total) / 2;
+        if (transfer) {
+            // главная кнопка всегда янтарная, как в макете; чего не хватает, видно по строке наличия и подсказке
+            boolean hot = over(mx, my, x, y, BUTTONS_W, 20);
+            int fill = hot ? Draw.mix(t.c("accent"), 0xFFFFFFFF, 0.15f) : t.c("accent");
+            Draw.round(g, x, y, BUTTONS_W, 20, 4.5f, fill);
+            String label = tr("ryscope.transfer.button");
+            Draw.label(g, label, x + (BUTTONS_W - Draw.labelWidth(label, 13, Weight.SEMIBOLD)) / 2f, y + 10f, 13, Weight.SEMIBOLD, t.c("accent.text"));
+            hit(x, y, BUTTONS_W, 20, b -> {
+                if (b == 0 && parent instanceof AbstractContainerScreen<?> acs && tr != null) doTransfer(acs, r, hasShiftDown());
+            });
+            y += 24;
+        }
+        if (goal) {
+            Stack output = r.outputs().get(0);
+            boolean set = works.repka.ryscope.runtime.Board.contains(output), hot = over(mx, my, x, y, BUTTONS_W, 17);
+            int fill = hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg");
+            Draw.roundBox(g, x, y, BUTTONS_W, 17, 4.5f, fill, t.c("button.border"));
+            String label = tr(set ? "ryscope.goals.in" : "ryscope.goals.add");
+            Draw.label(g, label, x + (BUTTONS_W - Draw.labelWidth(label, 12, Weight.REGULAR)) / 2f, y + 8.5f, 12, Weight.REGULAR, set ? t.c("accent") : t.c("button.fg"));
+            hit(x, y, BUTTONS_W, 17, b -> {
+                if (b != 0) return;
+                boolean added = works.repka.ryscope.runtime.Board.toggle(output, 1);
+                Overlay.toast(tr(added ? "ryscope.goals.added" : "ryscope.goals.removed"));
+            });
+        }
+    }
+
+    private void renderStatus(GuiGraphics g, Theme t, @Nullable RecipeView r, int x, int w, int y) {
+        Draw.roundBox(g, x, y, w, STATUS_H, 4.5f, t.c("status.bg"), t.c("status.border"));
+        Status s = r == null ? null : statuses.get(r);
+        if (s == null) return;
+        Draw.dot(g, x + 6, y + STATUS_H / 2 - 2, 4, t.c(s.color));
+        record Word(String text, int kind, float width) {}
+        List<Word> words = new ArrayList<>();
+        for (String part : s.head.split(" ")) words.add(new Word(part, 0, Draw.labelWidth(part, 12.5f, Weight.SEMIBOLD)));
+        if (!s.tail.isEmpty()) for (String part : s.tail.split(" ")) words.add(new Word(part, 1, Draw.labelWidth(part, 12.5f, Weight.REGULAR)));
+        if (!s.link.isEmpty()) {
+            words.add(new Word("·", 1, Draw.labelWidth("·", 12.5f, Weight.REGULAR)));
+            for (String part : s.link.split(" ")) words.add(new Word(part, 2, Draw.labelWidth(part, 12.5f, Weight.REGULAR)));
+        }
+        float space = Draw.labelWidth(" ", 12.5f, Weight.REGULAR);
+        float left = x + 15, limit = w - 15 - 6;
+        List<List<Word>> lines = new ArrayList<>();
+        List<Word> line = new ArrayList<>();
+        float used = 0;
+        for (Word word : words) {
+            if (!line.isEmpty() && used + space + word.width > limit) {
+                lines.add(line);
+                line = new ArrayList<>();
+                used = 0;
+            }
+            used += (line.isEmpty() ? 0 : space) + word.width;
+            line.add(word);
+        }
+        if (!line.isEmpty()) lines.add(line);
+        if (lines.size() > 2) lines = new ArrayList<>(lines.subList(0, 2));
+        float cy = y + STATUS_H / 2f - (lines.size() - 1) * 4f;
+        for (List<Word> row : lines) {
+            float px = left;
+            for (Word word : row) {
+                int color = word.kind == 0 ? t.c("text.primary") : word.kind == 2 ? t.c("chip.mod.fg") : t.c("text.secondary");
+                Draw.label(g, word.text, px, cy, 12.5f, word.kind == 0 ? Weight.SEMIBOLD : Weight.REGULAR, color);
+                if (word.kind == 2) Draw.round(g, px, cy + 3.75f, word.width + (word == row.get(row.size() - 1) ? 0 : space), 0.5f, 0.02f, t.c("chip.mod.fg"));
+                px += word.width + space;
+            }
+            cy += 8f;
+        }
+    }
 
     @Nullable
     private static Status statusOf(RecipeView recipe) {
@@ -229,8 +633,8 @@ public final class RecipeScreen extends Screen {
         if (!network && !works.repka.ryscope.runtime.InventoryView.tracking()) return null;
         int total = 0, have = 0;
         boolean stored = false;
-        Map<String, Integer> missing = new java.util.LinkedHashMap<>();
-        for (works.repka.ryscope.model.Ing in : recipe.inputs()) {
+        Map<String, Integer> missing = new LinkedHashMap<>();
+        for (Ing in : recipe.inputs()) {
             if (in.isEmpty()) continue;
             boolean items = false;
             for (Stack option : in.options) items |= option.key() instanceof net.minecraft.world.item.Item;
@@ -252,7 +656,7 @@ public final class RecipeScreen extends Screen {
         }
         if (total == 0) return null;
         String place = network ? "network" : "inventory";
-        if (missing.isEmpty()) return new Status(tr("ryscope.status.all." + place), "", "state.ok");
+        if (missing.isEmpty()) return new Status(tr("ryscope.status.all." + place), "", "", "state.ok");
         StringBuilder names = new StringBuilder();
         int shown = 0;
         for (Map.Entry<String, Integer> e : missing.entrySet()) {
@@ -260,392 +664,65 @@ public final class RecipeScreen extends Screen {
             if (shown++ > 0) names.append(", ");
             names.append(e.getKey()).append(" ×").append(e.getValue());
         }
-        if (missing.size() > 2) names.append(' ').append(Component.translatable("ryscope.status.more", missing.size() - 2).getString());
-        String tail = tr("ryscope.status.have." + place) + " · " + Component.translatable("ryscope.status.missing", names.toString()).getString();
-        if (stored) tail += " · " + tr("ryscope.status.stored");
-        return new Status(Component.translatable("ryscope.status.head", have, total).getString(), tail, have == 0 ? "state.bad" : "state.warn");
+        if (missing.size() > 2) names.append(' ').append(tr("ryscope.status.more", missing.size() - 2));
+        String tail = tr("ryscope.status.have." + place) + " · " + tr("ryscope.status.missing", names.toString());
+        return new Status(tr("ryscope.status.head", have, total), tail, stored ? tr("ryscope.status.stored") : "", have == 0 ? "state.bad" : "state.warn");
     }
 
-    private static String tr(String key) {
-        return Component.translatable(key).getString();
-    }
-
-    private int count(Lookup.Mode mode) {
-        if (nav.focus == null) return 0;
-        if (nav.counts == null) {
-            nav.counts = new int[2];
-            for (Lookup.Mode m : Lookup.Mode.values()) {
-                int sum = 0;
-                for (Group g : m == nav.mode ? nav.groups : Lookup.find(nav.focus, m)) sum += g.recipes().size();
-                nav.counts[m == Lookup.Mode.RECIPES ? 0 : 1] = sum;
-            }
-        }
-        return nav.counts[mode == Lookup.Mode.RECIPES ? 0 : 1];
-    }
-
-    // --- вкладки «рецепты» и «использования» ---
-
-    private int modeW(Font font, Lookup.Mode mode) {
-        int count = count(mode);
-        String label = tr(mode == Lookup.Mode.RECIPES ? "ryscope.mode.recipes" : "ryscope.mode.uses");
-        return font.width(label) + (count > 0 && modeCounts ? 4 + font.width(Integer.toString(count)) : 0) + 12;
-    }
-
-    private int modeY(Theme theme) {
-        return cardY + PAD + (theme.lineTabs ? 0 : 1);
-    }
-
-    private int modeH(Theme theme) {
-        return theme.lineTabs ? HEADER_H - 5 : 14;
-    }
-
-    private int treeX(Font font) {
-        return cardX + PAD + modeW(font, Lookup.Mode.RECIPES) + 3 + modeW(font, Lookup.Mode.USES) + 4;
-    }
-
-    private int closeX() {
-        return cardX + cardW - PAD - 14;
-    }
-
-    private int starX() {
-        return closeX() - 18;
-    }
-
-    // --- кнопки справа от рецепта ---
-
-    private boolean canTransfer(RecipeView recipe) {
-        if (!(parent instanceof AbstractContainerScreen<?>)) return false;
-        Transfer tr = transfers.get(recipe);
-        return tr == null || tr.status() != Transfer.Status.UNSUPPORTED;
-    }
-
-    private boolean canGoal(RecipeView recipe) {
-        return labelled && nav.focus != null && recipe.isCrafting() && !recipe.outputs().isEmpty();
-    }
-
-    private int buttonsTop(Placed p) {
-        int total = canTransfer(p.recipe) && canGoal(p.recipe) ? 30 : canGoal(p.recipe) ? 13 : labelled ? 15 : 14;
-        return p.cardY + (p.cardH - statusH - total) / 2;
-    }
-
-    private int[] transferRect(Placed p) {
-        return new int[] {p.cardX + p.cardW - buttonCol + 2, buttonsTop(p), labelled ? buttonCol - 8 : 14, labelled ? 15 : 14};
-    }
-
-    private int[] goalRect(Placed p) {
-        int top = buttonsTop(p) + (canTransfer(p.recipe) ? 17 : 0);
-        return new int[] {p.cardX + p.cardW - buttonCol + 2, top, buttonCol - 8, 13};
-    }
-
-    private static boolean over(double mx, double my, int[] r) {
-        return over(mx, my, r[0], r[1], r[2], r[3]);
-    }
-
-    private void relayout() {
-        boolean compact = height < 300;
-        PAD = compact ? 7 : 10;
-        HEADER_H = compact ? 20 : 24;
-        TABS_H = compact ? 22 : 24;
-        TITLE_H = compact ? 13 : 14;
-        FOOTER_H = 0;
-        List<RecipeView> recipes = group().recipes();
-        int maxW = 124, maxH = 20;
-        for (RecipeView r : recipes) {
-            maxW = Math.max(maxW, r.width());
-            maxH = Math.max(maxH, r.height());
-        }
-        int plate = recipes.isEmpty() || !recipes.get(0).needsPlate() ? 0 : 3;
-        boolean crafting = false;
-        for (RecipeView r : recipes) crafting |= r.isCrafting();
-        statusH = !compact && crafting && parent instanceof AbstractContainerScreen<?> ? STATUS_H : 0;
-        int rowH = maxH + INNER * 2 + plate * 2 + statusH;
+    private void renderTooltips(GuiGraphics g, Theme t, int mx, int my, @Nullable Category hoveredTab) {
+        if (Overlay.isOver(mx, my)) return;
         Font font = Minecraft.getInstance().font;
-        int labelW = Math.max(font.width(tr("ryscope.transfer.button")), Math.max(font.width(tr("ryscope.goals.add")), font.width(tr("ryscope.goals.in")))) + 14;
-        labelled = maxW + plate * 2 + INNER * 2 + labelW + 8 + PAD * 2 <= width - 8;
-        buttonCol = labelled ? labelW + 8 : BUTTON_ICON;
-        widestCard = Math.max(widestCard, Math.max(MIN_CARD_W, maxW + plate * 2 + INNER * 2 + buttonCol + PAD * 2));
-        cardW = Math.min(width - 8, widestCard);
-        int chrome = PAD + HEADER_H + TABS_H + TITLE_H + FOOTER_H + PAD;
-        // место под вкладки предметов оставлено всегда: иначе появление второй вкладки сдвинуло бы карточку
-        cardY = Math.max(2, height / 18) + STRIP_H;
-        int bottomGap = compact ? 3 : 6;
-        int bodyAvail = height - cardY - bottomGap - chrome;
-        perPage = Math.max(1, Math.min(recipes.size(), (bodyAvail + GAP) / (rowH + GAP)));
-        int needed = chrome + perPage * (rowH + GAP) - GAP;
-        if (cardY + needed > height - bottomGap) cardY = Math.max(STRIP_H + 2, height - bottomGap - needed);
-        cardH = Math.min(height - cardY - bottomGap, needed);
-        cardX = (width - cardW) / 2;
-        modeCounts = true;
-        modeCounts = nav.focus == null || treeX(font) + 15 + 4 <= starX();
-        nav.page = Math.max(0, Math.min(nav.page, pages() - 1));
-    }
-
-    @Override
-    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        g.fill(0, 0, width, height, ThemeManager.get().c("overlay"));
-    }
-
-    @Override
-    public void render(GuiGraphics g, int mx, int my, float partialTick) {
-        Theme theme = ThemeManager.get();
-        Font font = Minecraft.getInstance().font;
-        relayout();
-        renderBackground(g, mx, my, partialTick);
-        Overlay.renderBackground(this, g, mx, my, partialTick);
-        theme.panel(g, cardX, cardY, cardW, cardH);
-
-        // --- вкладки открытых предметов над карточкой ---
-        if (!TABS.isEmpty()) {
-            int sy = cardY - STRIP_H + 1;
-            int start = tabStart();
-            for (int i = start; i < TABS.size(); i++) {
-                int sx = cardX + (i - start) * TAB_W;
-                Tab tab = TABS.get(i);
-                boolean current = nav.focus != null && tab.stack.same(nav.focus);
-                theme.tab(g, sx, sy, TAB_W - 2, 20, current, over(mx, my, sx, sy, TAB_W - 2, 20));
-                tab.stack.render(g, sx + 2, sy + 2);
-            }
-        }
-
-        // --- шапка: режимы, дерево крафта, справка; сам предмет виден на вкладке над карточкой ---
-        int hy = cardY + PAD;
-        Group group = group();
-        if (theme.lineTabs) Draw.rect(g, cardX + 1, hy + HEADER_H - 5, cardW - 2, 1, theme.c("card.border"));
-        if (nav.focus != null) {
-            int mode_y = modeY(theme), mode_h = modeH(theme), mode_x = cardX + PAD;
-            for (Lookup.Mode mode : new Lookup.Mode[] {Lookup.Mode.RECIPES, Lookup.Mode.USES}) {
-                int mw = modeW(font, mode), n = count(mode);
-                boolean active = nav.mode == mode, hot = over(mx, my, mode_x, mode_y, mw, mode_h);
-                theme.tabLine(g, mode_x, mode_y, mw, mode_h, active, hot);
-                String label = tr(mode == Lookup.Mode.RECIPES ? "ryscope.mode.recipes" : "ryscope.mode.uses");
-                int textY = mode_y + (mode_h - 8) / 2;
-                Draw.text(g, label, mode_x + 6, textY, theme.tabLineFg(active, hot));
-                if (n > 0 && modeCounts) Draw.text(g, Integer.toString(n), mode_x + 10 + font.width(label), textY, theme.lineTabs ? theme.c("text.dim") : theme.tabLineFg(active, hot));
-                mode_x += mw + 3;
-            }
-            // кнопка «дерево крафта»
-            int treeX = treeX(font);
-            boolean th = over(mx, my, treeX, hy + 1, 15, 14);
-            theme.button(g, treeX, hy + 1, 15, 14, th, false);
-            int tc = th ? theme.c("accent") : theme.c("text.muted");
-            Draw.rect(g, treeX + 3, hy + 4, 3, 3, tc);
-            Draw.rect(g, treeX + 9, hy + 4, 3, 3, tc);
-            Draw.rect(g, treeX + 9, hy + 9, 3, 3, tc);
-            Draw.rect(g, treeX + 6, hy + 5, 3, 1, tc);
-            Draw.rect(g, treeX + 7, hy + 5, 1, 6, tc);
-            Draw.rect(g, treeX + 7, hy + 10, 2, 1, tc);
-        }
-        boolean closeHot = over(mx, my, closeX(), hy + 1, 14, 14);
-        theme.button(g, closeX(), hy + 1, 14, 14, closeHot, false);
-        Draw.cross(g, closeX() + 4, hy + 4, closeHot ? theme.c("accent") : theme.c("text.muted"));
-        if (nav.focus != null) {
-            boolean starHot = over(mx, my, starX(), hy + 1, 14, 14), marked = Bookmarks.contains(nav.focus);
-            theme.button(g, starX(), hy + 1, 14, 14, starHot, false);
-            Draw.star(g, starX() + 3, hy + 3, marked, marked || starHot ? theme.c("accent") : theme.c("text.muted"));
-        }
-        // --- вкладки категорий ---
-        int ty = cardY + PAD + HEADER_H;
-        int tabsW = cardW - PAD * 2;
-        int visibleTabs = Math.max(1, tabsW / (TAB_W + 2));
-        tabScroll = Math.max(0, Math.min(tabScroll, Math.max(0, nav.groups.size() - visibleTabs)));
-        if (nav.group < tabScroll) tabScroll = nav.group;
-        if (nav.group >= tabScroll + visibleTabs) tabScroll = nav.group - visibleTabs + 1;
-        Category hoveredTab = null;
-        for (int i = tabScroll; i < Math.min(nav.groups.size(), tabScroll + visibleTabs); i++) {
-            int tx = cardX + PAD + (i - tabScroll) * (TAB_W + 2);
-            boolean active = i == nav.group;
-            boolean hov = over(mx, my, tx, ty, TAB_W, 20);
-            theme.tab(g, tx, ty, TAB_W, 20, active, hov);
-            try {
-                nav.groups.get(i).category().renderIcon(g, tx + 3, ty + 2);
-            } catch (Throwable ignored) {
-                // значок чужой категории
-            }
-            if (hov) hoveredTab = nav.groups.get(i).category();
-        }
-
-        // --- заголовок категории и страницы ---
-        int ly = ty + TABS_H;
-        String catTitle = group.category().title.getString();
-        String pageText = (nav.page + 1) + " / " + pages();
-        int pageW = font.width(pageText);
-        int px = cardX + cardW - PAD - pageW - 22;
-        // значок подсказки в строке категории: в шапке его перекрывали вкладки
-        int infoX = px - 15, infoY = ly + 1;
-        boolean infoHot = over(mx, my, infoX - 1, infoY - 1, 12, 12);
-        Draw.info(g, infoX, infoY, infoHot ? theme.c("accent") : theme.c("text.dim"));
-        String shownTitle = Draw.ellipsize(catTitle, infoX - cardX - PAD - 8);
-        Draw.text(g, shownTitle, cardX + PAD, ly + 2, theme.c("text.body"));
-        stations.clear();
-        int stx = cardX + PAD + font.width(shownTitle) + 8;
-        for (Stack station : group.category().stations) {
-            if (stx + 12 > infoX - 6 || stations.size() >= 6) break;
-            g.pose().pushPose();
-            g.pose().translate(stx, ly - 1, 0);
-            g.pose().scale(0.75f, 0.75f, 1f);
-            try {
-                station.render(g, 0, 0);
-            } catch (Throwable ignored) {
-                // чужой рендер
-            }
-            g.pose().popPose();
-            stations.add(new StationSpot(station, stx, ly - 1));
-            stx += 14;
-        }
-        boolean multi = pages() > 1;
-        int pageColor = multi ? theme.c("text.muted") : theme.c("text.dim");
-        Draw.chevron(g, px, ly + 2, false, over(mx, my, px - 3, ly, 10, 11) && multi ? theme.c("accent") : pageColor);
-        Draw.text(g, pageText, px + 11, ly + 2, pageColor);
-        Draw.chevron(g, px + 15 + pageW, ly + 2, true, over(mx, my, px + 12 + pageW, ly, 10, 11) && multi ? theme.c("accent") : pageColor);
-
-        // --- рецепты ---
-        placed.clear();
-        List<RecipeView> recipes = group.recipes();
-        int maxH = 20;
-        for (RecipeView r : recipes) maxH = Math.max(maxH, r.height());
-        int by = ly + TITLE_H;
-        boolean canTransfer = parent instanceof AbstractContainerScreen<?>;
-        works.repka.ryscope.content.NativeRecipe.missingBadges = canTransfer;
-        works.repka.ryscope.runtime.Ae2Terminal.setActive(parent instanceof AbstractContainerScreen<?> host ? host.getMenu() : null);
-        for (int i = 0; i < perPage; i++) {
-            int idx = nav.page * perPage + i;
-            if (idx >= recipes.size()) break;
-            RecipeView r = recipes.get(idx);
-            int plate = r.needsPlate() ? 3 : 0;
-            int rowH = maxH + INNER * 2 + plate * 2 + statusH;
-            int rx0 = cardX + PAD, rw = cardW - PAD * 2;
-            theme.card(g, rx0, by, rw, rowH);
-            int areaW = rw - buttonCol;
-            int rx = rx0 + Math.max(INNER + plate, (areaW - r.width()) / 2);
-            int ry = by + (rowH - statusH - r.height()) / 2;
-            if (plate > 0) theme.plate(g, rx - plate, ry - plate, r.width() + plate * 2, r.height() + plate * 2);
-            try {
-                r.render(g, theme, rx, ry, mx, my, partialTick);
-            } catch (Throwable t) {
-                Draw.text(g, "?", rx, ry, theme.c("state.bad"));
-            }
-            placed.add(new Placed(r, rx, ry, rx0, by, rw, rowH));
-            works.repka.ryscope.runtime.Stages.Stage lock = works.repka.ryscope.runtime.Stages.lockOf(r, group.category());
-            if (lock != null) {
-                // рецепт закрытой стадии виден, но приглушён и подписан: что нужно сделать, чтобы открыть
-                g.pose().pushPose();
-                g.pose().translate(0, 0, 260);
-                Draw.round(g, rx0 + 1, by + 1, rw - 2, rowH - 2, theme.r("card.radius"), Draw.alpha(theme.c("card.bg"), 0.78f));
-                String stageText = Component.translatable("ryscope.stage.locked", lock.title()).getString();
-                String need = works.repka.ryscope.runtime.Stages.requirement(lock);
-                int tw = font.width(stageText);
-                Draw.lock(g, rx0 + (rw - tw) / 2 - 11, by + rowH / 2 - 8, theme.c("state.warn"));
-                Draw.text(g, stageText, rx0 + (rw - tw) / 2, by + rowH / 2 - 9, theme.c("text.primary"));
-                if (!need.isEmpty()) {
-                    String needText = Draw.ellipsize(need, (int) ((rw - 12) / 0.75f));
-                    Draw.textScaled(g, needText, rx0 + (rw - font.width(needText) * 0.75f) / 2f, by + rowH / 2 + 3, 0.75f, theme.c("text.muted"));
-                }
-                g.pose().popPose();
-            }
-            if (Minecraft.getInstance().options.advancedItemTooltips && r.id() != null) {
-                Draw.textScaled(g, Draw.ellipsize(r.id().toString(), (int) ((rw - 8) / 0.6f)), rx0 + 4, by + rowH - statusH - 7, 0.6f, theme.c("text.dim"));
-            }
-
-            Placed row = placed.get(placed.size() - 1);
-            Transfer tr = transfers.get(r);
-            if (canTransfer && tr != null && tr.status() != Transfer.Status.UNSUPPORTED) {
-                int[] b = transferRect(row);
-                boolean ok = tr.applicable();
-                theme.button(g, b[0], b[1], b[2], b[3], over(mx, my, b), ok);
-                int fg = ok ? theme.c("accent.text") : theme.c("text.dim");
-                if (labelled) {
-                    Draw.textCentered(g, tr("ryscope.transfer.button"), b[0] + b[2] / 2, b[1] + 4, fg);
-                } else {
-                    Draw.rect(g, b[0] + 6, b[1] + 3, 2, 8, fg);
-                    Draw.rect(g, b[0] + 3, b[1] + 6, 8, 2, fg);
-                }
-                if (!ok) Draw.rect(g, b[0] + b[2] - 4, b[1] + 1, 3, 3, theme.c("state.bad"));
-                else if (tr.status() == Transfer.Status.PARTIAL) Draw.rect(g, b[0] + b[2] - 4, b[1] + 1, 3, 3, theme.c("state.warn"));
-            }
-            if (canGoal(r)) {
-                int[] b = goalRect(row);
-                boolean set = works.repka.ryscope.runtime.Board.contains(r.outputs().get(0));
-                theme.button(g, b[0], b[1], b[2], b[3], over(mx, my, b), false);
-                Draw.textCentered(g, tr(set ? "ryscope.goals.in" : "ryscope.goals.add"), b[0] + b[2] / 2, b[1] + 3, set ? theme.c("accent") : theme.c("text.body"));
-            }
-            Status status = statusH > 0 ? statuses.get(r) : null;
-            if (status != null) {
-                int sx = rx0 + 4, sy = by + rowH - STATUS_BOX - 3, sw = rw - 8;
-                Draw.roundBox(g, sx, sy, sw, STATUS_BOX, Math.min(theme.r("button.radius"), 3f), theme.c("panel.bg"), theme.c("panel.border"));
-                Draw.dot(g, sx + 4, sy + 4, 4, theme.c(status.color));
-                Draw.textScaled(g, status.head, sx + 12, sy + 3, 0.75f, theme.c("text.primary"));
-                if (!status.tail.isEmpty()) {
-                    float tailX = sx + 12 + font.width(status.head) * 0.75f + 3;
-                    Draw.textScaled(g, Draw.ellipsize(status.tail, (int) ((sx + sw - 4 - tailX) / 0.75f)), tailX, sy + 3, 0.75f, theme.c("text.muted"));
-                }
-            }
-            by += rowH + GAP;
-        }
-
-        // --- подсказки ---
-        Overlay.renderTop(this, g, mx, my, partialTick);
-        if (infoHot) {
-            List<Component> help = new ArrayList<>();
-            for (String part : Component.translatable("ryscope.recipes.hint").getString().split(" · ")) help.add(Component.literal(part));
-            g.pose().pushPose();
-            g.pose().translate(0, 0, 300);
-            g.renderComponentTooltip(font, help, mx, my);
-            g.pose().popPose();
-        }
-        if (!Overlay.isOver(mx, my)) {
-            g.pose().pushPose();
-            g.pose().translate(0, 0, 300);
-            Stack hovered = recipeStackAt(mx, my);
-            boolean byRecipe = false;
-            if (hovered != null && !Lens.held()) {
-                // рецепт чужого мода сам рисует подсказку слота: в ней бывают шансы и условия
-                for (Placed p : placed) {
-                    if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height())) {
-                        try {
-                            byRecipe = p.recipe.renderTooltip(g, p.x, p.y, mx, my);
-                        } catch (Throwable ignored) {
-                            // подсказка чужого рецепта
-                        }
-                        break;
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 300);
+        Stack hovered = recipeStackAt(mx, my);
+        boolean byRecipe = false;
+        if (hovered != null && !Lens.held()) {
+            for (Placed p : placed) {
+                if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height())) {
+                    try {
+                        byRecipe = p.recipe.renderTooltip(g, p.x, p.y, mx, my);
+                    } catch (Throwable ignored) {
+                        // подсказка чужого рецепта
                     }
+                    break;
                 }
             }
-            if (hovered != null) {
-                if (!Lens.held() && !byRecipe) hovered.renderTooltip(g, mx, my);
-            } else if (hoveredTab != null) {
-                g.renderTooltip(font, hoveredTab.title, mx, my);
-            } else {
-                boolean drawn = false;
-                for (Placed p : placed) {
-                    if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height())) {
-                        try {
-                            drawn = p.recipe.renderTooltip(g, p.x, p.y, mx, my);
-                        } catch (Throwable ignored) {
-                            // подсказка чужого рецепта
-                        }
-                        break;
+        }
+        if (hovered != null) {
+            if (!Lens.held() && !byRecipe) hovered.renderTooltip(g, mx, my);
+        } else if (hoveredTab != null) {
+            g.renderTooltip(font, hoveredTab.title, mx, my);
+        } else {
+            boolean drawn = false;
+            for (Placed p : placed) {
+                if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height())) {
+                    try {
+                        drawn = p.recipe.renderTooltip(g, p.x, p.y, mx, my);
+                    } catch (Throwable ignored) {
+                        // подсказка чужого рецепта
                     }
+                    break;
                 }
-                if (!drawn && canTransfer) {
-                    for (Placed p : placed) {
-                        Transfer tr = transfers.get(p.recipe);
-                        if (tr != null && tr.status() != Transfer.Status.UNSUPPORTED && over(mx, my, transferRect(p))) {
-                            if (!tr.lines().isEmpty()) {
-                                g.renderComponentTooltip(font, tr.lines(), mx, my);
-                                continue;
-                            }
+            }
+            if (!drawn && parent instanceof AbstractContainerScreen<?>) {
+                for (Placed p : placed) {
+                    Transfer tr = transfers.get(p.recipe);
+                    int x = p.rowX + p.rowW - BUTTONS_W;
+                    boolean goal = canGoal(p.recipe);
+                    int total = 20 + (goal ? 21 : 0);
+                    int y = p.rowY + (p.rowH - total) / 2;
+                    if (tr != null && tr.status() != Transfer.Status.UNSUPPORTED && over(mx, my, x, y, BUTTONS_W, 20)) {
+                        if (!tr.lines().isEmpty()) {
+                            g.renderComponentTooltip(font, tr.lines(), mx, my);
+                        } else {
                             String key = tr.applicable() ? "ryscope.transfer.hint" : tr.message();
                             g.renderTooltip(font, Component.translatable(key == null ? "ryscope.transfer.missing" : key), mx, my);
                         }
                     }
                 }
             }
-            g.pose().popPose();
         }
-    }
-
-    private static boolean over(double mx, double my, int x, int y, int w, int h) {
-        return mx >= x && mx < x + w && my >= y && my < y + h;
+        g.pose().popPose();
     }
 
     @Nullable
@@ -659,9 +736,11 @@ public final class RecipeScreen extends Screen {
                 // чужой рецепт
             }
         }
-        int itemTab = itemTabAt(mx, my);
-        if (itemTab >= 0) return TABS.get(itemTab).stack;
-        for (StationSpot s : stations) if (over(mx, my, s.x, s.y, 12, 12)) return s.stack;
+        if (strip && my >= stripY && my < stripY + 20 && mx >= cardX) {
+            int i = (mx - cardX) / TAB_W, index = tabStart() + i;
+            if (index < TABS.size() && mx - cardX - i * TAB_W < TAB_W - 2) return TABS.get(index).stack;
+        }
+        for (StationSpot s : stations) if (over(mx, my, s.x, s.y, 10, 10)) return s.stack;
         return null;
     }
 
@@ -685,13 +764,14 @@ public final class RecipeScreen extends Screen {
                 // чужой рецепт
             }
         }
-        if (parent instanceof AbstractContainerScreen<?> acs && (transferAge++ % 10 == 0 || transfers.isEmpty())) {
-            for (Placed p : placed) {
-                try {
-                    statuses.put(p.recipe, statusOf(p.recipe));
-                } catch (Throwable t) {
-                    statuses.remove(p.recipe);
-                }
+        if (transferAge++ % 10 != 0 && !transfers.isEmpty()) return;
+        for (Placed p : placed) {
+            try {
+                statuses.put(p.recipe, statusOf(p.recipe));
+            } catch (Throwable t) {
+                statuses.remove(p.recipe);
+            }
+            if (parent instanceof AbstractContainerScreen<?> acs) {
                 Transfer tr;
                 try {
                     tr = p.recipe.transfer(acs, false, true);
@@ -708,138 +788,61 @@ public final class RecipeScreen extends Screen {
         nav.group = ((index % n) + n) % n;
         nav.page = 0;
         transfers.clear();
+        statuses.clear();
     }
 
     private void setPage(int page) {
         int n = pages();
         nav.page = ((page % n) + n) % n;
         transfers.clear();
+        statuses.clear();
     }
 
     private boolean goBack() {
         if (history.isEmpty()) return false;
         nav = history.pop();
         transfers.clear();
+        statuses.clear();
         return true;
     }
 
-    private void switchMode(Lookup.Mode mode) {
-        if (nav.focus == null || nav.mode == mode) return;
-        List<Group> groups = Lookup.find(nav.focus, mode);
-        if (groups.isEmpty()) {
-            Overlay.toast(Component.translatable(mode == Lookup.Mode.RECIPES ? "ryscope.recipes.no_recipes" : "ryscope.recipes.no_uses").getString());
-            return;
-        }
+    private void switchSection(Section section) {
+        if (nav.focus == null || nav.section == section || nav.sections.get(section).isEmpty()) return;
         history.push(nav);
-        nav = new Nav(nav.focus, mode, groups);
-        remember(nav.focus, mode);
+        nav = new Nav(nav.focus, section, nav.sections);
+        remember(nav.focus, section == Section.USES ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
         transfers.clear();
+        statuses.clear();
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (Overlay.mouseClicked(this, mx, my, button)) return true;
-        int itemTab = itemTabAt(mx, my);
-        if (itemTab >= 0) {
-            // левая кнопка переключает вкладку, правая и средняя закрывают
-            Tab tab = TABS.get(itemTab);
-            if (button != 0) closeTab(itemTab);
-            else if (nav.focus == null || !tab.stack.same(nav.focus)) open(tab.stack, tab.mode);
-            return true;
-        }
-        Font font = Minecraft.getInstance().font;
-        Theme clickTheme = ThemeManager.get();
-        if (over(mx, my, closeX(), cardY + PAD + 1, 14, 14)) {
-            onClose();
-            return true;
-        }
-        // режимы
-        if (nav.focus != null) {
-            int hy = cardY + PAD + 1;
-            if (over(mx, my, starX(), hy, 14, 14)) {
-                boolean added = Bookmarks.toggle(nav.focus);
-                Overlay.toast(tr(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed"));
-                return true;
-            }
-            int modeTop = modeY(clickTheme), modeBottom = modeH(clickTheme);
-            int recipesW = modeW(font, Lookup.Mode.RECIPES);
-            if (over(mx, my, cardX + PAD, modeTop, recipesW, modeBottom)) {
-                switchMode(Lookup.Mode.RECIPES);
-                return true;
-            }
-            if (over(mx, my, cardX + PAD + recipesW + 3, modeTop, modeW(font, Lookup.Mode.USES), modeBottom)) {
-                switchMode(Lookup.Mode.USES);
-                return true;
-            }
-            if (over(mx, my, treeX(font), hy, 15, 14)) {
-                TreeScreen.open(nav.focus);
+        for (int i = hits.size() - 1; i >= 0; i--) {
+            Hit h = hits.get(i);
+            if (over(mx, my, h.x, h.y, h.w, h.h)) {
+                h.action.accept(button);
                 return true;
             }
         }
-        // вкладки
-        int ty = cardY + PAD + HEADER_H;
-        int visibleTabs = Math.max(1, (cardW - PAD * 2) / (TAB_W + 2));
-        for (int i = tabScroll; i < Math.min(nav.groups.size(), tabScroll + visibleTabs); i++) {
-            int tx = cardX + PAD + (i - tabScroll) * (TAB_W + 2);
-            if (over(mx, my, tx, ty, TAB_W, 20)) {
-                setGroup(i);
-                return true;
-            }
-        }
-        // страницы
-        int ly = ty + TABS_H;
-        String pageText = (nav.page + 1) + " / " + pages();
-        int pageW = font.width(pageText);
-        int px = cardX + cardW - PAD - pageW - 22;
-        if (over(mx, my, px - 3, ly, 10, 11)) {
-            setPage(nav.page - 1);
-            return true;
-        }
-        if (over(mx, my, px + 12 + pageW, ly, 10, 11)) {
-            setPage(nav.page + 1);
-            return true;
-        }
-        // в цели
-        if (button == 0) {
-            for (Placed p : placed) {
-                if (!canGoal(p.recipe) || !over(mx, my, goalRect(p))) continue;
-                boolean added = works.repka.ryscope.runtime.Board.toggle(p.recipe.outputs().get(0), 1);
-                Overlay.toast(tr(added ? "ryscope.goals.added" : "ryscope.goals.removed"));
-                return true;
-            }
-        }
-        // перенос
-        if (parent instanceof AbstractContainerScreen<?> acs && button == 0) {
-            for (Placed p : placed) {
-                if (!over(mx, my, transferRect(p))) continue;
-                Transfer tr = transfers.get(p.recipe);
-                if (tr == null || tr.status() == Transfer.Status.UNSUPPORTED) continue;
-                doTransfer(acs, p.recipe, hasShiftDown());
-                return true;
-            }
-        }
-        // ресурсы в рецептах
         Stack stack = recipeStackAt((int) mx, (int) my);
         if (stack != null) {
             if (button == 2) {
                 boolean added = Bookmarks.toggle(stack);
-                Overlay.toast(Component.translatable(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed").getString());
+                Overlay.toast(tr(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed"));
             } else {
                 open(stack, button == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
             }
             return true;
         }
-        if (!over(mx, my, cardX, cardY, cardW, cardH) && !Overlay.isOver(mx, my) && button == 0) {
-            onClose();
-            return true;
-        }
+        if (!over(mx, my, cardX, cardY, cardW, cardH) && !Overlay.isOver(mx, my) && button == 0) onClose();
         return true;
     }
 
     private void doTransfer(AbstractContainerScreen<?> acs, RecipeView recipe, boolean max) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.player.containerMenu != acs.getMenu()) {
-            Overlay.toast(Component.translatable("ryscope.transfer.closed").getString());
+            Overlay.toast(tr("ryscope.transfer.closed"));
             return;
         }
         Transfer result;
@@ -848,11 +851,8 @@ public final class RecipeScreen extends Screen {
         } catch (Throwable t) {
             result = Transfer.missing("ryscope.transfer.failed");
         }
-        if (result.applicable()) {
-            mc.setScreen(acs);
-        } else {
-            Overlay.toast(Component.translatable(result.message() == null ? "ryscope.transfer.missing" : result.message()).getString());
-        }
+        if (result.applicable()) mc.setScreen(acs);
+        else Overlay.toast(tr(result.message() == null ? "ryscope.transfer.missing" : result.message()));
     }
 
     @Override
@@ -868,8 +868,7 @@ public final class RecipeScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
         if (Overlay.mouseScrolled(this, mx, my, scrollY)) return true;
-        int ty = cardY + PAD + HEADER_H;
-        if (over(mx, my, cardX, ty, cardW, TABS_H)) {
+        if (categoryStrip() && over(mx, my, cardX - 25, cardY, 24, height - cardY)) {
             setGroup(nav.group + (scrollY < 0 ? 1 : -1));
             return true;
         }
@@ -892,11 +891,9 @@ public final class RecipeScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_C && hasControlDown()) {
-            // над рецептом, но не над слотом: копируется id рецепта
             double cx = Overlay.mouseX(), cy = Overlay.mouseY();
             for (Placed p : placed) {
-                if (over(cx, cy, p.cardX, p.cardY, p.cardW, p.cardH) && p.recipe.id() != null) {
-                    // Ctrl+Shift+C: весь рецепт в JSON, как в датапаке
+                if (over(cx, cy, p.rowX, p.rowY, p.rowW, p.rowH) && p.recipe.id() != null) {
                     if (hasShiftDown() && p.recipe instanceof works.repka.ryscope.content.NativeRecipe nr && nr.holder != null
                         && Minecraft.getInstance().level != null) {
                         var ops = Minecraft.getInstance().level.registryAccess().createSerializationContext(com.mojang.serialization.JsonOps.INSTANCE);
@@ -904,7 +901,7 @@ public final class RecipeScreen extends Screen {
                             .map(j -> new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(j)).orElse(null);
                         if (json != null) {
                             Minecraft.getInstance().keyboardHandler.setClipboard(json);
-                            Overlay.toast(Component.translatable("ryscope.copied.json", p.recipe.id().toString()).getString());
+                            Overlay.toast(tr("ryscope.copied.json", p.recipe.id().toString()));
                             return true;
                         }
                     }
@@ -949,7 +946,6 @@ public final class RecipeScreen extends Screen {
         Minecraft mc = Minecraft.getInstance();
         Overlay.onScreenClosed();
         if (parent instanceof AbstractContainerScreen<?> acs && (mc.player == null || mc.player.containerMenu != acs.getMenu())) {
-            // контейнер успели закрыть на сервере: возвращаться некуда
             mc.setScreen(null);
             return;
         }

@@ -93,7 +93,7 @@ public final class PlannerScreen extends Screen {
         int mxp = px + PAD, myp = py + PAD + 22;
         for (Planner.Mode mode : Planner.Mode.values()) {
             String label = modeLabel(mode);
-            int w = font.width(label) + 12;
+            int w = Draw.width(label) + 12;
             boolean active = planner.mode == mode;
             theme.tab(g, mxp, myp, w, 14, active, over(mx, my, mxp, myp, w, 14));
             Draw.text(g, label, mxp + 6, myp + 3, active ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
@@ -138,18 +138,18 @@ public final class PlannerScreen extends Screen {
             }
             line.output.render(g, px + PAD + 16, y + 1);
             Draw.text(g, Draw.ellipsize(line.output.name().getString(), c1 - 44 - (px + PAD + 36)), px + PAD + 36, y + 6, theme.c("text.body"));
-            Draw.text(g, Units.compact(line.craftsPerHour), c1 - font.width(Units.compact(line.craftsPerHour)), y + 6, theme.c("text.body"));
+            Draw.text(g, Units.compact(line.craftsPerHour), c1 - Draw.width(Units.compact(line.craftsPerHour)), y + 6, theme.c("text.body"));
             if (line.timed()) {
                 String machines = Integer.toString(line.machines);
-                Draw.text(g, machines, c2 - font.width(machines), y + 6, theme.c("text.primary"));
+                Draw.text(g, machines, c2 - Draw.width(machines), y + 6, theme.c("text.primary"));
                 String load = Math.round(line.load * 100) + "%";
                 int loadColor = line.load > 0.9 ? theme.c("state.warn") : theme.c("text.muted");
-                Draw.text(g, load, c3 - font.width(load), y + 6, loadColor);
+                Draw.text(g, load, c3 - Draw.width(load), y + 6, loadColor);
                 String energy = line.energyPerTick > 0 ? Units.energyPerTick(line.energyPerTick) : "—";
-                Draw.text(g, energy, c4 - font.width(energy), y + 6, theme.c("text.muted"));
+                Draw.text(g, energy, c4 - Draw.width(energy), y + 6, theme.c("text.muted"));
             } else {
                 String manual = tr("ryscope.planner.manual");
-                Draw.textScaled(g, manual, c4 - font.width(manual) * 0.75f, y + 7, 0.75f, theme.c("text.dim"));
+                Draw.textScaled(g, manual, c4 - Draw.widthScaled(manual, 0.75f), y + 7, 0.75f, theme.c("text.dim"));
             }
         }
         g.disableScissor();
@@ -162,8 +162,8 @@ public final class PlannerScreen extends Screen {
         Draw.text(g, total, px + PAD, fy + 6, theme.c("text.body"));
         if (planner.bottleneck != null && planner.lines.size() > 1) {
             String b = Component.translatable("ryscope.planner.bottleneck", planner.bottleneck.output.name().getString()).getString();
-            Draw.textScaled(g, Draw.ellipsize(b, (int) ((pw - PAD * 2 - font.width(total) - 14) / 0.75f)),
-                px + PAD + font.width(total) + 10, fy + 7, 0.75f, theme.c("state.warn"));
+            Draw.textScaled(g, Draw.ellipsize(b, (int) ((pw - PAD * 2 - Draw.width(total) - 14) / 0.75f)),
+                px + PAD + Draw.width(total) + 10, fy + 7, 0.75f, theme.c("state.warn"));
         }
         // сырьё в час
         int rx = px + PAD;
@@ -177,14 +177,14 @@ public final class PlannerScreen extends Screen {
             String count = Units.compact(r.need);
             g.pose().pushPose();
             g.pose().translate(0, 0, 200);
-            Draw.textScaled(g, count, rx + 19 - font.width(count) * 0.6f, ry + 14, 0.6f, 0xFFFFFFFF);
+            Draw.textScaled(g, count, rx + 19 - Draw.width(count) * 0.6f, ry + 14, 0.6f, 0xFFFFFFFF);
             g.pose().popPose();
             if (over(mx, my, rx, ry, 20, 20)) rawHover = r.stack;
             rx += 23;
         }
         boolean pinned = Board.contains(target);
         String goal = tr(pinned ? "ryscope.tree.unpin_goal" : "ryscope.tree.pin_goal");
-        int gw = font.width(goal) + 12, gx = px + pw - PAD - gw, gy = fy + 30;
+        int gw = Draw.width(goal) + 12, gx = px + pw - PAD - gw, gy = fy + 30;
         theme.button(g, gx, gy, gw, 13, over(mx, my, gx, gy, gw, 13), pinned);
         Draw.text(g, goal, gx + 6, gy + 3, pinned ? theme.c("accent.text") : theme.c("text.body"));
 
@@ -202,7 +202,7 @@ public final class PlannerScreen extends Screen {
 
     private static void rightScaled(GuiGraphics g, String text, int right, int y, int color) {
         Font font = Minecraft.getInstance().font;
-        Draw.textScaled(g, text, right - font.width(text) * 0.75f, y, 0.75f, color);
+        Draw.textScaled(g, text, right - Draw.widthScaled(text, 0.75f), y, 0.75f, color);
     }
 
     private long step() {
@@ -224,7 +224,7 @@ public final class PlannerScreen extends Screen {
         }
         int mxp = px + PAD, myp = py + PAD + 22;
         for (Planner.Mode mode : Planner.Mode.values()) {
-            int w = font.width(modeLabel(mode)) + 12;
+            int w = Draw.width(modeLabel(mode)) + 12;
             if (over(mx, my, mxp, myp, w, 14)) {
                 planner.setMode(mode);
                 return true;
@@ -234,7 +234,7 @@ public final class PlannerScreen extends Screen {
         int fy = py + ph - FOOTER;
         Stack target = planner.tree.root.stack;
         String goal = tr(Board.contains(target) ? "ryscope.tree.unpin_goal" : "ryscope.tree.pin_goal");
-        int gw = font.width(goal) + 12, gx = px + pw - PAD - gw, gy = fy + 30;
+        int gw = Draw.width(goal) + 12, gx = px + pw - PAD - gw, gy = fy + 30;
         if (over(mx, my, gx, gy, gw, 13)) {
             boolean added = Board.toggle(target, planner.rate);
             Overlay.toast(tr(added ? "ryscope.board.added" : "ryscope.board.removed"));

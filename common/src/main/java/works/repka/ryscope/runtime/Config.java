@@ -17,7 +17,7 @@ public final class Config {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static Config instance;
 
-    /** compact (16, без плашек), comfortable (20), large (24). */
+    /** compact (16, без плашек), comfortable (23, как в макете), large (28). */
     public String density = "comfortable";
     public boolean overlayEnabled = true;
     public boolean bookmarksPanel = true;
@@ -29,7 +29,7 @@ public final class Config {
     public boolean lensInWorld = true;
     public boolean animations = true;
     /** Максимальная ширина панели списка в колонках; 0 = сколько помещается. */
-    public int maxColumns = 9;
+    public int maxColumns = 8;
     public boolean showModName = true;
     public String lastSearch = "";
     public boolean keepSearch = true;
@@ -58,7 +58,9 @@ public final class Config {
     /** Поле поиска внизу списка, над строкой счётчика. */
     public boolean searchBottom = false;
     /** Список предметов страницами вместо бесконечной прокрутки. */
-    public boolean listPaged = false;
+    public boolean listPaged = true;
+    /** Версия настроек вида: при первом запуске новой версии значения приводятся к макету. */
+    public int designVersion = 0;
     /** Перекрашивать серые окна рецептов модов под тему. */
     public boolean restyleRecipes = true;
     /** Сворачивать однотипные предметы (шерсть, зелья, яйца призыва) в одну ячейку. */
@@ -73,8 +75,8 @@ public final class Config {
     public int slotSize() {
         return switch (density) {
             case "compact" -> 16;
-            case "large" -> 24;
-            default -> 20;
+            case "large" -> 28;
+            default -> 23;
         };
     }
 
@@ -101,6 +103,11 @@ public final class Config {
                 }
             }
             if (instance == null) instance = new Config();
+            if (instance.designVersion < 1) {
+                instance.designVersion = 1;
+                instance.maxColumns = 8;
+                instance.listPaged = true;
+            }
             if (instance.searchLanguages == null) instance.searchLanguages = new ArrayList<>(List.of("en_us"));
             if (instance.expandedGroups == null) instance.expandedGroups = new ArrayList<>();
             if (instance.hiddenQueries == null) instance.hiddenQueries = new ArrayList<>();

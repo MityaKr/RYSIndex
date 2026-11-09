@@ -18,7 +18,7 @@ neoForge {
             systemProperty 'ryscope.autotest.asPlayer', 'true'
             // -PjeiGui: оставить родной интерфейс JEI и выключить наш, чтобы сравнить отклик (сценарий -Pautotest=perf)
             if (project.findProperty('jeiGui') != null) systemProperty 'ryscope.autotest.jeiGui', 'true'
-            programArguments.addAll '--width', '1280', '--height', '720'
+            programArguments.addAll '--width', (project.findProperty('winW') ?: '1280').toString(), '--height', (project.findProperty('winH') ?: '720').toString()
             if (project.findProperty('asyncFail') != null) systemProperty 'ryscope.test.asyncFail', 'true'
             if (project.findProperty('plan') != null) systemProperty 'ryscope.autotest.plan', project.findProperty('plan')
             if (project.findProperty('compare') != null) systemProperty 'ryscope.autotest.compare', project.findProperty('compare')

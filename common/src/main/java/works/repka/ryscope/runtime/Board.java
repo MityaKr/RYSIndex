@@ -41,7 +41,7 @@ public final class Board {
             this.amount = amount;
         }
 
-        CraftTree tree() {
+        public CraftTree tree() {
             if (tree == null) {
                 tree = new CraftTree(stack);
                 tree.setAmount(amount);
@@ -113,50 +113,8 @@ public final class Board {
         if (GOALS.isEmpty() || Indexer.state() != Indexer.State.READY) return;
         Theme theme = ThemeManager.get();
         Font font = mc.font;
-        int x = 4, y = 4, w = 132;
-        int shown = 0;
-        for (Goal goal : GOALS) {
-            if (shown++ >= 3) break;
-            CraftTree tree;
-            try {
-                tree = goal.tree();
-            } catch (Throwable t) {
-                continue;
-            }
-            // стикер как в макете: название, сколько уже есть, недостающее сырьё и полоса
-            int h = tree.raw.isEmpty() ? 30 : 42;
-            int bg = Draw.alpha(theme.c("hud.bg"), 0.92f);
-            Draw.roundBox(g, x, y, w, h, theme.beveled() ? 0 : theme.r("panel.radius"), bg, theme.c("hud.border"));
-            int hudText = theme.beveled() ? 0xFFFFFFFF : theme.c("text.primary");
-            int hudMuted = theme.beveled() ? 0xFFC0C0C0 : theme.c("text.muted");
-            long have = Math.min(goal.amount, InventoryView.count(goal.stack));
-            String progress = have + " / " + goal.amount;
-            int progressW = font.width(progress);
-            Draw.text(g, Draw.ellipsize(goal.stack.name().getString(), w - 16 - progressW), x + 6, y + 6, hudText);
-            Draw.text(g, progress, x + w - 6 - progressW, y + 6, hudMuted);
-            if (tree.raw.isEmpty()) {
-                Draw.textScaled(g, Component.translatable("ryscope.board.ready").getString(), x + 6, y + 17, 0.75f, theme.c("state.ok"));
-            } else {
-                int i = 0, chipX = x + 6, chipY = y + 17, fits = (w - 12) / 17;
-                for (CraftTree.Raw r : tree.raw.values()) {
-                    if (i >= fits - (tree.raw.size() > fits ? 1 : 0)) break;
-                    theme.slot(g, chipX + i * 17, chipY, 16, false);
-                    g.pose().pushPose();
-                    g.pose().translate(chipX + i * 17 + 2, chipY + 2, 0);
-                    g.pose().scale(0.75f, 0.75f, 1f);
-                    r.stack.render(g, 0, 0);
-                    g.pose().popPose();
-                    i++;
-                }
-                if (tree.raw.size() > fits) {
-                    Draw.textScaled(g, "+" + (tree.raw.size() - i), chipX + i * 17 + 2, chipY + 5, 0.75f, hudMuted);
-                }
-            }
-            int barY = y + h - 5, barW = w - 12;
-            Draw.round(g, x + 6, barY, barW, 2, 1f, theme.c("slot.bg"));
-            if (have > 0) Draw.round(g, x + 6, barY, Math.max(2, barW * have / goal.amount), 2, 1f, theme.c("accent"));
-            y += h + 3;
-        }
+        // внизу слева поверх мира чат, поэтому здесь столбец; под линзой остаётся место
+        works.repka.ryscope.ui.Stickers.drawColumn(g, theme, 36, works.repka.ryscope.ui.Lens.held() ? 48 : 18, 3);
     }
 
     private static Path file() {

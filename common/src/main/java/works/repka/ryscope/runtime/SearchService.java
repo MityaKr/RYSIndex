@@ -44,6 +44,11 @@ public final class SearchService {
     private static volatile Results results = new Results("", Query.parse(""), List.of(), 0, Snapshot.EMPTY, 0);
     private static volatile String text = "";
     private static volatile boolean busy;
+    /** Добавка к запросу от вкладки фильтра, например {@code craftable}. */
+    private static volatile String filter = "";
+    private static volatile int craftable;
+    private static int craftableHash;
+    private static long craftableAt;
 
     private SearchService() {}
 
@@ -63,6 +68,37 @@ public final class SearchService {
         submit(text);
     }
 
+    public static void setFilter(String suffix) {
+        filter = suffix;
+        submit(text);
+    }
+
+    public static int craftable() {
+        return craftable;
+    }
+
+    /** Считает «Доступно» в фоне, не чаще раза в две секунды и только при изменении инвентаря. */
+    public static void updateCraftable() {
+        long now = System.currentTimeMillis();
+        if (now - craftableAt < 2000) return;
+        craftableAt = now;
+        var inventory = InventoryView.snapshot();
+        int hash = inventory.hashCode() * 31 + Indexer.snapshot().hashCode();
+        if (hash == craftableHash) return;
+        craftableHash = hash;
+        EXEC.execute(() -> {
+            try {
+                Snapshot snap = Indexer.snapshot();
+                IntPredicate test = Operators.filter(Query.parse("craftable"), snap);
+                int n = 0;
+                if (test != null) for (int i = 0; i < snap.index.size(); i++) if (test.test(i)) n++;
+                craftable = n;
+            } catch (Throwable t) {
+                RYScope.LOG.warn("Не посчитано «Доступно»", t);
+            }
+        });
+    }
+
     public static void submit(String newText) {
         text = newText;
         int gen = GENERATION.incrementAndGet();
@@ -70,7 +106,7 @@ public final class SearchService {
         EXEC.execute(() -> {
             if (GENERATION.get() != gen) return;
             try {
-                run(newText, gen);
+                run(filter.isEmpty() ? newText : (newText + " " + filter).trim(), gen);
             } catch (Throwable t) {
                 RYScope.LOG.warn("Поиск «{}» завершился ошибкой", newText, t);
             } finally {
