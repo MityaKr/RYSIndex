@@ -134,6 +134,11 @@ public final class CraftTree {
         recompute();
     }
 
+    /** Перенимает уже найденные рецепты у другого дерева того же предмета: пересчёт идёт почти мгновенно. */
+    public void inherit(CraftTree other) {
+        loaded.putAll(other.loaded);
+    }
+
     /** Дерево построено целиком и его можно показывать. */
     public boolean ready() {
         return ready;

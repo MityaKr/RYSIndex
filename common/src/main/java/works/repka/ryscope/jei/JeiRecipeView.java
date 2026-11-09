@@ -95,7 +95,12 @@ public final class JeiRecipeView<T> implements RecipeView {
             return;
         }
         l.setPosition(x + border, y + border);
-        l.drawRecipe(g, mouseX, mouseY);
+        boolean restyled = works.repka.ryscope.ui.RecipeRestyle.begin(theme);
+        try {
+            l.drawRecipe(g, mouseX, mouseY);
+        } finally {
+            if (restyled) works.repka.ryscope.ui.RecipeRestyle.end();
+        }
         if (transferError != null && works.repka.ryscope.content.NativeRecipe.missingBadges) {
             try {
                 transferError.showError(g, mouseX, mouseY, l.getRecipeSlotsView(), x + border, y + border);

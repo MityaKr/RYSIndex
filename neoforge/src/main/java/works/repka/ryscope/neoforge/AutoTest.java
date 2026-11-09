@@ -163,6 +163,14 @@ final class AutoTest {
             command("tp @s 0.5 -60 0.5 0 0");
             command("fill -3 -60 -3 3 -56 6 minecraft:air");
         }, 30);
+        if ("ui".equals(System.getProperty("ryscope.autotest"))) {
+            buildUi();
+            return;
+        }
+        if ("loot".equals(System.getProperty("ryscope.autotest"))) {
+            buildLoot();
+            return;
+        }
         if ("ae2".equals(System.getProperty("ryscope.autotest"))) {
             buildAe2();
             return;
@@ -1033,6 +1041,116 @@ final class AutoTest {
 
     private static int cardHeight() {
         return mc().screen instanceof RecipeScreen rs ? rs.cardBounds()[3] : -1;
+    }
+
+    // --- сценарий ui: что поменялось в панелях и окнах ---
+
+    private static void buildUi() {
+        step("ui: setup", () -> {
+            works.repka.ryscope.runtime.Bookmarks.addFolder("Механизмы");
+            works.repka.ryscope.runtime.Board.goals().clear();
+            works.repka.ryscope.runtime.Board.toggle(new ItemRes(new ItemStack(Items.COMPARATOR)), 2);
+            works.repka.ryscope.runtime.Board.toggle(new ItemRes(new ItemStack(Items.PISTON)), 1);
+            Config.get().listPaged = true;
+            mc().setScreen(new InventoryScreen(mc().player));
+        }, 25);
+        step("ui: list", () -> {
+            long groups = SearchService.results().stacks.stream().filter(s -> s instanceof works.repka.ryscope.runtime.Groups.GroupStack).count();
+            RYScope.LOG.info("[ui] ячеек в списке: {}, свёрнутых групп: {}", SearchService.results().stacks.size(), groups);
+            List<String> sample = new ArrayList<>();
+            for (var s : SearchService.results().stacks) {
+                if (s instanceof works.repka.ryscope.runtime.Groups.GroupStack g && g.group.id.startsWith("auto:") && sample.size() < 30) sample.add(g.name().getString() + " x" + g.count);
+            }
+            RYScope.LOG.info("[ui] автоматические группы, примеры: {}", sample);
+        }, 2);
+        shot("ui_inventory_paged");
+        step("ui: next page", () -> Overlay.nextPageForTest(), 8);
+        shot("ui_inventory_page2");
+        step("ui: search bottom", () -> {
+            Config.get().searchBottom = true;
+            Config.get().savedSearches.clear();
+            Config.get().savedSearches.add("uses:piston");
+            Config.get().savedSearches.add("craftable");
+        }, 6);
+        step("ui: help hover", () -> {
+            int sw = mc().getWindow().getGuiScaledWidth(), sh = mc().getWindow().getGuiScaledHeight();
+            // значок «?»: слева от «i» и кнопки настроек в подвале списка
+            moveMouse(sw - 4 - 5 - 10 - 15 - 13 + 5, sh - 4 - 5 - 10 + 1 + 5);
+        }, 6);
+        shot("ui_search_bottom_help");
+        step("ui: focus bottom search", () -> {
+            int sw = mc().getWindow().getGuiScaledWidth(), sh = mc().getWindow().getGuiScaledHeight();
+            moveMouse(sw - 40, sh - 4 - 5 - 10 - 2 - 14 + 6);
+            click(0);
+        }, 6);
+        shot("ui_search_bottom_saved");
+        step("ui: search top", () -> {
+            pressKey(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE);
+            Config.get().searchBottom = false;
+        }, 4);
+        step("ui: goal remove", () -> {
+            int[] p = Overlay.goalCenterForTest();
+            if (p != null) {
+                moveMouse(p[0], p[1]);
+            }
+        }, 4);
+        step("ui: goal right click", () -> click(1), 8);
+        step("ui: goals left", () -> RYScope.LOG.info("[ui] целей после ПКМ (должно быть: 1): {}", works.repka.ryscope.runtime.Board.goals().size()), 2);
+        step("ui: paged off", () -> Config.get().listPaged = false, 2);
+        step("ui: recipe focus", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES);
+        }, 15);
+        shot("ui_recipe_header");
+        for (String part : new String[] {"forestry:carpenter", "ars_nouveau:enchanting_apparatus", "mekanism:crystallizing", "malum:spirit_infusion", "extendedcrafting:ender_crafting"}) {
+            step("ui: category " + part, () -> {
+                mc().setScreen(new InventoryScreen(mc().player));
+                for (var c : Lookup.allCategories()) {
+                    if (c.id.toString().equals(part)) {
+                        RYScope.LOG.info("[ui] категория {}: {}", part, RecipeScreen.openCategory(c));
+                        break;
+                    }
+                }
+            }, 15);
+            shot("ui_" + part.replace(':', '_'));
+        }
+        step("ui: planner", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            works.repka.ryscope.ui.PlannerScreen.open(new ItemRes(new ItemStack(Items.PISTON)));
+        }, 2);
+        step("ui: planner state", () -> RYScope.LOG.info("[ui] план через 2 тика: экран {}", mc().screen.getClass().getSimpleName()), 30);
+        shot("ui_planner_done");
+        step("ui: compare", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            works.repka.ryscope.ui.CompareScreen.open(new ItemRes(new ItemStack(Items.STICK)));
+        }, 40);
+        shot("ui_compare_done");
+        step("ui: lens cow", () -> {
+            var view = works.repka.ryscope.content.LootContent.forEntity(net.minecraft.world.entity.EntityType.COW);
+            RYScope.LOG.info("[ui] корова показывает: {}", view == null ? "нет" : view.outputs().stream().map(o -> o.id().toString()).toList());
+            var zombie = works.repka.ryscope.content.LootContent.forEntity(net.minecraft.world.entity.EntityType.ZOMBIE);
+            RYScope.LOG.info("[ui] зомби показывает: {}", zombie == null ? "нет" : zombie.outputs().stream().map(o -> o.id().toString()).toList());
+        }, 2);
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    // --- сценарий loot: что на самом деле лежит в таблицах мобов на сервере ---
+
+    private static void buildLoot() {
+        step("loot: dump", () -> {
+            var server = mc().getSingleplayerServer();
+            var ops = server.registryAccess().createSerializationContext(com.mojang.serialization.JsonOps.INSTANCE);
+            for (String id : new String[] {"cow", "pig", "sheep", "chicken", "zombie"}) {
+                var key = net.minecraft.resources.ResourceKey.create(Registries.LOOT_TABLE, net.minecraft.resources.ResourceLocation.withDefaultNamespace("entities/" + id));
+                var table = server.reloadableRegistries().getLootTable(key);
+                String text = net.minecraft.world.level.storage.loot.LootTable.DIRECT_CODEC.encodeStart(ops, table).result().map(Object::toString).orElse("не кодируется");
+                RYScope.LOG.info("[loot] {} таблица: {}", id, text.length() > 5000 ? text.substring(0, 5000) : text);
+                var type = net.minecraft.world.entity.EntityType.byString("minecraft:" + id).orElseThrow();
+                var view = works.repka.ryscope.content.LootContent.forEntity(type);
+                RYScope.LOG.info("[loot] {} показываем: {}", id, view == null ? "нет" : view.outputs().stream().map(o -> o.id() + " " + o.chance).toList());
+            }
+        }, 5);
+        step("quit", () -> mc().stop(), 0);
     }
 
     // --- сценарий dock: панель кнопок FTB ---

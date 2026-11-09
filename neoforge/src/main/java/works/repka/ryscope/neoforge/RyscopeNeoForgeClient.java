@@ -39,6 +39,7 @@ public final class RyscopeNeoForgeClient {
         modBus.addListener(this::registerKeys);
         modBus.addListener(this::registerLayers);
         modBus.addListener(this::registerReload);
+        modBus.addListener(this::registerShaders);
 
         IEventBus bus = NeoForge.EVENT_BUS;
         bus.addListener((RecipesUpdatedEvent e) -> RyscopeClient.onRecipesUpdated());
@@ -121,6 +122,19 @@ public final class RyscopeNeoForgeClient {
     private void registerLayers(RegisterGuiLayersEvent event) {
         event.registerAboveAll(ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "lens"),
             (graphics, delta) -> RyscopeClient.renderHud(graphics, delta.getGameTimeDeltaPartialTick(false)));
+    }
+
+    private void registerShaders(net.neoforged.neoforge.client.event.RegisterShadersEvent event) {
+        try {
+            event.registerShader(new net.minecraft.client.renderer.ShaderInstance(event.getResourceProvider(),
+                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "gui_remap"),
+                com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX), works.repka.ryscope.ui.RecipeRestyle::setPlain);
+            event.registerShader(new net.minecraft.client.renderer.ShaderInstance(event.getResourceProvider(),
+                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "gui_remap_color"),
+                com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR), works.repka.ryscope.ui.RecipeRestyle::setColored);
+        } catch (java.io.IOException e) {
+            RYScope.LOG.warn("Шейдер перекраски не загружен, окна рецептов останутся серыми: {}", e.toString());
+        }
     }
 
     private void registerReload(RegisterClientReloadListenersEvent event) {

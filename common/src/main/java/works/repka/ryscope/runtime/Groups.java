@@ -37,6 +37,15 @@ public final class Groups {
         final Set<String> tags = new HashSet<>();
         final Set<String> items = new HashSet<>();
         final Pattern match;
+        Component autoName;
+
+        /** Группа, найденная автоматически: у неё сразу готовое имя. */
+        Group(String id, Component autoName) {
+            this.id = id;
+            this.name = id;
+            this.autoName = autoName;
+            this.match = null;
+        }
 
         Group(String id, JsonObject json) {
             this.id = id;
@@ -47,6 +56,7 @@ public final class Groups {
         }
 
         public Component title() {
+            if (autoName != null) return autoName;
             return Language.getInstance().has(name) ? Component.translatable(name) : Component.literal(name);
         }
 
@@ -179,7 +189,78 @@ public final class Groups {
                 }
             }
         }
+        try {
+            assignAutomatic(stacks, map);
+        } catch (Throwable t) {
+            RYScope.LOG.warn("Автоматические группы не построены: {}", t.toString());
+        }
         byKey = map;
+    }
+
+    private static final List<String> COLORS = List.of("light_blue", "light_gray", "white", "orange", "magenta", "yellow", "lime",
+        "pink", "gray", "cyan", "purple", "blue", "brown", "green", "red", "black");
+    /** Сколько разных цветов должно быть в семействе, чтобы его сворачивать. */
+    private static final int MIN_COLORS = 4;
+
+    /**
+     * Группы без описаний: один предмет со множеством вариантов (бак с каждой жидкостью, пчела с каждым видом)
+     * и семейства, отличающиеся только цветом в id. Предметы, которые уже описаны данными, не трогаем.
+     */
+    private static void assignAutomatic(List<Stack> stacks, Map<Object, Group> map) {
+        Map<Object, List<Stack>> byItem = new LinkedHashMap<>();
+        for (Stack s : stacks) {
+            if (!s.item().isEmpty() && !map.containsKey(s.key())) byItem.computeIfAbsent(s.key(), k -> new ArrayList<>()).add(s);
+        }
+        Map<String, List<Stack>> families = new LinkedHashMap<>();
+        Map<String, Set<String>> familyColors = new HashMap<>();
+        for (Map.Entry<Object, List<Stack>> e : byItem.entrySet()) {
+            Stack first = e.getValue().get(0);
+            if (e.getValue().size() >= 3) {
+                map.put(e.getKey(), new Group("auto:item:" + first.id(), first.item().getItem().getDescription()));
+                continue;
+            }
+            String path = first.id().getPath();
+            for (String color : COLORS) {
+                String replaced = path.replaceFirst("(^|_)" + color + "(_|$)", "$1*$2");
+                if (replaced.equals(path)) continue;
+                String family = first.id().getNamespace() + ":" + replaced;
+                families.computeIfAbsent(family, k -> new ArrayList<>()).add(first);
+                familyColors.computeIfAbsent(family, k -> new HashSet<>()).add(color);
+                break;
+            }
+        }
+        for (Map.Entry<String, List<Stack>> e : families.entrySet()) {
+            if (familyColors.get(e.getKey()).size() < MIN_COLORS) continue;
+            String name = commonWords(e.getValue());
+            if (name.isEmpty()) continue;
+            Group group = new Group("auto:color:" + e.getKey(), Component.literal(name));
+            for (Stack s : e.getValue()) map.put(s.key(), group);
+        }
+    }
+
+    /** Слова, общие для всех названий семейства: цвет отличается и отпадает на любом языке. */
+    private static String commonWords(List<Stack> members) {
+        Set<String> common = null;
+        List<String> order = new ArrayList<>();
+        for (Stack s : members) {
+            String[] words = s.name().getString().split("\\s+");
+            Set<String> set = new HashSet<>(List.of(words));
+            if (common == null) {
+                common = set;
+                order.addAll(List.of(words));
+            } else {
+                common.retainAll(set);
+            }
+        }
+        if (common == null || common.isEmpty()) return "";
+        StringBuilder out = new StringBuilder();
+        for (String word : order) {
+            if (!common.contains(word)) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(word);
+        }
+        if (out.length() > 0) out.setCharAt(0, Character.toUpperCase(out.charAt(0)));
+        return out.toString();
     }
 
     /** Сворачивает группы в списке: от каждой свёрнутой остаётся одна ячейка со счётчиком. */

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
@@ -32,7 +33,7 @@ public final class Dock {
     private static final int BUTTON = 18;
     private static final int GAP = 2;
     private static final int PAD = 5;
-    private static final int ICON = 14;
+    private static final int ICON = 12;
     private static final int ICON_TEXTURE = 42;
     private static final long REFRESH_MS = 500;
 
@@ -43,6 +44,14 @@ public final class Dock {
         "ftblibrary_toggle_gamemode", "ftbultimine_config", "ftbbackups3_config", "ftblibrary_config");
     /** Кнопки, для которых нарисованы свои значки; у остальных остаётся значок автора. */
     private static final Set<String> OWN_ICONS = Set.copyOf(ORDER);
+
+    /** Цвет плитки у каждой кнопки свой: так кнопки различаются с первого взгляда. */
+    private static final Map<String, Integer> TILES = Map.ofEntries(
+        Map.entry("ftbquests_quests", 0xFFE9A83A), Map.entry("ftbteams_my_team", 0xFF4C8DF5), Map.entry("ftbteams_team_lives", 0xFFE5484D),
+        Map.entry("ftbchunks_chunks", 0xFF3FB56B), Map.entry("ftbchunks_claim_chunks", 0xFF159E94), Map.entry("ftbessentials_trash_can", 0xFF8A93A6),
+        Map.entry("ftblibrary_toggle_day", 0xFFF5C542), Map.entry("ftblibrary_toggle_night", 0xFF5B5BD6), Map.entry("ftblibrary_toggle_rain", 0xFF38A3E0),
+        Map.entry("ftblibrary_toggle_gamemode", 0xFFD9622B), Map.entry("ftbultimine_config", 0xFFA9753F), Map.entry("ftbbackups3_config", 0xFF8E5BD0),
+        Map.entry("ftblibrary_config", 0xFF6B7488));
 
     private record Entry(Object button, String key, ResourceLocation texture, Object icon) {}
 
@@ -227,12 +236,15 @@ public final class Dock {
             Entry entry = entries.get(i);
             int bx = buttonX(i), by = buttonY(i);
             boolean hot = i == hover;
-            if (hot) theme.button(g, bx, by, BUTTON, BUTTON, true, false);
             try {
                 if (entry.texture() != null) {
-                    drawTinted(g, entry.texture(), bx + (BUTTON - ICON) / 2, by + (BUTTON - ICON) / 2,
-                        hot ? theme.c("accent") : theme.c("text.muted"));
+                    int tile = TILES.getOrDefault(entry.key(), 0xFF6B7488);
+                    float radius = theme.beveled() ? 1f : 5f;
+                    Draw.round(g, bx, by, BUTTON, BUTTON, radius, hot ? Draw.mix(tile, 0xFFFFFFFF, 0.22f) : tile);
+                    drawTinted(g, entry.texture(), bx + (BUTTON - ICON) / 2, by + (BUTTON - ICON) / 2, glyphOn(tile));
                 } else {
+                    // кнопка чужого мода: значок автора на нейтральной плитке
+                    Draw.round(g, bx, by, BUTTON, BUTTON, theme.beveled() ? 1f : 5f, hot ? theme.c("slot.hover") : theme.c("slot.bg"));
                     RenderSystem.enableBlend();
                     Ftb.drawIcon.invoke(entry.icon(), g, bx + 1, by + 1, 16, 16);
                 }
@@ -249,6 +261,12 @@ public final class Dock {
                 return;
             }
         }
+    }
+
+    /** На светлых плитках значок тёмный, на тёмных белый. */
+    private static int glyphOn(int tile) {
+        double luminance = (0.299 * ((tile >> 16) & 255) + 0.587 * ((tile >> 8) & 255) + 0.114 * (tile & 255)) / 255;
+        return luminance > 0.62 ? 0xFF1C1F27 : 0xFFFFFFFF;
     }
 
     private static void drawTinted(GuiGraphics g, ResourceLocation texture, int ix, int iy, int color) {

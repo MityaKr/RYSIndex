@@ -48,39 +48,68 @@ public final class CompareScreen extends Screen {
         super(Component.translatable("ryscope.compare.title"));
         this.parent = parent;
         this.target = stack.withAmount(1);
-        build();
+        this.probe = new CraftTree(target, true);
     }
 
     public static void open(Stack stack) {
         Minecraft mc = Minecraft.getInstance();
-        CompareScreen screen = new CompareScreen(mc.screen, stack);
-        if (screen.routes.size() < 2) {
-            Overlay.toast(Component.translatable("ryscope.compare.single").getString());
-            return;
-        }
-        mc.setScreen(screen);
+        mc.setScreen(new CompareScreen(mc.screen, stack));
     }
 
-    private void build() {
-        CraftTree probe = new CraftTree(target);
-        List<Option> options = probe.root.options;
-        if (options == null) return;
-        for (int i = 0; i < options.size() && routes.size() < 12; i++) {
-            Route r = new Route();
-            r.option = options.get(i);
-            r.tree = forced(i, false);
-            sum(r.tree.root, r);
-            r.missingNow = forced(i, true).raw.size();
-            for (Stack out : r.option.recipe.outputs()) {
-                if (!out.key().equals(target.key())) r.byproducts.add(out);
-            }
-            routes.add(r);
+    private final CraftTree probe;
+    private CraftTree building;
+    private boolean buildingWithInventory;
+    private Route route;
+    private int index;
+    private boolean done;
+
+    /** Порция расчёта: укладывается в несколько миллисекунд, чтобы окно не подвисало. */
+    private void advance() {
+        long until = System.nanoTime() + 8_000_000L;
+        while (!done && System.nanoTime() < until) step();
+    }
+
+    private void step() {
+        if (!probe.ready()) {
+            probe.recompute();
+            return;
         }
+        List<Option> options = probe.root.options;
+        if (options == null || index >= options.size() || routes.size() >= 12) {
+            done = true;
+            return;
+        }
+        if (building == null) {
+            route = new Route();
+            route.option = options.get(index);
+            building = forced(index, false);
+            buildingWithInventory = false;
+            return;
+        }
+        if (!building.ready()) {
+            building.recompute();
+            return;
+        }
+        if (!buildingWithInventory) {
+            route.tree = building;
+            sum(route.tree.root, route);
+            building = forced(index, true);
+            buildingWithInventory = true;
+            return;
+        }
+        route.missingNow = building.raw.size();
+        for (Stack out : route.option.recipe.outputs()) {
+            if (!out.key().equals(target.key())) route.byproducts.add(out);
+        }
+        routes.add(route);
+        building = null;
+        index++;
     }
 
     /** Дерево, в корне которого принудительно выбран рецепт с этим номером. */
     private CraftTree forced(int choice, boolean inventory) {
-        CraftTree tree = new CraftTree(target);
+        CraftTree tree = new CraftTree(target, true);
+        tree.inherit(probe);
         tree.useInventory = inventory;
         tree.root.choice = choice;
         tree.root.children.clear();
@@ -127,6 +156,11 @@ public final class CompareScreen extends Screen {
         px = (width - pw) / 2;
         py = (height - ph) / 2;
         theme.panel(g, px, py, pw, ph);
+        if (!done) {
+            advance();
+            Loading.render(g, theme, px, py, pw, ph, "ryscope.compare.loading", probe.examined());
+            return;
+        }
         target.render(g, px + PAD, py + PAD - 1);
         Draw.text(g, Draw.ellipsize(target.name().getString(), pw - 120), px + PAD + 22, py + PAD - 1, theme.c("text.primary"));
         String sub = Component.translatable("ryscope.compare.count", routes.size()).getString();
@@ -215,7 +249,16 @@ public final class CompareScreen extends Screen {
     }
 
     @Override
+    public void tick() {
+        if (done && routes.size() < 2) {
+            Overlay.toast(Component.translatable("ryscope.compare.single").getString());
+            onClose();
+        }
+    }
+
+    @Override
     public boolean mouseClicked(double mx, double my, int button) {
+        if (!done) return true;
         if (!over(mx, my, px, py, pw, ph)) {
             onClose();
             return true;
@@ -237,6 +280,7 @@ public final class CompareScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+        if (!done) return true;
         first += scrollY < 0 ? 1 : -1;
         return true;
     }
@@ -247,6 +291,7 @@ public final class CompareScreen extends Screen {
             onClose();
             return true;
         }
+        if (!done) return true;
         if (key == GLFW.GLFW_KEY_LEFT) first--;
         if (key == GLFW.GLFW_KEY_RIGHT) first++;
         return true;

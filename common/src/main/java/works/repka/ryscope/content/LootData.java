@@ -5,6 +5,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
+import net.minecraft.world.entity.EntityType;
+import org.jetbrains.annotations.Nullable;
+import net.minecraft.core.registries.BuiltInRegistries;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,6 +40,61 @@ public final class LootData {
 
     private LootData() {}
 
+    private static String textOf(JsonObject object, String key) {
+        return object.has(key) && object.get(key).isJsonPrimitive() ? object.get(key).getAsString() : "";
+    }
+
+    /** Чей дроп описывает таблица: {@code minecraft:entities/sheep/white} принадлежит овце. */
+    @Nullable
+    private static EntityType<?> ownerOf(String tableId) {
+        ResourceLocation id = ResourceLocation.tryParse(tableId);
+        if (id == null || !id.getPath().startsWith("entities/")) return null;
+        String name = id.getPath().substring("entities/".length());
+        int slash = name.indexOf('/');
+        if (slash >= 0) name = name.substring(0, slash);
+        ResourceLocation entity = ResourceLocation.fromNamespaceAndPath(id.getNamespace(), name);
+        return BuiltInRegistries.ENTITY_TYPE.containsKey(entity) ? BuiltInRegistries.ENTITY_TYPE.get(entity) : null;
+    }
+
+    /**
+     * Условие «это моб такого-то типа». Моды подмешивают одну общую таблицу всем мобам (Botania: головы при ударе
+     * топором, у каждого моба своя), поэтому условие надо сверять с владельцем таблицы, иначе корове достаются все головы.
+     *
+     * @return false: моб не подходит; true: подходит и других условий нет; null: зависит от обстоятельств
+     */
+    @Nullable
+    private static Boolean typeMatches(JsonObject condition, @Nullable EntityType<?> owner) {
+        if (owner == null || !"this".equals(textOf(condition, "entity")) || !condition.has("predicate") || !condition.get("predicate").isJsonObject()) return null;
+        JsonObject predicate = condition.getAsJsonObject("predicate");
+        if (!predicate.has("type")) return null;
+        if (!typeIn(predicate.get("type"), owner)) return false;
+        return predicate.size() == 1 ? Boolean.TRUE : null;
+    }
+
+    /** «Любое из условий», где каждое это тип моба и ни один не подошёл владельцу таблицы. */
+    private static boolean noneMatch(JsonObject anyOf, @Nullable EntityType<?> owner) {
+        if (owner == null || !anyOf.has("terms") || !anyOf.get("terms").isJsonArray() || anyOf.getAsJsonArray("terms").isEmpty()) return false;
+        for (JsonElement term : anyOf.getAsJsonArray("terms")) {
+            if (!term.isJsonObject() || !"minecraft:entity_properties".equals(textOf(term.getAsJsonObject(), "condition"))) return false;
+            if (!Boolean.FALSE.equals(typeMatches(term.getAsJsonObject(), owner))) return false;
+        }
+        return true;
+    }
+
+    private static boolean typeIn(JsonElement type, EntityType<?> owner) {
+        if (type.isJsonArray()) {
+            for (JsonElement e : type.getAsJsonArray()) if (typeIn(e, owner)) return true;
+            return false;
+        }
+        if (!type.isJsonPrimitive()) return true;
+        String value = type.getAsString();
+        if (value.startsWith("#")) {
+            ResourceLocation tag = ResourceLocation.tryParse(value.substring(1));
+            return tag == null || owner.builtInRegistryHolder().is(net.minecraft.tags.TagKey.create(Registries.ENTITY_TYPE, tag));
+        }
+        return value.equals(BuiltInRegistries.ENTITY_TYPE.getKey(owner).toString());
+    }
+
     public static List<Table> extract(MinecraftServer server) {
         List<Table> out = new ArrayList<>();
         Map<String, JsonObject> raw = new LinkedHashMap<>();
@@ -58,7 +116,7 @@ public final class LootData {
         }
         for (Map.Entry<String, JsonObject> e : raw.entrySet()) {
             try {
-                List<Drop> drops = merge(table(e.getValue(), raw, 0));
+                List<Drop> drops = merge(table(e.getValue(), raw, 0, ownerOf(e.getKey())));
                 if (!drops.isEmpty()) out.add(new Table(e.getKey(), drops));
             } catch (Throwable t) {
                 RYScope.LOG.debug("Loot-таблица {} не разобрана: {}", e.getKey(), t.toString());
@@ -67,13 +125,13 @@ public final class LootData {
         return out;
     }
 
-    private static List<Drop> table(JsonObject table, Map<String, JsonObject> all, int depth) {
+    private static List<Drop> table(JsonObject table, Map<String, JsonObject> all, int depth, @Nullable EntityType<?> owner) {
         List<Drop> out = new ArrayList<>();
         if (!table.has("pools") || depth > 3) return out;
         for (JsonElement pe : table.getAsJsonArray("pools")) {
             JsonObject pool = pe.getAsJsonObject();
             float[] rolls = number(pool.get("rolls"), 1, 1);
-            Cond poolCond = conditions(pool.get("conditions"));
+            Cond poolCond = conditions(pool.get("conditions"), owner);
             JsonArray entries = pool.has("entries") ? pool.getAsJsonArray("entries") : new JsonArray();
             float total = 0;
             for (JsonElement ee : entries) total += weight(ee.getAsJsonObject());
@@ -81,7 +139,7 @@ public final class LootData {
             for (JsonElement ee : entries) {
                 JsonObject entry = ee.getAsJsonObject();
                 float p = weight(entry) / total * poolCond.chance;
-                entry(entry, p, rolls, poolCond.note, functions(pool.get("functions")), all, depth, out);
+                entry(entry, p, rolls, poolCond.note, functions(pool.get("functions")), all, depth, out, owner);
             }
         }
         return out;
@@ -92,9 +150,9 @@ public final class LootData {
     }
 
     private static void entry(JsonObject entry, float p, float[] rolls, String note, Fn poolFn,
-                              Map<String, JsonObject> all, int depth, List<Drop> out) {
+                              Map<String, JsonObject> all, int depth, List<Drop> out, @Nullable EntityType<?> owner) {
         String type = entry.has("type") ? entry.get("type").getAsString() : "";
-        Cond cond = conditions(entry.get("conditions"));
+        Cond cond = conditions(entry.get("conditions"), owner);
         p *= cond.chance;
         String n = cond.note != null ? cond.note : note;
         if (p <= 0) return;
@@ -114,7 +172,7 @@ public final class LootData {
             case "minecraft:alternatives", "minecraft:group", "minecraft:sequence" -> {
                 if (!entry.has("children")) return;
                 for (JsonElement c : entry.getAsJsonArray("children")) {
-                    entry(c.getAsJsonObject(), p, rolls, n, poolFn, all, depth, out);
+                    entry(c.getAsJsonObject(), p, rolls, n, poolFn, all, depth, out, owner);
                 }
             }
             case "minecraft:loot_table" -> {
@@ -123,7 +181,7 @@ public final class LootData {
                 if (value != null && value.isJsonObject()) nested = value.getAsJsonObject();
                 else if (value != null && value.isJsonPrimitive()) nested = all.get(value.getAsString());
                 if (nested == null) return;
-                for (Drop d : table(nested, all, depth + 1)) {
+                for (Drop d : table(nested, all, depth + 1, owner)) {
                     out.add(new Drop(d.item, d.tag, d.min, d.max, d.chance * Math.min(1f, p), d.note != null ? d.note : n));
                 }
             }
@@ -135,7 +193,7 @@ public final class LootData {
 
     private record Cond(float chance, String note) {}
 
-    private static Cond conditions(JsonElement element) {
+    private static Cond conditions(JsonElement element, @Nullable EntityType<?> owner) {
         float chance = 1f;
         String note = null;
         if (element == null || !element.isJsonArray()) return new Cond(1f, null);
@@ -162,11 +220,24 @@ public final class LootData {
                     else note = NOTE_CONDITION;
                 }
                 case "minecraft:any_of" -> {
+                    if (noneMatch(c, owner)) chance = 0f;
                     String text = c.toString();
                     if (text.contains("silk_touch")) note = NOTE_SILK;
                     else if (text.contains("shears")) note = NOTE_SHEARS;
                 }
-                case "minecraft:entity_properties", "minecraft:damage_source_properties", "minecraft:location_check",
+                case "minecraft:entity_properties" -> {
+                    Boolean matches = typeMatches(c, owner);
+                    if (Boolean.FALSE.equals(matches)) chance = 0f;
+                    else if (matches == null && note == null) note = NOTE_CONDITION;
+                }
+                case "minecraft:inverted" -> {
+                    if (c.has("term") && c.get("term").isJsonObject()
+                        && "minecraft:entity_properties".equals(textOf(c.getAsJsonObject("term"), "condition"))
+                        && Boolean.TRUE.equals(typeMatches(c.getAsJsonObject("term"), owner))) {
+                        chance = 0f;
+                    }
+                }
+                case "minecraft:damage_source_properties", "minecraft:location_check",
                      "minecraft:weather_check", "minecraft:time_check", "minecraft:entity_scores", "minecraft:value_check",
                      "minecraft:reference" -> {
                     // шанс зависит от обстоятельств (кто убил, где, когда): честно помечаем, а не выдаём за 100 %

@@ -40,6 +40,8 @@ public final class Planner {
     public long rate = 64;
     public Mode mode = Mode.TREE;
     public final List<Line> lines = new ArrayList<>();
+    private boolean ready;
+    private int pass;
     public int totalMachines;
     public double totalEnergy;
     public Line bottleneck;
@@ -54,37 +56,62 @@ public final class Planner {
         rebuild();
     }
 
+    /** План посчитан и его можно показывать. */
+    public boolean ready() {
+        return ready;
+    }
+
+    public int examined() {
+        return tree == null ? 0 : tree.examined();
+    }
+
+    /** Следующая порция расчёта: не больше нескольких миллисекунд, вызывается каждый кадр. */
+    public void advance() {
+        if (ready) return;
+        if (!tree.ready()) {
+            tree.recompute();
+            if (!tree.ready()) return;
+        }
+        if (mode != Mode.TREE && pass < 6) {
+            pass = applyPass() ? pass + 1 : 6;
+            tree.recompute();
+            return;
+        }
+        collect();
+        ready = true;
+    }
+
     public void setMode(Mode mode) {
         this.mode = mode;
         rebuild();
     }
 
     private void rebuild() {
-        tree = new CraftTree(target);
+        CraftTree previous = tree;
+        tree = new CraftTree(target, true);
+        if (previous != null) tree.inherit(previous);
         // планируем производство с нуля: то, что лежит в инвентаре, поток не обеспечит
         tree.useInventory = false;
         tree.setAmount(rate);
-        if (mode != Mode.TREE) applyMode();
-        collect();
+        pass = 0;
+        ready = false;
     }
 
-    private void applyMode() {
-        for (int pass = 0; pass < 6; pass++) {
-            boolean changed = false;
-            List<Node> nodes = new ArrayList<>();
-            flatten(tree.root, nodes);
-            for (Node node : nodes) {
-                if (node.options == null || node.options.isEmpty()) continue;
-                int best = pick(node);
-                if (best >= 0 && best != node.choice) {
-                    node.choice = best;
-                    node.children.clear();
-                    changed = true;
-                }
+    /** Один проход выбора рецептов под режим. @return true, если что-то поменялось. */
+    private boolean applyPass() {
+        boolean changed = false;
+        List<Node> nodes = new ArrayList<>();
+        flatten(tree.root, nodes);
+        for (Node node : nodes) {
+            if (node.options == null || node.options.isEmpty()) continue;
+            int best = pick(node);
+            if (best >= 0 && best != node.choice) {
+                node.choice = best;
+                node.children.clear();
+                changed = true;
             }
-            tree.recompute();
-            if (!changed) break;
         }
+        return changed;
     }
 
     private static void flatten(Node node, List<Node> out) {

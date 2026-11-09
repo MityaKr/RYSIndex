@@ -67,6 +67,19 @@ public final class Draw {
     }
 
     /** Заливка с рамкой за один вызов. */
+    /** Значок «?» размером 10×10: подсказка по синтаксису при наведении. */
+    public static void question(GuiGraphics g, int x, int y, int color) {
+        roundBorder(g, x, y, 10, 10, 5f, color);
+        textScaled(g, "?", x + 3, y + 2, 0.75f, color);
+    }
+
+    /** Значок «i» размером 10×10: рядом с ним живёт подсказка при наведении. */
+    public static void info(GuiGraphics g, int x, int y, int color) {
+        roundBorder(g, x, y, 10, 10, 5f, color);
+        rect(g, x + 4, y + 2, 2, 2, color);
+        rect(g, x + 4, y + 5, 2, 3, color);
+    }
+
     public static void roundBox(GuiGraphics g, float x, float y, float w, float h, float radius, int fill, int border) {
         round(g, x, y, w, h, radius, fill);
         roundBorder(g, x, y, w, h, radius, border);

@@ -56,7 +56,12 @@ public final class Config {
     public String energyUnit = "FE";
     /** Где хранить закладки и цели: "global" (общие) или "world" (свои для каждого мира и сервера). */
     public String profileScope = "global";
-    public boolean recentPanel = true;
+    /** Поле поиска внизу списка, над строкой счётчика. */
+    public boolean searchBottom = false;
+    /** Список предметов страницами вместо бесконечной прокрутки. */
+    public boolean listPaged = false;
+    /** Перекрашивать серые окна рецептов модов под тему. */
+    public boolean restyleRecipes = true;
     /** Сворачивать однотипные предметы (шерсть, зелья, яйца призыва) в одну ячейку. */
     public boolean groupItems = true;
     public List<String> expandedGroups = new ArrayList<>();

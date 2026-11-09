@@ -81,17 +81,7 @@ public final class TreeScreen extends Screen {
             rows.clear();
             tree.root.stack.render(g, px + PAD, py + PAD - 1);
             Draw.text(g, Draw.ellipsize(tree.root.stack.name().getString(), pw - PAD * 2 - 28), px + PAD + 22, py + PAD + 3, theme.c("text.primary"));
-            String loading = Component.translatable("ryscope.tree.loading").getString();
-            String progress = Component.translatable("ryscope.tree.loading.progress", tree.examined()).getString();
-            int cy = py + ph / 2 - 12;
-            Draw.textCentered(g, loading, px + pw / 2, cy, theme.c("text.body"));
-            int bw = Math.min(160, pw - PAD * 4), bx = px + (pw - bw) / 2;
-            Draw.round(g, bx, cy + 14, bw, 2, 1f, theme.c("slot.bg"));
-            // бегущий отрезок: сколько всего ресурсов придётся просмотреть, заранее неизвестно
-            float phase = (System.currentTimeMillis() % 1200L) / 1200f;
-            int seg = bw / 4, sx = bx + Math.round((bw - seg) * (phase < 0.5f ? phase * 2 : 2 - phase * 2));
-            Draw.round(g, sx, cy + 14, seg, 2, 1f, theme.c("accent"));
-            Draw.textScaled(g, progress, px + pw / 2f - font.width(progress) * 0.375f, cy + 21, 0.75f, theme.c("text.muted"));
+            Loading.render(g, theme, px, py, pw, ph, "ryscope.tree.loading", tree.examined());
             return;
         }
 

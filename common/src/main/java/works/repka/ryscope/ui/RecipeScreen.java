@@ -45,7 +45,7 @@ public final class RecipeScreen extends Screen {
     private record Tab(Stack stack, Lookup.Mode mode) {}
 
     private static final List<Tab> TABS = new ArrayList<>();
-    private static final int MAX_TABS = 9;
+    private static final int MAX_TABS = 11;
     private static final int STRIP_H = 22;
 
     private static void remember(Stack stack, Lookup.Mode mode) {
@@ -73,12 +73,18 @@ public final class RecipeScreen extends Screen {
         return nav.focus;
     }
 
+    /** Сколько первых вкладок не помещается по ширине карточки: показываем самые свежие. */
+    private int tabStart() {
+        return Math.max(0, TABS.size() - Math.max(1, cardW / TAB_W));
+    }
+
     private int itemTabAt(double mx, double my) {
-        if (TABS.size() < 2) return -1;
+        if (TABS.isEmpty()) return -1;
         int y = cardY - STRIP_H + 1;
         if (my < y || my >= y + 20 || mx < cardX) return -1;
         int i = (int) ((mx - cardX) / TAB_W);
-        return i < TABS.size() && mx - cardX - i * TAB_W < TAB_W - 2 ? i : -1;
+        int index = tabStart() + i;
+        return index < TABS.size() && mx - cardX - i * TAB_W < TAB_W - 2 ? index : -1;
     }
 
     private int currentTab() {
@@ -166,7 +172,6 @@ public final class RecipeScreen extends Screen {
             mode = other;
         }
         Nav nav = new Nav(stack.withAmount(1), mode, groups);
-        works.repka.ryscope.runtime.History.add(stack);
         remember(nav.focus, mode);
         show(mc, nav);
         return true;
@@ -205,10 +210,10 @@ public final class RecipeScreen extends Screen {
     private void relayout() {
         boolean compact = height < 300;
         PAD = compact ? 7 : 10;
-        HEADER_H = nav.focus == null ? 0 : compact ? 22 : 24;
+        HEADER_H = compact ? 18 : 20;
         TABS_H = compact ? 22 : 24;
         TITLE_H = compact ? 13 : 14;
-        FOOTER_H = compact ? 0 : 12;
+        FOOTER_H = 0;
         List<RecipeView> recipes = group().recipes();
         int maxW = 124, maxH = 20;
         for (RecipeView r : recipes) {
@@ -225,7 +230,9 @@ public final class RecipeScreen extends Screen {
         int bottomGap = compact ? 3 : 6;
         int bodyAvail = height - cardY - bottomGap - chrome;
         perPage = Math.max(1, Math.min(recipes.size(), (bodyAvail + GAP) / (rowH + GAP)));
-        cardH = Math.min(height - cardY - bottomGap, chrome + perPage * (rowH + GAP) - GAP);
+        int needed = chrome + perPage * (rowH + GAP) - GAP;
+        if (cardY + needed > height - bottomGap) cardY = Math.max(STRIP_H + 2, height - bottomGap - needed);
+        cardH = Math.min(height - cardY - bottomGap, needed);
         cardX = (width - cardW) / 2;
         nav.page = Math.max(0, Math.min(nav.page, pages() - 1));
     }
@@ -245,10 +252,11 @@ public final class RecipeScreen extends Screen {
         theme.panel(g, cardX, cardY, cardW, cardH);
 
         // --- вкладки открытых предметов над карточкой ---
-        if (TABS.size() > 1) {
+        if (!TABS.isEmpty()) {
             int sy = cardY - STRIP_H + 1;
-            for (int i = 0; i < TABS.size(); i++) {
-                int sx = cardX + i * TAB_W;
+            int start = tabStart();
+            for (int i = start; i < TABS.size(); i++) {
+                int sx = cardX + (i - start) * TAB_W;
                 Tab tab = TABS.get(i);
                 boolean current = nav.focus != null && tab.stack.same(nav.focus);
                 theme.tab(g, sx, sy, TAB_W - 2, 20, current, over(mx, my, sx, sy, TAB_W - 2, 20));
@@ -256,29 +264,21 @@ public final class RecipeScreen extends Screen {
             }
         }
 
-        // --- шапка ---
-        int hx = cardX + PAD, hy = cardY + PAD;
+        // --- шапка: режимы, дерево крафта, справка; сам предмет виден на вкладке над карточкой ---
+        int hy = cardY + PAD;
         Group group = group();
-        String title = "";
-        if (nav.focus != null) {
-            nav.focus.render(g, hx, hy);
-            title = nav.focus.name().getString();
-            hx += 22;
-        }
         String recipesLabel = Component.translatable("ryscope.mode.recipes").getString();
         String usesLabel = Component.translatable("ryscope.mode.uses").getString();
         int pillW1 = font.width(recipesLabel) + 12, pillW2 = font.width(usesLabel) + 12;
-        int pillsX = cardX + cardW - PAD - pillW1 - pillW2 - 3;
+        int pillsX = cardX + PAD;
         if (nav.focus != null) {
             theme.tab(g, pillsX, hy + 1, pillW1, 14, nav.mode == Lookup.Mode.RECIPES, over(mx, my, pillsX, hy + 1, pillW1, 14));
             Draw.text(g, recipesLabel, pillsX + 6, hy + 4, nav.mode == Lookup.Mode.RECIPES ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
             int p2 = pillsX + pillW1 + 3;
             theme.tab(g, p2, hy + 1, pillW2, 14, nav.mode == Lookup.Mode.USES, over(mx, my, p2, hy + 1, pillW2, 14));
             Draw.text(g, usesLabel, p2 + 6, hy + 4, nav.mode == Lookup.Mode.USES ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
-        }
-        int treeX = pillsX - 19;
-        if (nav.focus != null) {
             // кнопка «дерево крафта»
+            int treeX = pillsX + pillW1 + pillW2 + 7;
             boolean th = over(mx, my, treeX, hy + 1, 15, 14);
             theme.button(g, treeX, hy + 1, 15, 14, th, false);
             int tc = th ? theme.c("accent") : theme.c("text.muted");
@@ -289,12 +289,9 @@ public final class RecipeScreen extends Screen {
             Draw.rect(g, treeX + 7, hy + 5, 1, 6, tc);
             Draw.rect(g, treeX + 7, hy + 10, 2, 1, tc);
         }
-        int titleMax = (nav.focus != null ? treeX : cardX + cardW - PAD) - hx - 6;
-        if (nav.focus != null) Draw.text(g, Draw.ellipsize(title, titleMax), hx, hy, theme.c("text.primary"));
-        if (nav.focus != null) {
-            String sub = Platform.get().modName(nav.focus.namespace());
-            Draw.textScaled(g, Draw.ellipsize(sub, (int) (titleMax / 0.75f)), hx, hy + 10, 0.75f, theme.c("text.muted"));
-        }
+        int infoX = cardX + cardW - PAD - 10, infoY = hy + 3;
+        boolean infoHot = over(mx, my, infoX - 1, infoY - 1, 12, 12);
+        Draw.info(g, infoX, infoY, infoHot ? theme.c("accent") : theme.c("text.dim"));
 
         // --- вкладки категорий ---
         int ty = cardY + PAD + HEADER_H;
@@ -412,12 +409,16 @@ public final class RecipeScreen extends Screen {
             by += rowH + GAP;
         }
 
-        // --- подвал ---
-        String hint = Component.translatable(history.isEmpty() ? "ryscope.recipes.hint" : "ryscope.recipes.hint_back").getString();
-        if (FOOTER_H > 0) Draw.textScaled(g, Draw.ellipsize(hint, (int) ((cardW - PAD * 2) / 0.75f)), cardX + PAD, cardY + cardH - PAD - 5, 0.75f, theme.c("text.dim"));
-
         // --- подсказки ---
         Overlay.renderTop(this, g, mx, my, partialTick);
+        if (infoHot) {
+            List<Component> help = new ArrayList<>();
+            for (String part : Component.translatable("ryscope.recipes.hint").getString().split(" · ")) help.add(Component.literal(part));
+            g.pose().pushPose();
+            g.pose().translate(0, 0, 300);
+            g.renderComponentTooltip(font, help, mx, my);
+            g.pose().popPose();
+        }
         if (!Overlay.isOver(mx, my)) {
             g.pose().pushPose();
             g.pose().translate(0, 0, 300);
@@ -486,7 +487,6 @@ public final class RecipeScreen extends Screen {
                 // чужой рецепт
             }
         }
-        if (nav.focus != null && over(mx, my, cardX + PAD, cardY + PAD, 16, 16)) return nav.focus;
         int itemTab = itemTabAt(mx, my);
         if (itemTab >= 0) return TABS.get(itemTab).stack;
         for (StationSpot s : stations) if (over(mx, my, s.x, s.y, 12, 12)) return s.stack;
@@ -576,7 +576,7 @@ public final class RecipeScreen extends Screen {
             String recipesLabel = Component.translatable("ryscope.mode.recipes").getString();
             String usesLabel = Component.translatable("ryscope.mode.uses").getString();
             int pillW1 = font.width(recipesLabel) + 12, pillW2 = font.width(usesLabel) + 12;
-            int pillsX = cardX + cardW - PAD - pillW1 - pillW2 - 3;
+            int pillsX = cardX + PAD;
             int hy = cardY + PAD + 1;
             if (over(mx, my, pillsX, hy, pillW1, 14)) {
                 switchMode(Lookup.Mode.RECIPES);
@@ -586,7 +586,7 @@ public final class RecipeScreen extends Screen {
                 switchMode(Lookup.Mode.USES);
                 return true;
             }
-            if (over(mx, my, pillsX - 19, hy, 15, 14)) {
+            if (over(mx, my, pillsX + pillW1 + pillW2 + 7, hy, 15, 14)) {
                 TreeScreen.open(nav.focus);
                 return true;
             }

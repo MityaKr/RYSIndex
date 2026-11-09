@@ -66,6 +66,13 @@ public final class PlannerScreen extends Screen {
         py = 6;
         theme.panel(g, px, py, pw, ph);
 
+        // план считается по частям, по несколько миллисекунд за кадр: окно открывается сразу
+        planner.advance();
+        if (!planner.ready()) {
+            Loading.render(g, theme, px, py, pw, ph, "ryscope.planner.loading", planner.examined());
+            return;
+        }
+
         // --- шапка: цель и темп ---
         Stack target = planner.tree.root.stack;
         target.render(g, px + PAD, py + PAD - 1);
@@ -202,6 +209,7 @@ public final class PlannerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
+        if (!planner.ready()) return true;
         Font font = Minecraft.getInstance().font;
         int ax = px + pw - PAD - 108, ay = py + PAD - 2;
         if (over(mx, my, ax, ay, 14, 14)) {
@@ -244,6 +252,7 @@ public final class PlannerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+        if (!planner.ready()) return true;
         int ax = px + pw - PAD - 108, ay = py + PAD - 2;
         if (over(mx, my, ax, ay - 2, 108, 18)) {
             planner.setRate(planner.rate + (scrollY > 0 ? 1 : -1) * step());
@@ -259,6 +268,7 @@ public final class PlannerScreen extends Screen {
             onClose();
             return true;
         }
+        if (!planner.ready()) return true;
         if (key == GLFW.GLFW_KEY_EQUAL || key == GLFW.GLFW_KEY_KP_ADD) {
             planner.setRate(planner.rate + step());
             return true;

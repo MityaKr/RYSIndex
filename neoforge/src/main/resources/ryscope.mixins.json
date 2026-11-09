@@ -16,7 +16,8 @@
   ],
   "client": [
     "StartEventObserverMixin",
-    "JeiErrorUtilMixin"
+    "JeiErrorUtilMixin",
+    "GuiGraphicsMixin"
   ],
   "injectors": {
     "defaultRequire": 0
