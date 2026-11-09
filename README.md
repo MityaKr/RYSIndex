@@ -39,7 +39,7 @@ common/                   общий код: чистый Minecraft, без API 
     jei/                  мост к JEI
   src/main/resources/assets/ryscope/
     lang/                 en_us, ru_ru (черновики)
-    ryscope_themes/       Slate, Vanilla Refined, Glass
+    ryscore_themes/       Slate, Vanilla Refined, Glass
     ryscope_layouts/      раскладки Create, Mekanism, AE2
     ryscope_groups/       группы предметов
 neoforge/                 привязка к NeoForge, сеть, автотест

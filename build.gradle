@@ -15,6 +15,13 @@ subprojects {
     repositories {
         mavenCentral()
         maven {
+            name = 'RYS family'
+            url = rootProject.file('../RYSCore/repo')
+            content {
+                includeGroup 'works.repka.ryscore'
+            }
+        }
+        maven {
             name = 'BlameJared (JEI)'
             url = 'https://maven.blamejared.com'
             content {

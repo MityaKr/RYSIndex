@@ -1,11 +1,12 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import works.repka.ryscope.model.Stack;
-import works.repka.ryscope.ui.theme.Theme;
+import works.repka.ryscore.theme.Theme;
 
 /**
  * Прокручиваемая сетка ресурсов: общая основа списка предметов и закладок.

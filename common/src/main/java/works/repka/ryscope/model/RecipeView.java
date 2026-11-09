@@ -5,7 +5,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-import works.repka.ryscope.ui.theme.Theme;
+import works.repka.ryscore.theme.Theme;
 
 /** Один рецепт, готовый к показу. Реализации: свои раскладки и обёртка над рецептом JEI. */
 public interface RecipeView {

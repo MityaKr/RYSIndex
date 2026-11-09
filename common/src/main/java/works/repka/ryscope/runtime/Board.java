@@ -22,9 +22,9 @@ import net.minecraft.world.item.ItemStack;
 import works.repka.ryscope.RYScope;
 import works.repka.ryscope.model.ItemRes;
 import works.repka.ryscope.model.Stack;
-import works.repka.ryscope.ui.Draw;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /**
  * Доска целей: закреплённые предметы, которые игрок собирается сделать.

@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -12,8 +13,8 @@ import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import works.repka.ryscope.runtime.Config;
 import works.repka.ryscope.runtime.Indexer;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /** Настройки мода. Выглядят в текущей теме и применяются сразу. */
 public final class SettingsScreen extends Screen {

@@ -17,7 +17,6 @@ public final class Config {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static Config instance;
 
-    public String theme = "ryscope:slate";
     /** compact (16), comfortable (18), large (24). */
     public String density = "comfortable";
     public boolean overlayEnabled = true;

@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -31,8 +32,8 @@ import works.repka.ryscope.runtime.Bookmarks;
 import works.repka.ryscope.runtime.Config;
 import works.repka.ryscope.runtime.InventoryView;
 import works.repka.ryscope.runtime.Lookup;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /**
  * Линза: зажал клавишу и навёл на что угодно. В интерфейсе показывает карточку ресурса под курсором,

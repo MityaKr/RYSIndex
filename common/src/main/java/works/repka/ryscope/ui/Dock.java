@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -22,7 +23,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import works.repka.ryscope.RYScope;
 import works.repka.ryscope.platform.Platform;
 import works.repka.ryscope.runtime.Config;
-import works.repka.ryscope.ui.theme.Theme;
+import works.repka.ryscore.theme.Theme;
 
 /**
  * Панель кнопок FTB в стиле мода: тот же реестр кнопок FTB Library, те же действия, значки и подсказки,

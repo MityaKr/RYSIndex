@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -29,8 +30,8 @@ import works.repka.ryscope.runtime.Foreign;
 import works.repka.ryscope.runtime.Indexer;
 import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.SearchService;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /**
  * Панели поверх экранов с инвентарём: список ресурсов с поиском справа, закладки слева.

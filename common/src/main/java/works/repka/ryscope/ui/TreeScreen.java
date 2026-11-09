@@ -1,5 +1,7 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Loading;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -19,8 +21,8 @@ import works.repka.ryscope.runtime.CraftTree;
 import works.repka.ryscope.runtime.CraftTree.Node;
 import works.repka.ryscope.runtime.InventoryView;
 import works.repka.ryscope.runtime.Lookup;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /** Дерево крафта: раскрывающийся список «что из чего», с учётом инвентаря и итогом по сырью. */
 public final class TreeScreen extends Screen {

@@ -41,7 +41,7 @@ import works.repka.ryscope.runtime.SearchService;
 import works.repka.ryscope.ui.Lens;
 import works.repka.ryscope.ui.Overlay;
 import works.repka.ryscope.ui.RecipeScreen;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.ThemeManager;
 
 /**
  * Автотест для разработки: включается свойством {@code -Dryscope.autotest}.
@@ -124,7 +124,7 @@ final class AutoTest {
             if (!(mc().screen instanceof TitleScreen)) mc().setScreen(new TitleScreen());
             Config.get().searchLanguages = new ArrayList<>(List.of("en_us", "ru_ru"));
             Config.get().lastSearch = "";
-            ThemeManager.select("ryscope:slate");
+            ThemeManager.select("ryscore:slate");
             // настройки живут между запусками: каждый запуск выставляет режим заново
             Config.get().replaceJeiInterface = !JEI_GUI;
             Config.get().overlayEnabled = !JEI_GUI;
@@ -229,16 +229,16 @@ final class AutoTest {
         shot("uses_oak_log_tab2");
         step("next tab", () -> mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0), 6);
         shot("uses_oak_log_tab3");
-        step("theme vanilla", () -> ThemeManager.select("ryscope:vanilla"), 6);
+        step("theme vanilla", () -> ThemeManager.select("ryscore:vanilla"), 6);
         shot("theme_vanilla_recipe");
-        step("theme glass", () -> ThemeManager.select("ryscope:glass"), 6);
+        step("theme glass", () -> ThemeManager.select("ryscore:glass"), 6);
         shot("theme_glass_recipe");
         step("close", () -> mc().setScreen(null), 5);
         step("inventory glass", () -> mc().setScreen(new InventoryScreen(mc().player)), 15);
         shot("theme_glass_inventory");
-        step("theme vanilla", () -> ThemeManager.select("ryscope:vanilla"), 6);
+        step("theme vanilla", () -> ThemeManager.select("ryscore:vanilla"), 6);
         shot("theme_vanilla_inventory");
-        step("theme slate", () -> ThemeManager.select("ryscope:slate"), 6);
+        step("theme slate", () -> ThemeManager.select("ryscore:slate"), 6);
         step("lens card", () -> lensCard = new ItemRes(new ItemStack(Items.PISTON)), 6);
         shot("lens_gui");
         step("lens off", () -> {

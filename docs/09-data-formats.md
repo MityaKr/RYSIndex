@@ -6,7 +6,7 @@
 |---|---|---|
 | Раскладки категорий | `assets/<ns>/ryscope_layouts/*.json` | нет |
 | Группы предметов | `assets/<ns>/ryscope_groups/*.json` | нет |
-| Темы | `assets/<ns>/ryscope_themes/*.json` | нет |
+| Темы | `assets/<ns>/ryscore_themes/*.json` | нет |
 | Страницы справки | `assets/<ns>/ryscope_help/*.json` | `config/ryscope/help/*.json` |
 | Стадии | `assets/<ns>/ryscope_stages/*.json` | `config/ryscope/stages/*.json` |
 

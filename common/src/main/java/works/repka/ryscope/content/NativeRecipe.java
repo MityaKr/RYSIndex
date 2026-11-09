@@ -12,8 +12,8 @@ import works.repka.ryscope.model.Ing;
 import works.repka.ryscope.model.RecipeView;
 import works.repka.ryscope.model.Stack;
 import works.repka.ryscope.runtime.InventoryView;
-import works.repka.ryscope.ui.Draw;
-import works.repka.ryscope.ui.theme.Theme;
+import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.theme.Theme;
 
 /** Рецепт со своей раскладкой: слоты и декор расставлены по координатам, вид задаёт тема. */
 public final class NativeRecipe implements RecipeView {

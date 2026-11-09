@@ -1,5 +1,7 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Loading;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -15,8 +17,8 @@ import works.repka.ryscope.runtime.CraftTree;
 import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.Planner;
 import works.repka.ryscope.runtime.Units;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /** Планировщик производства: сколько машин нужно, чтобы делать N штук в час, и где узкое место. */
 public final class PlannerScreen extends Screen {

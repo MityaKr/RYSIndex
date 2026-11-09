@@ -3,7 +3,7 @@ package works.repka.ryscope.ui;
 import java.util.function.Supplier;
 import net.minecraft.client.renderer.ShaderInstance;
 import works.repka.ryscope.runtime.Config;
-import works.repka.ryscope.ui.theme.Theme;
+import works.repka.ryscore.theme.Theme;
 
 /**
  * Перекраска окон рецептов модов под тему. JEI рисует их текстурами в сером стиле Minecraft, и у каждого мода

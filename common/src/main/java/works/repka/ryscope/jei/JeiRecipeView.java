@@ -22,7 +22,7 @@ import works.repka.ryscope.RYScope;
 import works.repka.ryscope.model.Ing;
 import works.repka.ryscope.model.RecipeView;
 import works.repka.ryscope.model.Stack;
-import works.repka.ryscope.ui.theme.Theme;
+import works.repka.ryscore.theme.Theme;
 
 /**
  * Рецепт из JEI. Рисует его сам JEI (раскладка, фон, анимации, подсказки категории),

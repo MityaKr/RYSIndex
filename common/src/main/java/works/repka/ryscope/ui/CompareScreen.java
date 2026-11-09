@@ -1,5 +1,7 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Loading;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -16,8 +18,8 @@ import works.repka.ryscope.runtime.CraftTree.Node;
 import works.repka.ryscope.runtime.CraftTree.Option;
 import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.Units;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /**
  * Сравнение маршрутов: один предмет, несколько способов его получить, рядом и в одинаковых единицах.

@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.Draw;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -23,8 +24,8 @@ import works.repka.ryscope.platform.Platform;
 import works.repka.ryscope.runtime.Bookmarks;
 import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.Lookup.Group;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /** Карточка предмета: рецепты и использования по категориям, с историей переходов. */
 public final class RecipeScreen extends Screen {

@@ -13,7 +13,7 @@ import works.repka.ryscope.runtime.InventoryView;
 import works.repka.ryscope.ui.Lens;
 import works.repka.ryscope.ui.Overlay;
 import works.repka.ryscope.ui.RecipeScreen;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.theme.ThemeManager;
 
 /** Точка входа клиента. Модуль загрузчика переводит свои события в вызовы этих методов. */
 public final class RyscopeClient {
@@ -56,7 +56,6 @@ public final class RyscopeClient {
     }
 
     public static void onResourceReload(ResourceManager manager) {
-        ThemeManager.reload(manager);
         works.repka.ryscope.content.JsonLayout.reload(manager);
         works.repka.ryscope.runtime.Groups.reload(manager);
         works.repka.ryscope.runtime.Stages.reload(manager);

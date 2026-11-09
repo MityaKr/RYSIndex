@@ -19,9 +19,9 @@ import net.minecraft.util.FormattedCharSequence;
 import works.repka.ryscope.model.Ing;
 import works.repka.ryscope.model.RecipeView;
 import works.repka.ryscope.model.Stack;
-import works.repka.ryscope.ui.Draw;
-import works.repka.ryscope.ui.theme.Theme;
-import works.repka.ryscope.ui.theme.ThemeManager;
+import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.theme.ThemeManager;
 
 /**
  * Страница справки. Блоки: {@code p} (абзац), {@code warn} (предупреждение), {@code items} (ряд предметов).

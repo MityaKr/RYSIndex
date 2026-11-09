@@ -47,6 +47,14 @@ sourceSets.main {
 }
 
 dependencies {
+    implementation "works.repka.ryscore:ryscore-neoforge:${ryscore_version}"
+    // Кор вкладывается в наш jar: игрок ставит один мод, при нескольких модах семьи загрузчик берёт самую новую версию.
+    jarJar("works.repka.ryscore:ryscore-neoforge:[${ryscore_version},2.0.0)") {
+        version {
+            prefer ryscore_version
+        }
+        transitive = false
+    }
     compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
     if (project.findProperty('noJei') == null) {
@@ -76,7 +84,7 @@ processResources {
         mod_id: mod_id, mod_name: mod_name, mod_version: mod_version,
         mod_authors: mod_authors, mod_license: mod_license,
         minecraft_version: minecraft_version, neoforge_version: neoforge_version,
-        jei_version: jei_version
+        jei_version: jei_version, ryscore_version: ryscore_version
     ]
     inputs.properties props
     filesMatching('META-INF/neoforge.mods.toml') {

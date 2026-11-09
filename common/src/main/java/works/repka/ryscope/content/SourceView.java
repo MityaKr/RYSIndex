@@ -12,8 +12,8 @@ import org.jetbrains.annotations.Nullable;
 import works.repka.ryscope.model.Ing;
 import works.repka.ryscope.model.RecipeView;
 import works.repka.ryscope.model.Stack;
-import works.repka.ryscope.ui.Draw;
-import works.repka.ryscope.ui.theme.Theme;
+import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.theme.Theme;
 
 /** Источник предметов: моб, блок или сундук со списком того, что из него выпадает, и шансами. */
 public final class SourceView implements RecipeView {
