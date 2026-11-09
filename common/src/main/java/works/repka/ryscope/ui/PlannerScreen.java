@@ -9,7 +9,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import works.repka.ryscope.client.Keys;
@@ -34,6 +33,7 @@ public final class PlannerScreen extends Screen {
     private final Planner planner;
     private int px, py, pw, ph;
     private float scroll;
+    private final works.repka.ryscore.ui.Scroller scroller = new works.repka.ryscore.ui.Scroller();
     private final Kit.Hits hits = new Kit.Hits();
 
     private PlannerScreen(@Nullable Screen parent, Stack stack) {
@@ -122,7 +122,7 @@ public final class PlannerScreen extends Screen {
         // --- строки ---
         int bodyY = py + HEADER, bodyH = ph - HEADER - FOOTER;
         float max = Math.max(0, planner.lines.size() * ROW - bodyH);
-        scroll = Mth.clamp(scroll, 0, max);
+        scroll = scroller.update(max);
         hits.clip(bodyY, bodyY + bodyH);
         g.enableScissor(px + 1, bodyY, px + pw - 1, bodyY + bodyH);
         Stack hovered = null;
@@ -234,7 +234,7 @@ public final class PlannerScreen extends Screen {
             planner.setRate(planner.rate + (scrollY > 0 ? 1 : -1) * step());
             return true;
         }
-        scroll -= (float) scrollY * ROW * 2;
+        scroller.by(-(float) scrollY * ROW * 2);
         return true;
     }
 

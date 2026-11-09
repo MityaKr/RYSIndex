@@ -3,7 +3,9 @@ package works.repka.ryscope.jei;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
+import mezz.jei.api.gui.inputs.IJeiUserInput;
 import mezz.jei.api.gui.ingredient.IRecipeSlotView;
 import mezz.jei.api.recipe.IFocusGroup;
 import mezz.jei.api.recipe.RecipeIngredientRole;
@@ -131,6 +133,79 @@ public final class JeiRecipeView<T> implements RecipeView {
     @Override
     public void tick() {
         if (layout != null) layout.tick();
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        IRecipeLayoutDrawable<T> l = layout();
+        if (l == null) return false;
+        try {
+            return l.getInputHandler().handleMouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** В JEI нажатие приходит пробным вызовом, а настоящий идёт при отпускании кнопки. */
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        IRecipeLayoutDrawable<T> l = layout();
+        if (l == null) return false;
+        InputConstants.Key key = InputConstants.Type.MOUSE.getOrCreate(button);
+        try {
+            return l.getInputHandler().handleInput(mouseX, mouseY, new Click(key, true));
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @Override
+    public void mouseReleased(double mouseX, double mouseY, int button) {
+        IRecipeLayoutDrawable<T> l = layout();
+        if (l == null) return;
+        try {
+            l.getInputHandler().handleInput(mouseX, mouseY, new Click(InputConstants.Type.MOUSE.getOrCreate(button), false));
+        } catch (Throwable t) {
+            // чужая категория
+        }
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        IRecipeLayoutDrawable<T> l = layout();
+        if (l == null) return false;
+        try {
+            return l.getInputHandler().handleMouseDragged(mouseX, mouseY, InputConstants.Type.MOUSE.getOrCreate(button), dragX, dragY);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private record Click(InputConstants.Key key, boolean simulate) implements IJeiUserInput {
+        @Override
+        public InputConstants.Key getKey() {
+            return key;
+        }
+
+        @Override
+        public int getModifiers() {
+            return 0;
+        }
+
+        @Override
+        public boolean isSimulate() {
+            return simulate;
+        }
+
+        @Override
+        public boolean is(net.minecraft.client.KeyMapping mapping) {
+            return mapping.isActiveAndMatches(key);
+        }
+
+        @Override
+        public boolean is(mezz.jei.api.runtime.IJeiKeyMapping mapping) {
+            return mapping.isActiveAndMatches(key);
+        }
     }
 
     private void readSlots() {

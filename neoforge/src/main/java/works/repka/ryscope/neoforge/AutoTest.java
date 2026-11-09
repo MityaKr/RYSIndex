@@ -167,6 +167,10 @@ final class AutoTest {
             buildDesign();
             return;
         }
+        if ("jeiscroll".equals(System.getProperty("ryscope.autotest"))) {
+            buildJeiScroll();
+            return;
+        }
         if ("ui".equals(System.getProperty("ryscope.autotest"))) {
             buildUi();
             return;
@@ -1178,6 +1182,60 @@ final class AutoTest {
         shot("design_compare");
         step("design: settings", () -> mc().setScreen(new works.repka.ryscope.ui.SettingsScreen(null)), 10);
         shot("design_settings");
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    // --- сценарий jeiscroll: колесо и ползунок внутри рецепта JEI, вкладки, упор у края ---
+
+    private static boolean scrollFound;
+
+    private static void buildJeiScroll() {
+        step("jeiscroll: open", () -> {
+            works.repka.ryscore.theme.ThemeManager.select("ryscore:glass");
+            RYScope.LOG.info("[autotest] тема: {}", works.repka.ryscore.theme.ThemeManager.get().id);
+            RecipeScreen.clearTabs();
+            mc().setScreen(new InventoryScreen(mc().player));
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.OAK_LOG)), Lookup.Mode.RECIPES);
+        }, 30);
+        shot("jeiscroll_tabs");
+        for (int i = 0; i < 40; i++) {
+            final int index = i;
+            step("jeiscroll: probe " + i, () -> {
+                if (scrollFound || !(mc().screen instanceof RecipeScreen rs)) return;
+                for (RecipeScreen.Placed p : rs.placed()) {
+                    if (p.recipe() instanceof works.repka.ryscope.jei.JeiRecipeView<?>) {
+                        boolean took = p.recipe().mouseScrolled(p.x() + p.recipe().width() / 2.0, p.y() + p.recipe().height() / 2.0, 0, -1);
+                        if (took) {
+                            scrollFound = true;
+                            RYScope.LOG.info("[autotest] колесо принято рецептом JEI в группе {}", index);
+                            return;
+                        }
+                    }
+                }
+                rs.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+            }, 6);
+        }
+        shot("jeiscroll_after_wheel");
+        step("jeiscroll: drag", () -> {
+            if (!(mc().screen instanceof RecipeScreen rs) || !scrollFound || rs.placed().isEmpty()) return;
+            RecipeScreen.Placed p = rs.placed().get(0);
+            // ползунок после одного щелчка колеса стоит у верха полосы
+            double x = p.x() + p.recipe().width() - 10, y = p.y() + 30;
+            boolean click = rs.mouseClicked(x, y, 0);
+            boolean drag = rs.mouseDragged(x, y + 20, 0, 0, 20);
+            drag |= rs.mouseDragged(x, y + 40, 0, 0, 20);
+            rs.mouseReleased(x, y + 40, 0);
+            RYScope.LOG.info("[autotest] ползунок: нажатие {}, перетаскивание {}", click, drag);
+        }, 6);
+        shot("jeiscroll_after_drag");
+        step("jeiscroll: result", () -> RYScope.LOG.info("[autotest] рецепт с прокруткой найден: {}", scrollFound), 2);
+        step("jeiscroll: world lens", () -> {
+            works.repka.ryscore.theme.ThemeManager.select("ryscore:slate");
+            mc().setScreen(null);
+            command("setblock 0 -59 3 minecraft:iron_ore");
+            works.repka.ryscope.client.Keys.forceLens = true;
+        }, 20);
+        shot("jeiscroll_world_lens");
         step("quit", () -> mc().stop(), 0);
     }
 

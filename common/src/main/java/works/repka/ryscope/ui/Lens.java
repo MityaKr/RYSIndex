@@ -294,24 +294,13 @@ public final class Lens {
         Theme theme = ThemeManager.get();
         Info info = info(target.stack, target.facts, target.subject == null ? "" : target.subject, target.source, target.preferSource);
         Info shown = new Info(info.stack, info.recipes, info.uses, info.preview, info.previewCategory, info.tags, target.facts, target.subject);
-        // как в макете: полоска сверху слева
-        String name = target.subject != null ? target.subject : info.stack.name().getString();
-        String title = Component.translatable("ryscope.lens.pill", name).getString();
-        StringBuilder sub = new StringBuilder(Component.translatable("ryscope.lens.counts", info.recipes, info.uses).getString());
-        for (String fact : target.facts) sub.append(" · ").append(fact);
-        sub.append(" · ").append(Component.translatable("ryscope.lens.keys", Keys.label(Keys.RECIPES), Keys.label(Keys.USES)).getString());
-        float textW = Math.max(Draw.labelWidth(title, 12.5f, Weight.SEMIBOLD), Draw.labelWidth(sub.toString(), 11.5f, Weight.REGULAR));
-        int px = 36, py = 18, pw = (int) Math.ceil(textW) + 25, ph = 26;
-        Draw.roundBox(g, px, py, pw, ph, theme.beveled() ? 0 : 6f, Draw.alpha(theme.c("hud.bg"), 0.92f), theme.c("hud.border"));
-        Draw.dot(g, px + 7, py + 10, 5, theme.c("accent"));
-        int text = theme.beveled() ? 0xFFFFFFFF : theme.c("text.primary"), muted = theme.beveled() ? 0xFFC0C0C0 : theme.c("text.muted");
-        Draw.label(g, title, px + 18, py + 8.5f, 12.5f, Weight.SEMIBOLD, text);
-        Draw.label(g, sub.toString(), px + 18, py + 17.5f, 11.5f, Weight.REGULAR, muted);
-        // дроп моба или руды в макете не показан, но без него линза теряет смысл: отдельной карточкой ниже
-        if (shown.preview instanceof SourceView) {
-            int[] size = measure(shown);
-            draw(g, theme, shown, px, py + ph + 4, size[0], size[1], -1000, -1000);
-        }
+        // карточка рядом с прицелом: туда игрок и смотрит
+        int[] size = measure(shown);
+        int sw = g.guiWidth(), sh = g.guiHeight();
+        int x = sw / 2 + 14;
+        int y = Math.max(4, Math.min(sh - size[1] - 4, sh / 2 - size[1] / 2));
+        if (x + size[0] > sw - 4) x = sw - 4 - size[0];
+        draw(g, theme, shown, x, y, size[0], size[1], -1000, -1000);
     }
 
     /** Клавиши рецептов и закладки по цели в мире, пока зажата линза. */

@@ -11,7 +11,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import works.repka.ryscope.client.Keys;
@@ -39,7 +38,8 @@ public final class TreeScreen extends Screen {
     private final Screen parent;
     private final CraftTree tree;
     private int px, py, pw, ph;
-    private float scroll, target;
+    private float scroll;
+    private final works.repka.ryscore.ui.Scroller scroller = new works.repka.ryscore.ui.Scroller();
     private final List<Row> rows = new ArrayList<>();
     private int refresh;
     private final Kit.Hits hits = new Kit.Hits();
@@ -93,9 +93,7 @@ public final class TreeScreen extends Screen {
         flatten(tree.root, nodes);
         int bodyY = py + HEADER, bodyH = ph - HEADER - FOOTER;
         float max = Math.max(0, nodes.size() * ROW - bodyH);
-        target = Mth.clamp(target, 0, max);
-        scroll += (target - scroll) * 0.35f;
-        if (Math.abs(target - scroll) < 0.5f) scroll = target;
+        scroll = scroller.update(max);
         rows.clear();
         hits.clip(bodyY, bodyY + bodyH);
         g.enableScissor(px + 1, bodyY, px + pw - 1, bodyY + bodyH);
@@ -145,7 +143,7 @@ public final class TreeScreen extends Screen {
         int w = (int) Math.ceil(Draw.labelWidth(label, 12.5f, Weight.MEDIUM)) + 12;
         Kit.pill(g, t, hits, px + pw - PAD - w, y + 1, label, tree.shortest(), mx, my, () -> {
             tree.setShortest(!tree.shortest());
-            target = 0;
+            scroller.reset();
         });
     }
 
@@ -298,7 +296,7 @@ public final class TreeScreen extends Screen {
             tree.setAmount(tree.amount + (scrollY > 0 ? 1 : -1) * (hasShiftDown() ? 8 : 1));
             return true;
         }
-        target -= (float) scrollY * ROW * 2;
+        scroller.by(-(float) scrollY * ROW * 2);
         return true;
     }
 

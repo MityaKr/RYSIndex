@@ -1,6 +1,7 @@
 package works.repka.ryscope.ui;
 
 import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Scroller;
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
@@ -16,9 +17,11 @@ public final class GridPanel {
     public int x, y, w, h;
     public int gridX, gridY, gridW, gridH;
     public int cols, cell;
-    private float scroll, target;
+    private float scroll, push;
+    private final Scroller scroller = new Scroller();
+    /** Упор у края в страничном режиме. */
+    private final Scroller edge = new Scroller();
     private List<Stack> items = List.of();
-    private long lastFrame;
     /** Страничный режим: колесо и стрелки листают экранами, полосы прокрутки нет. */
     public boolean paged;
     /** Плашки с лёгким оттенком акцента: так в макете отличаются закладки. */
@@ -46,7 +49,8 @@ public final class GridPanel {
     }
 
     public void resetScroll() {
-        scroll = target = 0;
+        scroller.reset();
+        scroll = 0;
         page = 0;
     }
 
@@ -64,7 +68,7 @@ public final class GridPanel {
 
     public void setPage(int value) {
         page = Mth.clamp(value, 0, pages() - 1);
-        target = scroll = page * rowsPerPage() * cell;
+        scroll = page * rowsPerPage() * cell;
     }
 
     public int rows() {
@@ -77,16 +81,19 @@ public final class GridPanel {
     }
 
     private void clampScroll() {
-        target = Mth.clamp(target, 0, maxScroll());
-        scroll = Mth.clamp(scroll, 0, maxScroll());
+        if (paged) return;
+        scroller.limit(maxScroll());
+        scroll = scroller.position();
     }
 
     public void scrollBy(double wheel) {
         if (paged) {
-            setPage(page + (wheel > 0 ? -1 : 1));
+            int next = page + (wheel > 0 ? -1 : 1);
+            if (next >= 0 && next < pages()) setPage(next);
+            else edge.by(wheel > 0 ? -1 : 1);
             return;
         }
-        target = Mth.clamp(target - (float) wheel * cell * 2.5f, 0, maxScroll());
+        scroller.by(-(float) wheel * cell * 2.5f);
     }
 
     /** Прокручивает так, чтобы элемент с этим номером оказался в верхней строке. */
@@ -96,7 +103,9 @@ public final class GridPanel {
             setPage((index / cols) / rowsPerPage());
             return;
         }
-        target = scroll = Mth.clamp((index / cols) * cell, 0, maxScroll());
+        scroller.limit(maxScroll());
+        scroller.jump((index / cols) * cell);
+        scroll = scroller.position();
     }
 
     public void pageBy(int pages) {
@@ -104,7 +113,7 @@ public final class GridPanel {
             setPage(page + pages);
             return;
         }
-        target = Mth.clamp(target + pages * Math.max(cell, gridH - cell), 0, maxScroll());
+        scroller.by(pages * Math.max(cell, gridH - cell));
     }
 
     public boolean contains(double mx, double my) {
@@ -133,16 +142,19 @@ public final class GridPanel {
 
     public void render(GuiGraphics g, Theme theme, int mx, int my, boolean animate) {
         if (!visible()) return;
-        long now = System.nanoTime();
-        float dt = lastFrame == 0 ? 0.016f : Math.min(0.1f, (now - lastFrame) / 1e9f);
-        lastFrame = now;
-        if (paged) setPage(page);
-        clampScroll();
-        if (animate && !paged) {
-            scroll += (target - scroll) * Math.min(1f, dt * 18f);
-            if (Math.abs(target - scroll) < 0.3f) scroll = target;
+        if (paged) {
+            setPage(page);
+            push = edge.update(0);
         } else {
-            scroll = target;
+            push = 0;
+            float max = maxScroll();
+            if (animate) {
+                scroll = scroller.update(max);
+            } else {
+                scroller.limit(max);
+                scroller.jump(scroller.position());
+                scroll = scroller.position();
+            }
         }
 
         int hovered = indexAt(mx, my);
@@ -160,7 +172,7 @@ public final class GridPanel {
             int capacity = (last - first + 1) * cols * 2;
             if (tileXy.length < capacity) tileXy = new int[capacity];
             for (int row = first; row <= last; row++) {
-                int cy = gridY + row * cell - Math.round(scroll);
+                int cy = gridY + row * cell - Math.round(scroll + push);
                 for (int col = 0; col < cols; col++) {
                     if (row * cols + col >= items.size()) break;
                     tileXy[count * 2] = gridX + col * cell;
@@ -171,7 +183,7 @@ public final class GridPanel {
             theme.cells(g, tile, tileXy, count, accentTiles ? theme.c("cell.mark.border") : theme.c("cell.border"));
         }
         for (int row = first; row <= last; row++) {
-            int cy = gridY + row * cell - Math.round(scroll);
+            int cy = gridY + row * cell - Math.round(scroll + push);
             for (int col = 0; col < cols; col++) {
                 int idx = row * cols + col;
                 if (idx >= items.size()) break;
@@ -212,7 +224,7 @@ public final class GridPanel {
             int trackX = gridX + gridW + 1;
             float ratio = gridH / (float) (rows() * cell);
             int thumbH = Math.max(12, Math.round(gridH * ratio));
-            int thumbY = gridY + Math.round((gridH - thumbH) * (scroll / max));
+            int thumbY = gridY + Math.round((gridH - thumbH) * Mth.clamp(scroll / max, 0f, 1f));
             Draw.round(g, trackX, thumbY, 2, thumbH, 1f, theme.c("scroll.thumb"));
         }
     }
@@ -223,7 +235,9 @@ public final class GridPanel {
         if (max <= 0 || paged) return false;
         if (mx < gridX + gridW || mx >= x + w) return false;
         float t = Mth.clamp((float) (my - gridY) / Math.max(1, gridH), 0f, 1f);
-        target = scroll = t * max;
+        scroller.limit(max);
+        scroller.jump(t * max);
+        scroll = scroller.position();
         return true;
     }
 }

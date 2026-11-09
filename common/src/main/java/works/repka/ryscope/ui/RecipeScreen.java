@@ -30,6 +30,8 @@ import works.repka.ryscope.runtime.Lookup.Group;
 import works.repka.ryscore.theme.Theme;
 import works.repka.ryscore.theme.ThemeManager;
 import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Icons;
+import works.repka.ryscore.ui.Scroller;
 import works.repka.ryscore.ui.Type.Weight;
 
 /**
@@ -40,7 +42,7 @@ public final class RecipeScreen extends Screen {
     private static final int CARD_W = 260;
     private static final int PAD_X = 9;
     private static final float HEADER_H = 44f;
-    private static final float TABS_H = 24.5f;
+    private static final float TABS_H = works.repka.ryscore.ui.Kit.TABS_H;
     private static final int BODY_TOP = 8;
     private static final int GAP = 7;
     private static final int STRIP_H = 22;
@@ -49,8 +51,14 @@ public final class RecipeScreen extends Screen {
     private static final int ROW_H_CATEGORY = 9;
     private static final int STATUS_H = 27;
     private static final int BOTTOM = 9;
-    private static final int BUTTONS_W = 50;
+    /** Плюсик и значок списка: столбец справа от рецепта. */
+    private static final int BUTTONS_W = 14;
+    private static final int BUTTONS_GAP = 3;
     private static final int MANY_RECIPES = 6;
+    private static final int TAB_GAP = 2;
+    private static final float TAB_NUMBER_GAP = 3f;
+    private static final float TAB_PAD_MIN = 3f;
+    private static final float TAB_PAD_MAX = 7f;
 
     /** Разделы карточки. Пятый, «Граф», открывает дерево крафта. */
     private enum Section { RECIPES, USES, SOURCES, HELP }
@@ -61,7 +69,7 @@ public final class RecipeScreen extends Screen {
 
     private record Status(String head, String tail, String link, String color) {}
 
-    private record Placed(RecipeView recipe, int x, int y, int rowX, int rowY, int rowW, int rowH) {}
+    public record Placed(RecipeView recipe, int x, int y, int rowX, int rowY, int rowW, int rowH) {}
 
     private record StationSpot(Stack stack, int x, int y) {}
 
@@ -118,6 +126,9 @@ public final class RecipeScreen extends Screen {
     private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
     private final Map<RecipeView, Status> statuses = new IdentityHashMap<>();
     private int transferAge;
+    private final Scroller edge = new Scroller();
+    @Nullable
+    private RecipeView dragging;
 
     private RecipeScreen(@Nullable Screen parent, Nav nav) {
         super(Component.translatable("ryscope.recipes.title"));
@@ -209,6 +220,11 @@ public final class RecipeScreen extends Screen {
     @Nullable
     public Stack focus() {
         return nav.focus;
+    }
+
+    /** Показанные рецепты с их положением на экране. */
+    public List<Placed> placed() {
+        return placed;
     }
 
     public int[] cardBounds() {
@@ -396,29 +412,57 @@ public final class RecipeScreen extends Screen {
 
     private void renderSections(GuiGraphics g, Theme t, int mx, int my, float y) {
         Draw.round(g, cardX + 0.5f, y + TABS_H - 0.5f, cardW - 1, 0.5f, 0.02f, t.c("card.border"));
-        int x = cardX + PAD_X;
-        int top = (int) y, h = (int) Math.ceil(TABS_H);
-        for (Section s : Section.values()) {
-            List<Group> groups = nav.sections.get(s);
-            int count = total(groups);
-            String label = tr("ryscope.section." + s.name().toLowerCase(java.util.Locale.ROOT));
-            x = sectionTab(g, t, mx, my, x, top, h, label, s != Section.HELP ? count : -1, nav.section == s, count > 0 ? b -> switchSection(s) : null);
+        Section[] all = Section.values();
+        String[] labels = new String[all.length + 1];
+        int[] counts = new int[all.length + 1];
+        for (int i = 0; i < all.length; i++) {
+            labels[i] = tr("ryscope.section." + all[i].name().toLowerCase(java.util.Locale.ROOT));
+            counts[i] = all[i] != Section.HELP ? total(nav.sections.get(all[i])) : -1;
         }
-        sectionTab(g, t, mx, my, x, top, h, tr("ryscope.section.graph"), -1, false, b -> TreeScreen.open(nav.focus));
+        labels[all.length] = tr("ryscope.section.graph");
+        counts[all.length] = -1;
+        int room = cardW - PAD_X * 2;
+        float pad = tabPadding(labels, counts, true, room);
+        boolean numbers = pad >= TAB_PAD_MIN;
+        if (!numbers) pad = Math.max(TAB_PAD_MIN, tabPadding(labels, counts, false, room));
+        int x = cardX + PAD_X, right = cardX + cardW - PAD_X;
+        int top = (int) y, h = (int) Math.ceil(TABS_H);
+        for (int i = 0; i < labels.length; i++) {
+            Section s = i < all.length ? all[i] : null;
+            int count = numbers ? counts[i] : -1;
+            boolean enabled = s == null || total(nav.sections.get(s)) > 0;
+            IntConsumer action = !enabled ? null : s == null ? b -> TreeScreen.open(nav.focus) : b -> switchSection(s);
+            x = sectionTab(g, t, mx, my, x, top, h, right, pad, labels[i], count, s != null && nav.section == s, action);
+        }
     }
 
-    private int sectionTab(GuiGraphics g, Theme t, int mx, int my, int x, int top, int h, String label, int count, boolean active, @Nullable IntConsumer action) {
-        Weight weight = active ? Weight.MEDIUM : Weight.REGULAR;
-        String number = count >= 0 ? Integer.toString(count) : "";
-        // ширина как у текста в одну строку, а число стоит под названием: так вкладки выглядят в макете
-        float natural = Draw.labelWidth(number.isEmpty() ? label : label + " " + number, 13, weight);
-        int w = (int) Math.ceil(natural) + 12;
+    /** Ширина текста вкладки: для расчёта всегда как у активной, чтобы вкладки не сдвигались при переключении. */
+    private static float tabTextWidth(String label, int count) {
+        float w = Draw.labelWidth(label, 13, Weight.MEDIUM);
+        return count >= 0 ? w + TAB_NUMBER_GAP + Draw.labelWidth(Integer.toString(count), 13, Weight.REGULAR) : w;
+    }
+
+    /** Отступ внутри вкладки, при котором все вкладки помещаются в строку. */
+    private static float tabPadding(String[] labels, int[] counts, boolean numbers, int room) {
+        float text = 0;
+        for (int i = 0; i < labels.length; i++) text += tabTextWidth(labels[i], numbers ? counts[i] : -1);
+        return Math.min(TAB_PAD_MAX, (room - text - TAB_GAP * (labels.length - 1)) / (labels.length * 2f));
+    }
+
+    private int sectionTab(GuiGraphics g, Theme t, int mx, int my, int x, int top, int h, int right, float pad, String label, int count, boolean active, @Nullable IntConsumer action) {
+        int w = Math.round(tabTextWidth(label, count) + pad * 2);
+        if (x + w > right + 1) return x;
         boolean hot = action != null && over(mx, my, x, top, w, h);
         t.tabLine(g, x, top, w, h, active, hot);
-        Draw.label(g, label, x + 6, top + 7.5f, 13, weight, active || hot ? t.c("text.primary") : t.c("text.muted"));
-        if (!number.isEmpty()) Draw.label(g, number, x + 6, top + 15.5f, 13, Weight.REGULAR, t.c("text.muted"));
+        float cy = top + (h - 1) / 2f, tx = x + pad;
+        int color = action == null ? t.c("text.dim") : t.tabLineFg(active, hot);
+        Draw.label(g, label, tx, cy, 13, active ? Weight.MEDIUM : Weight.REGULAR, color);
+        if (count >= 0) {
+            float nx = tx + Draw.labelWidth(label, 13, Weight.MEDIUM) + TAB_NUMBER_GAP;
+            Draw.label(g, Integer.toString(count), nx, cy, 13, Weight.REGULAR, t.c("text.dim"));
+        }
         if (action != null) hit(x, top, w, h, action);
-        return x + w + 2;
+        return x + w + TAB_GAP;
     }
 
     /** Значки категорий столбцом слева от карточки: сама карточка остаётся как в макете. */
@@ -502,12 +546,18 @@ public final class RecipeScreen extends Screen {
         works.repka.ryscope.runtime.Ae2Terminal.setActive(parent instanceof AbstractContainerScreen<?> host ? host.getMenu() : null);
         int rowX = cardX + PAD_X, rowW = cardW - PAD_X * 2;
         int by = top;
+        // упор у края постраничного списка: рецепты чуть сдвигаются и возвращаются
+        double scale = Draw.scale();
+        float push = (float) (Math.round(edge.update(0) * scale) / scale);
+        g.pose().pushPose();
+        g.pose().translate(0, -push, 0);
         for (int i = 0; i < perPage; i++) {
             int idx = nav.page * perPage + i;
             if (idx >= recipes.size()) break;
             RecipeView r = recipes.get(idx);
             int plate = r.needsPlate() ? 3 : 0;
-            int rx = rowX + plate, ry = by + (rowH - r.height()) / 2;
+            int free = rowW - BUTTONS_W - 6 - r.width() - plate * 2;
+            int rx = rowX + plate + Math.max(0, free / 2), ry = by + (rowH - r.height()) / 2;
             if (plate > 0) t.plate(g, rx - plate, ry - plate, r.width() + plate * 2, r.height() + plate * 2);
             try {
                 r.render(g, t, rx, ry, mx, my, partialTick);
@@ -520,9 +570,10 @@ public final class RecipeScreen extends Screen {
             if (Minecraft.getInstance().options.advancedItemTooltips && r.id() != null) {
                 Draw.label(g, Draw.ellipsize(r.id().toString(), rowW, 9, Weight.REGULAR), rowX, by + rowH + 2, 9, Weight.REGULAR, t.c("text.dim"));
             }
-            renderButtons(g, t, row, mx, my, canTransfer);
+            renderButtons(g, t, row, mx, my);
             by += rowH + GAP;
         }
+        g.pose().popPose();
         renderStatus(g, t, placed.isEmpty() ? null : placed.get(0).recipe, rowX, rowW, by);
     }
 
@@ -549,39 +600,63 @@ public final class RecipeScreen extends Screen {
         return nav.focus != null && r.isCrafting() && !r.outputs().isEmpty();
     }
 
-    private void renderButtons(GuiGraphics g, Theme t, Placed row, int mx, int my, boolean canTransfer) {
-        RecipeView r = row.recipe;
-        int x = row.rowX + row.rowW - BUTTONS_W;
+    private boolean showsTransfer(RecipeView r) {
+        if (!(parent instanceof AbstractContainerScreen<?>)) return false;
         Transfer tr = transfers.get(r);
-        boolean transfer = canTransfer && (tr == null || tr.status() != Transfer.Status.UNSUPPORTED);
-        boolean goal = canGoal(r);
-        int total = (transfer ? 20 : 0) + (transfer && goal ? 4 : 0) + (goal ? 17 : 0);
-        int y = row.rowY + (row.rowH - total) / 2;
-        if (transfer) {
-            // главная кнопка всегда янтарная, как в макете; чего не хватает, видно по строке наличия и подсказке
-            boolean hot = over(mx, my, x, y, BUTTONS_W, 20);
-            int fill = hot ? Draw.mix(t.c("accent"), 0xFFFFFFFF, 0.15f) : t.c("accent");
-            Draw.round(g, x, y, BUTTONS_W, 20, 4.5f, fill);
-            String label = tr("ryscope.transfer.button");
-            Draw.label(g, label, x + (BUTTONS_W - Draw.labelWidth(label, 13, Weight.SEMIBOLD)) / 2f, y + 10f, 13, Weight.SEMIBOLD, t.c("accent.text"));
-            hit(x, y, BUTTONS_W, 20, b -> {
+        return tr == null || tr.status() != Transfer.Status.UNSUPPORTED;
+    }
+
+    /** Верх столбца кнопок строки. */
+    private int buttonsTop(Placed row) {
+        boolean transfer = showsTransfer(row.recipe), goal = canGoal(row.recipe);
+        int total = (transfer ? BUTTONS_W : 0) + (transfer && goal ? BUTTONS_GAP : 0) + (goal ? BUTTONS_W : 0);
+        return row.rowY + (row.rowH - total) / 2;
+    }
+
+    private void renderButtons(GuiGraphics g, Theme t, Placed row, int mx, int my) {
+        RecipeView r = row.recipe;
+        int x = row.rowX + row.rowW - BUTTONS_W, y = buttonsTop(row);
+        if (showsTransfer(r)) {
+            Transfer tr = transfers.get(r);
+            renderPlus(g, t, x, y, tr, over(mx, my, x, y, BUTTONS_W, BUTTONS_W));
+            hit(x, y, BUTTONS_W, BUTTONS_W, b -> {
                 if (b == 0 && parent instanceof AbstractContainerScreen<?> acs && tr != null) doTransfer(acs, r, hasShiftDown());
             });
-            y += 24;
+            y += BUTTONS_W + BUTTONS_GAP;
         }
-        if (goal) {
+        if (canGoal(r)) {
             Stack output = r.outputs().get(0);
-            boolean set = works.repka.ryscope.runtime.Board.contains(output), hot = over(mx, my, x, y, BUTTONS_W, 17);
-            int fill = hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg");
-            Draw.roundBox(g, x, y, BUTTONS_W, 17, 4.5f, fill, t.c("button.border"));
-            String label = tr(set ? "ryscope.goals.in" : "ryscope.goals.add");
-            Draw.label(g, label, x + (BUTTONS_W - Draw.labelWidth(label, 12, Weight.REGULAR)) / 2f, y + 8.5f, 12, Weight.REGULAR, set ? t.c("accent") : t.c("button.fg"));
-            hit(x, y, BUTTONS_W, 17, b -> {
+            boolean set = works.repka.ryscope.runtime.Board.contains(output), hot = over(mx, my, x, y, BUTTONS_W, BUTTONS_W);
+            smallBox(g, t, x, y, hot, set ? Draw.alpha(t.c("accent"), 0.18f) : 0);
+            Icons.drawRotated(g, Icons.Shape.PIN, x + 3, y + 3, 8, 35, set || hot ? t.c("accent") : t.c("button.fg"));
+            hit(x, y, BUTTONS_W, BUTTONS_W, b -> {
                 if (b != 0) return;
                 boolean added = works.repka.ryscope.runtime.Board.toggle(output, 1);
                 Overlay.toast(tr(added ? "ryscope.goals.added" : "ryscope.goals.removed"));
             });
         }
+    }
+
+    /** Плюсик переноса: янтарный, если перенести можно; угловая точка говорит, чего не хватает. */
+    private void renderPlus(GuiGraphics g, Theme t, int x, int y, @Nullable Transfer tr, boolean hot) {
+        boolean ok = tr != null && tr.applicable();
+        if (t.beveled()) t.button(g, x, y, BUTTONS_W, BUTTONS_W, hot, ok);
+        else if (ok) Draw.round(g, x, y, BUTTONS_W, BUTTONS_W, 4f, hot ? Draw.mix(t.c("accent"), 0xFFFFFFFF, 0.15f) : t.c("accent"));
+        else smallBox(g, t, x, y, hot, 0);
+        Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, ok ? t.c("accent.text") : t.c("text.dim"));
+        if (tr == null) return;
+        if (!ok) Draw.dot(g, x + BUTTONS_W - 4, y + 1, 3, t.c("state.bad"));
+        else if (tr.status() == Transfer.Status.PARTIAL) Draw.dot(g, x + BUTTONS_W - 4, y + 1, 3, t.c("state.warn"));
+    }
+
+    private void smallBox(GuiGraphics g, Theme t, int x, int y, boolean hot, int tint) {
+        if (t.beveled()) {
+            t.button(g, x, y, BUTTONS_W, BUTTONS_W, hot, false);
+            return;
+        }
+        int fill = hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg");
+        Draw.roundBox(g, x, y, BUTTONS_W, BUTTONS_W, 4f, fill, t.c("button.border"));
+        if (tint != 0) Draw.round(g, x, y, BUTTONS_W, BUTTONS_W, 4f, tint);
     }
 
     private void renderStatus(GuiGraphics g, Theme t, @Nullable RecipeView r, int x, int w, int y) {
@@ -704,25 +779,31 @@ public final class RecipeScreen extends Screen {
                     break;
                 }
             }
-            if (!drawn && parent instanceof AbstractContainerScreen<?>) {
-                for (Placed p : placed) {
-                    Transfer tr = transfers.get(p.recipe);
-                    int x = p.rowX + p.rowW - BUTTONS_W;
-                    boolean goal = canGoal(p.recipe);
-                    int total = 20 + (goal ? 21 : 0);
-                    int y = p.rowY + (p.rowH - total) / 2;
-                    if (tr != null && tr.status() != Transfer.Status.UNSUPPORTED && over(mx, my, x, y, BUTTONS_W, 20)) {
-                        if (!tr.lines().isEmpty()) {
-                            g.renderComponentTooltip(font, tr.lines(), mx, my);
-                        } else {
-                            String key = tr.applicable() ? "ryscope.transfer.hint" : tr.message();
-                            works.repka.ryscore.ui.Kit.tooltip(g, t, List.of(tr(key == null ? "ryscope.transfer.missing" : key)), mx, my);
-                        }
-                    }
-                }
+            if (!drawn) {
+                for (Placed p : placed) buttonTooltip(g, t, font, p, mx, my);
             }
         }
         g.pose().popPose();
+    }
+
+    private void buttonTooltip(GuiGraphics g, Theme t, Font font, Placed p, int mx, int my) {
+        int x = p.rowX + p.rowW - BUTTONS_W, y = buttonsTop(p);
+        if (showsTransfer(p.recipe)) {
+            Transfer tr = transfers.get(p.recipe);
+            if (tr != null && over(mx, my, x, y, BUTTONS_W, BUTTONS_W)) {
+                if (!tr.lines().isEmpty()) {
+                    g.renderComponentTooltip(font, tr.lines(), mx, my);
+                } else {
+                    String key = tr.applicable() ? "ryscope.transfer.hint" : tr.message();
+                    works.repka.ryscore.ui.Kit.tooltip(g, t, List.of(tr(key == null ? "ryscope.transfer.missing" : key)), mx, my);
+                }
+            }
+            y += BUTTONS_W + BUTTONS_GAP;
+        }
+        if (canGoal(p.recipe) && over(mx, my, x, y, BUTTONS_W, BUTTONS_W)) {
+            boolean set = works.repka.ryscope.runtime.Board.contains(p.recipe.outputs().get(0));
+            works.repka.ryscore.ui.Kit.tooltip(g, t, List.of(tr(set ? "ryscope.goals.in" : "ryscope.goals.add")), mx, my);
+        }
     }
 
     @Nullable
@@ -835,6 +916,12 @@ public final class RecipeScreen extends Screen {
             }
             return true;
         }
+        for (Placed p : placed) {
+            if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseClicked(mx, my, button)) {
+                dragging = p.recipe;
+                return true;
+            }
+        }
         if (!over(mx, my, cardX, cardY, cardW, cardH) && !Overlay.isOver(mx, my) && button == 0) onClose();
         return true;
     }
@@ -857,11 +944,17 @@ public final class RecipeScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
+        if (dragging != null) {
+            dragging.mouseReleased(mx, my, button);
+            dragging = null;
+            return true;
+        }
         return Overlay.mouseReleased(this, mx, my, button) || super.mouseReleased(mx, my, button);
     }
 
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (dragging != null && dragging.mouseDragged(mx, my, button, dx, dy)) return true;
         return Overlay.mouseDragged(this, mx, my, button) || super.mouseDragged(mx, my, button, dx, dy);
     }
 
@@ -869,11 +962,17 @@ public final class RecipeScreen extends Screen {
     public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
         if (Overlay.mouseScrolled(this, mx, my, scrollY)) return true;
         if (categoryStrip() && over(mx, my, cardX - 25, cardY, 24, height - cardY)) {
-            setGroup(nav.group + (scrollY < 0 ? 1 : -1));
+            int next = nav.group + (scrollY < 0 ? 1 : -1);
+            if (next >= 0 && next < nav.groups.size()) setGroup(next);
             return true;
         }
+        for (Placed p : placed) {
+            if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseScrolled(mx, my, scrollX, scrollY)) return true;
+        }
         if (over(mx, my, cardX, cardY, cardW, cardH)) {
-            setPage(nav.page + (scrollY < 0 ? 1 : -1));
+            int next = nav.page + (scrollY < 0 ? 1 : -1);
+            if (next >= 0 && next < pages()) setPage(next);
+            else edge.by(scrollY < 0 ? 1 : -1);
             return true;
         }
         return false;
