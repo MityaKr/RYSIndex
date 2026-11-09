@@ -85,10 +85,14 @@ public final class ServerStages {
         // кто открыл печь, тот и «хозяин» плавки: по его стадиям решается, что печь может плавить
         gameBus.addListener((net.neoforged.neoforge.event.entity.player.PlayerContainerEvent.Open e) -> {
             if (defs.isEmpty() || !(e.getEntity() instanceof ServerPlayer player)) return;
-            if (e.getContainer() instanceof net.minecraft.world.inventory.AbstractFurnaceMenu menu && !menu.slots.isEmpty()
-                && menu.slots.get(0).container instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity furnace) {
-                furnace.getPersistentData().putUUID(OWNER_KEY, player.getUUID());
-                furnace.setChanged();
+            var menu = e.getContainer();
+            boolean selfWorking = menu instanceof net.minecraft.world.inventory.AbstractFurnaceMenu
+                || menu instanceof net.minecraft.world.inventory.CrafterMenu
+                || menu instanceof net.minecraft.world.inventory.BrewingStandMenu;
+            if (selfWorking && !menu.slots.isEmpty()
+                && menu.slots.get(0).container instanceof net.minecraft.world.level.block.entity.BlockEntity block) {
+                block.getPersistentData().putUUID(OWNER_KEY, player.getUUID());
+                block.setChanged();
             }
         });
         gameBus.addListener((net.neoforged.neoforge.event.server.ServerStartedEvent e) -> verifyHooks());
@@ -273,6 +277,62 @@ public final class ServerStages {
         return false;
     }
 
+    /** Костёр: еду кладёт игрок, по его стадиям и решается. Автоматика (без игрока) не блокируется. */
+    public static boolean isCampfireLocked(net.minecraft.world.entity.LivingEntity entity,
+                                           net.minecraft.world.level.block.entity.CampfireBlockEntity campfire,
+                                           net.minecraft.world.item.ItemStack food) {
+        if (defs.isEmpty() || !(entity instanceof ServerPlayer player)) return false;
+        var recipe = campfire.getCookableRecipe(food);
+        return recipe.isPresent() && isCraftLocked(player, recipe.get());
+    }
+
+    /** Автоверстак: решают стадии того, кто открывал его последним. */
+    public static boolean isCrafterLocked(net.minecraft.world.level.block.entity.CrafterBlockEntity crafter, RecipeHolder<?> recipe) {
+        if (defs.isEmpty() || !(crafter.getLevel() instanceof net.minecraft.server.level.ServerLevel level)) return false;
+        MinecraftServer server = level.getServer();
+        return ownerLocked(crafter, def -> recipesOf(server, def).contains(recipe.id()), net.minecraft.world.inventory.CrafterMenu.class);
+    }
+
+    /** Варочная стойка: у зелий нет рецептов с id, поэтому смотрим, относится ли результат к закрытой стадии. */
+    public static boolean isBrewLocked(net.minecraft.world.level.block.entity.BrewingStandBlockEntity stand) {
+        if (defs.isEmpty() || stand.getLevel() == null) return false;
+        var brewing = stand.getLevel().potionBrewing();
+        net.minecraft.world.item.ItemStack ingredient = stand.getItem(3);
+        if (ingredient.isEmpty()) return false;
+        List<net.minecraft.world.item.ItemStack> results = new ArrayList<>(3);
+        for (int i = 0; i < 3; i++) {
+            net.minecraft.world.item.ItemStack bottle = stand.getItem(i);
+            if (!bottle.isEmpty() && brewing.hasMix(bottle, ingredient)) results.add(brewing.mix(ingredient, bottle));
+        }
+        if (results.isEmpty()) return false;
+        return ownerLocked(stand, def -> {
+            for (net.minecraft.world.item.ItemStack result : results) if (def.ownsItem(result)) return true;
+            return false;
+        }, net.minecraft.world.inventory.BrewingStandMenu.class);
+    }
+
+    /**
+     * Блок, который работает сам: закрыт ли для него рецепт. Решают стадии того, кто открывал блок последним;
+     * если его нет в сети, берётся состояние на момент последнего входа; если блок никто не открывал, запрета нет.
+     */
+    private static boolean ownerLocked(net.minecraft.world.level.block.entity.BlockEntity block,
+                                       java.util.function.Predicate<StageDef> owns, Class<?> menuClass) {
+        if (!(block.getLevel() instanceof net.minecraft.server.level.ServerLevel level)) return false;
+        MinecraftServer server = level.getServer();
+        for (StageDef def : defs) {
+            if (!def.enforce || !owns.test(def)) continue;
+            CompoundTag data = block.getPersistentData();
+            if (!data.hasUUID(OWNER_KEY)) return false;
+            UUID owner = data.getUUID(OWNER_KEY);
+            ServerPlayer player = server.getPlayerList().getPlayer(owner);
+            boolean open = player != null ? isUnlocked(player, def) : grants(server).wasUnlocked(owner, def.id);
+            if (open) continue;
+            if (player != null && menuClass.isInstance(player.containerMenu)) notice(player, def, 5000);
+            return true;
+        }
+        return false;
+    }
+
     private static void notice(ServerPlayer player, StageDef def, long intervalMs) {
         long now = System.currentTimeMillis();
         Long last = lastNotice.get(player.getUUID());
@@ -295,9 +355,13 @@ public final class ServerStages {
         Class<?>[] targets = {
             net.minecraft.server.network.ServerCommonPacketListenerImpl.class,
             net.minecraft.world.inventory.CraftingMenu.class,
+            net.minecraft.world.inventory.Slot.class,
             net.minecraft.world.inventory.SmithingMenu.class,
             net.minecraft.world.inventory.StonecutterMenu.class,
-            net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity.class
+            net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity.class,
+            net.minecraft.world.level.block.entity.CampfireBlockEntity.class,
+            net.minecraft.world.level.block.CrafterBlock.class,
+            net.minecraft.world.level.block.entity.BrewingStandBlockEntity.class
         };
         List<String> missing = new ArrayList<>();
         for (Class<?> target : targets) {
@@ -311,7 +375,7 @@ public final class ServerStages {
             if (!found) missing.add(target.getSimpleName());
         }
         if (missing.isEmpty()) {
-            RYScope.LOG.info("Замки стадий установлены: пакет рецептов, верстак, кузнечный стол, камнерез, печи");
+            RYScope.LOG.info("Замки стадий установлены: пакет рецептов, верстак, слот результата, кузнечный стол, камнерез, печи, костёр, автоверстак, варочная стойка");
         } else {
             RYScope.LOG.error("Замки стадий НЕ установлены в: {}. В этих местах закрытые рецепты выполняются. "
                 + "Вероятно, версия игры или загрузчика отличается от той, под которую собран мод.", missing);

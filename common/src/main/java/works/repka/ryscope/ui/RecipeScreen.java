@@ -39,6 +39,76 @@ public final class RecipeScreen extends Screen {
     private static final int BUTTON_COL = 20;
     private static final int TAB_W = 22;
 
+    // --- вкладки открытых предметов: живут, пока игрок в мире ---
+
+    private record Tab(Stack stack, Lookup.Mode mode) {}
+
+    private static final List<Tab> TABS = new ArrayList<>();
+    private static final int MAX_TABS = 9;
+    private static final int STRIP_H = 22;
+
+    private static void remember(Stack stack, Lookup.Mode mode) {
+        for (int i = 0; i < TABS.size(); i++) {
+            if (TABS.get(i).stack.same(stack)) {
+                TABS.set(i, new Tab(stack, mode));
+                return;
+            }
+        }
+        TABS.add(new Tab(stack, mode));
+        while (TABS.size() > MAX_TABS) TABS.remove(0);
+    }
+
+    public static void clearTabs() {
+        TABS.clear();
+    }
+
+    public static int tabCount() {
+        return TABS.size();
+    }
+
+    /** Ресурс, рецепты которого сейчас показаны, или null для просмотра категории. */
+    @Nullable
+    public Stack focus() {
+        return nav.focus;
+    }
+
+    private int itemTabAt(double mx, double my) {
+        if (TABS.size() < 2) return -1;
+        int y = cardY - STRIP_H + 1;
+        if (my < y || my >= y + 20 || mx < cardX) return -1;
+        int i = (int) ((mx - cardX) / TAB_W);
+        return i < TABS.size() && mx - cardX - i * TAB_W < TAB_W - 2 ? i : -1;
+    }
+
+    private int currentTab() {
+        if (nav.focus == null) return -1;
+        for (int i = 0; i < TABS.size(); i++) if (TABS.get(i).stack.same(nav.focus)) return i;
+        return -1;
+    }
+
+    private void cycleTab(int step) {
+        if (TABS.isEmpty()) return;
+        int cur = currentTab();
+        Tab next = TABS.get(Math.floorMod((cur < 0 ? 0 : cur) + step, TABS.size()));
+        if (nav.focus == null || !next.stack.same(nav.focus)) open(next.stack, next.mode);
+    }
+
+    private void closeTab(int index) {
+        Tab closed = TABS.remove(index);
+        if (nav.focus == null || !closed.stack.same(nav.focus)) return;
+        if (TABS.isEmpty()) {
+            onClose();
+            return;
+        }
+        Tab next = TABS.get(Math.min(index, TABS.size() - 1));
+        if (open(next.stack, next.mode)) {
+            // закрытая вкладка не должна возвращаться по «назад»
+            if (!history.isEmpty()) history.pop();
+        } else {
+            onClose();
+        }
+    }
+
     private static final class Nav {
         @Nullable Stack focus;
         Lookup.Mode mode;
@@ -94,6 +164,7 @@ public final class RecipeScreen extends Screen {
         }
         Nav nav = new Nav(stack.withAmount(1), mode, groups);
         works.repka.ryscope.runtime.History.add(stack);
+        remember(nav.focus, mode);
         show(mc, nav);
         return true;
     }
@@ -145,11 +216,12 @@ public final class RecipeScreen extends Screen {
         int rowH = maxH + INNER * 2 + plate * 2;
         cardW = Math.min(width - 8, Math.max(210, maxW + plate * 2 + INNER * 2 + BUTTON_COL + PAD * 2));
         int chrome = PAD + HEADER_H + TABS_H + TITLE_H + FOOTER_H + PAD;
-        int bodyAvail = height - (compact ? 6 : 12) - chrome;
+        int strip = TABS.size() > 1 ? STRIP_H : 0;
+        int bodyAvail = height - (compact ? 6 : 12) - chrome - strip;
         perPage = Math.max(1, Math.min(recipes.size(), (bodyAvail + GAP) / (rowH + GAP)));
-        cardH = Math.min(height - 4, chrome + perPage * (rowH + GAP) - GAP);
+        cardH = Math.min(height - 4 - strip, chrome + perPage * (rowH + GAP) - GAP);
         cardX = (width - cardW) / 2;
-        cardY = Math.max(2, (height - cardH) / 2);
+        cardY = Math.max(2 + strip, (height - cardH + strip) / 2);
         nav.page = Math.max(0, Math.min(nav.page, pages() - 1));
     }
 
@@ -166,6 +238,18 @@ public final class RecipeScreen extends Screen {
         renderBackground(g, mx, my, partialTick);
         Overlay.renderBackground(this, g, mx, my, partialTick);
         theme.panel(g, cardX, cardY, cardW, cardH);
+
+        // --- вкладки открытых предметов над карточкой ---
+        if (TABS.size() > 1) {
+            int sy = cardY - STRIP_H + 1;
+            for (int i = 0; i < TABS.size(); i++) {
+                int sx = cardX + i * TAB_W;
+                Tab tab = TABS.get(i);
+                boolean current = nav.focus != null && tab.stack.same(nav.focus);
+                theme.tab(g, sx, sy, TAB_W - 2, 20, current, over(mx, my, sx, sy, TAB_W - 2, 20));
+                tab.stack.render(g, sx + 2, sy + 2);
+            }
+        }
 
         // --- шапка ---
         int hx = cardX + PAD, hy = cardY + PAD;
@@ -392,6 +476,8 @@ public final class RecipeScreen extends Screen {
             }
         }
         if (nav.focus != null && over(mx, my, cardX + PAD, cardY + PAD, 16, 16)) return nav.focus;
+        int itemTab = itemTabAt(mx, my);
+        if (itemTab >= 0) return TABS.get(itemTab).stack;
         for (StationSpot s : stations) if (over(mx, my, s.x, s.y, 12, 12)) return s.stack;
         return null;
     }
@@ -458,12 +544,21 @@ public final class RecipeScreen extends Screen {
         }
         history.push(nav);
         nav = new Nav(nav.focus, mode, groups);
+        remember(nav.focus, mode);
         transfers.clear();
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (Overlay.mouseClicked(this, mx, my, button)) return true;
+        int itemTab = itemTabAt(mx, my);
+        if (itemTab >= 0) {
+            // левая кнопка переключает вкладку, правая и средняя закрывают
+            Tab tab = TABS.get(itemTab);
+            if (button != 0) closeTab(itemTab);
+            else if (nav.focus == null || !tab.stack.same(nav.focus)) open(tab.stack, tab.mode);
+            return true;
+        }
         Font font = Minecraft.getInstance().font;
         // режимы
         if (nav.focus != null) {
@@ -613,6 +708,15 @@ public final class RecipeScreen extends Screen {
                     return true;
                 }
             }
+        }
+        if (key == GLFW.GLFW_KEY_TAB && hasControlDown()) {
+            cycleTab(hasShiftDown() ? -1 : 1);
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_W && hasControlDown()) {
+            int cur = currentTab();
+            if (cur >= 0) closeTab(cur);
+            return true;
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.options.keyInventory.matches(key, scan)) {

@@ -8,10 +8,15 @@
     "CraftingMenuMixin",
     "SmithingMenuMixin",
     "StonecutterMenuMixin",
-    "AbstractFurnaceBlockEntityMixin"
+    "AbstractFurnaceBlockEntityMixin",
+    "CampfireBlockEntityMixin",
+    "CrafterBlockMixin",
+    "BrewingStandBlockEntityMixin",
+    "SlotMixin"
   ],
   "client": [
-    "StartEventObserverMixin"
+    "StartEventObserverMixin",
+    "JeiErrorUtilMixin"
   ],
   "injectors": {
     "defaultRequire": 0

@@ -42,6 +42,12 @@ public final class Config {
     public boolean asyncJeiUnsafe = false;
     /** Сколько ошибок плагинов даёт и обычная загрузка JEI в этой сборке: столько в фоне считается нормой. */
     public int asyncJeiTolerated = 0;
+    /** Учитывать в дереве крафта и на доске то, что игрок видел в хранилищах рядом. */
+    public boolean countStorages = true;
+    /** Радиус в блоках, в котором запомненные хранилища считаются доступными. */
+    public int storageRadius = 32;
+    /** Сохранённые поисковые запросы. */
+    public java.util.List<String> savedSearches = new java.util.ArrayList<>();
     /** Показывать закреплённые цели поверх мира. */
     public boolean boardHud = true;
     /** В каких единицах показывать энергию: FE, RF, J, EU. */

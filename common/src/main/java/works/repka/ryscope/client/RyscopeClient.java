@@ -52,6 +52,7 @@ public final class RyscopeClient {
         works.repka.ryscope.runtime.LootSource.clear();
         works.repka.ryscope.runtime.Board.reset();
         works.repka.ryscope.runtime.History.clear();
+        works.repka.ryscope.ui.RecipeScreen.clearTabs();
         works.repka.ryscope.runtime.Stages.reset();
     }
 
@@ -69,6 +70,7 @@ public final class RyscopeClient {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
         InventoryView.tick();
+        works.repka.ryscope.runtime.Storages.tick();
         works.repka.ryscope.runtime.Board.tick();
         works.repka.ryscope.runtime.Stages.tick();
         if (indexDelay >= 0 && --indexDelay < 0) {

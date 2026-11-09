@@ -97,13 +97,66 @@ public final class CraftTree {
     private int nodeCount;
     private Map<Object, Long> pool;
 
+    /** Сколько времени за один вызов можно тратить на поиск рецептов, когда дерево строится по частям. */
+    private static final long SLICE_NANOS = 10_000_000L;
+
+    /** Сигнал «время вышло, продолжим в следующем кадре». Без стека вызовов: это не ошибка. */
+    private static final class Pending extends RuntimeException {
+        static final Pending INSTANCE = new Pending();
+
+        private Pending() {
+            super(null, null, false, false);
+        }
+    }
+
+    /** Всё дорогое про один ресурс: его рецепты и что из него делается. От места узла в дереве не зависит. */
+    private record Loaded(List<Candidate> candidates, Set<Object> madeFromThis, String sources) {}
+
+    private record Candidate(Category category, RecipeView recipe, List<Ing> inputs, boolean unpacking, boolean singleKind) {}
+
+    private final boolean deferred;
+    private boolean ready = true;
+    private long deadline;
+    private final Map<Object, Loaded> loaded = new HashMap<>();
+
     public CraftTree(Stack target) {
+        this(target, false);
+    }
+
+    /**
+     * @param deferred строить по частям: каждый вызов {@link #recompute()} тратит на поиск рецептов не больше
+     *                 нескольких миллисекунд, и пока {@link #ready()} возвращает false, дерево показывать нельзя.
+     *                 Нужно экрану, чтобы он открывался сразу, а не после поиска по всем рецептам сборки.
+     */
+    public CraftTree(Stack target, boolean deferred) {
         this.root = new Node(target.withAmount(1), null);
+        this.deferred = deferred;
         recompute();
+    }
+
+    /** Дерево построено целиком и его можно показывать. */
+    public boolean ready() {
+        return ready;
+    }
+
+    /** Сколько разных ресурсов уже просмотрено: для индикатора загрузки. */
+    public int examined() {
+        return loaded.size();
     }
 
     /** Пересчитывает количества, распределение инвентаря и итоги. Выбор рецептов в узлах сохраняется. */
     public void recompute() {
+        deadline = deferred ? System.nanoTime() + SLICE_NANOS : 0;
+        try {
+            compute();
+            ready = true;
+        } catch (Pending pending) {
+            // уже найденное лежит в кэше: следующий вызов пройдёт дальше
+            ready = false;
+        }
+    }
+
+    private void compute() {
         raw.clear();
         stations.clear();
         steps = 0;
@@ -112,6 +165,8 @@ public final class CraftTree {
         pool = new HashMap<>();
         if (useInventory && InventoryView.tracking()) {
             for (Map.Entry<Item, Integer> e : InventoryView.snapshot().entrySet()) pool.put(e.getKey(), (long) e.getValue());
+            // то, что игрок видел в хранилищах рядом, тоже считается имеющимся
+            for (Map.Entry<Item, Long> e : Storages.counts().entrySet()) pool.merge(e.getKey(), e.getValue(), Long::sum);
         }
         root.needed = amount;
         // сам целевой предмет из инвентаря не вычитаем: игрок спрашивает, как сделать ещё
@@ -172,19 +227,25 @@ public final class CraftTree {
         }
         List<Node> old = new ArrayList<>(node.children);
         node.children.clear();
-        for (Map.Entry<Object, long[]> e : totals.entrySet()) {
-            Node child = null;
-            for (Node o : old) {
-                if (o.stack.key().equals(e.getKey())) {
-                    child = o;
-                    break;
+        try {
+            for (Map.Entry<Object, long[]> e : totals.entrySet()) {
+                Node child = null;
+                for (Node o : old) {
+                    if (o.stack.key().equals(e.getKey())) {
+                        child = o;
+                        break;
+                    }
                 }
+                if (child == null) child = new Node(picks.get(e.getKey()).withAmount(1), node);
+                child.ing = ings.get(e.getKey());
+                child.needed = e.getValue()[0];
+                node.children.add(child);
+                visit(child, true);
             }
-            if (child == null) child = new Node(picks.get(e.getKey()).withAmount(1), node);
-            child.ing = ings.get(e.getKey());
-            child.needed = e.getValue()[0];
-            node.children.add(child);
-            visit(child, true);
+        } catch (Pending pending) {
+            // обход прерван: возвращаем узлы, до которых не дошли, иначе пропадёт выбор рецептов в них
+            for (Node o : old) if (!node.children.contains(o)) node.children.add(o);
+            throw pending;
         }
     }
 
@@ -197,52 +258,85 @@ public final class CraftTree {
     }
 
     private void loadOptions(Node node) {
+        Loaded info = loaded(node.stack);
         List<Option> out = new ArrayList<>();
-        Snapshot snap = Indexer.snapshot();
-        // что делается из этого предмета: если рецепт требует именно такой продукт, пара обратима
-        Set<Object> madeFromThis = new HashSet<>();
-        for (Snapshot.Entry e : snap.consuming(node.stack)) {
-            for (Stack o : e.recipe().outputs()) madeFromThis.add(o.key());
+        for (Candidate c : info.candidates()) {
+            if (out.size() >= 64) break;
+            boolean cyclic = false, reversible = c.unpacking();
+            for (Ing ing : c.inputs()) {
+                if (ing.isEmpty()) continue;
+                boolean allAncestors = true, allReverse = true;
+                for (Stack o : ing.options) {
+                    if (!node.hasAncestor(o.key())) allAncestors = false;
+                    if (!info.madeFromThis().contains(o.key())) allReverse = false;
+                }
+                if (allAncestors) cyclic = true;
+                // обратимая пара это «слиток из блока, блок из слитков»: у обоих рецептов один вид входа.
+                // Рецепт из нескольких видов (лук из палок и нити) обратимым не считается, даже если мод умеет
+                // разбирать лук обратно на палки и нить: иначе в больших сборках дерево уходит в экзотику.
+                if (allReverse && c.singleKind()) reversible = true;
+            }
+            if (cyclic) continue;
+            out.add(new Option(c.category(), c.recipe(), reversible));
         }
+        node.sources = info.sources();
+        node.options = out;
+    }
+
+    /** Сколько разных видов ресурсов на входе рецепта: девять слитков в сетке это один вид. */
+    private static int distinctKinds(List<Ing> inputs) {
+        Set<Object> kinds = new HashSet<>();
+        for (Ing ing : inputs) if (!ing.isEmpty() && !ing.options.isEmpty()) kinds.add(ing.options.get(0).key());
+        return kinds.size();
+    }
+
+    /**
+     * Рецепты ресурса. Это самая долгая часть построения: поиск по всем рецептам сборки и разбор их входов.
+     * Результат кэшируется на время жизни дерева; при построении по частям здесь же проверяется бюджет времени.
+     */
+    private Loaded loaded(Stack stack) {
+        Object key = stack.key();
+        Loaded cached = loaded.get(key);
+        if (cached != null) return cached;
+        if (deadline != 0 && System.nanoTime() > deadline) throw Pending.INSTANCE;
+        Set<Object> madeFromThis = new HashSet<>();
+        List<Candidate> candidates = new ArrayList<>();
+        List<String> names = new ArrayList<>();
         try {
-            List<String> names = new ArrayList<>();
-            for (Lookup.Group g : Lookup.find(node.stack, Lookup.Mode.RECIPES)) {
+            // что делается из этого предмета
+            for (Snapshot.Entry e : Indexer.snapshot().consuming(stack)) {
+                if (distinctKinds(e.recipe().inputs()) != 1) continue;
+                for (Stack o : e.recipe().outputs()) madeFromThis.add(o.key());
+            }
+            for (Lookup.Group g : Lookup.find(stack, Lookup.Mode.RECIPES)) {
                 for (RecipeView r : g.recipes()) {
                     if (!r.isCrafting()) {
                         // дроп и лут не выполняются игроком как рецепт: это подсказка, где добыть
                         if (names.size() < 3 && r instanceof works.repka.ryscope.content.SourceView sv) names.add(sv.name().getString());
                         continue;
                     }
-                    if (out.size() >= 64) break;
-                    boolean cyclic = false, reversible = false, any = false;
-                    for (Ing ing : r.inputs()) {
-                        if (ing.isEmpty()) continue;
-                        any = true;
-                        boolean allAncestors = true, allReverse = true;
-                        for (Stack o : ing.options) {
-                            if (!node.hasAncestor(o.key())) allAncestors = false;
-                            if (!madeFromThis.contains(o.key())) allReverse = false;
-                        }
-                        if (allAncestors) cyclic = true;
-                        if (allReverse) reversible = true;
-                    }
-                    if (!any || cyclic) continue;
-                    // «разборка» (один вид входа даёт четыре и больше штук, как блок в слитки) тоже не путь добычи
+                    if (candidates.size() >= 96) continue;
+                    List<Ing> inputs = r.inputs();
                     int kinds = 0;
-                    for (Ing ing : r.inputs()) if (!ing.isEmpty()) kinds++;
+                    for (Ing ing : inputs) if (!ing.isEmpty()) kinds++;
+                    if (kinds == 0) continue;
+                    boolean singleKind = distinctKinds(inputs) == 1;
+                    // «разборка» (один вид входа даёт четыре и больше штук, как блок в слитки) не путь добычи
+                    boolean unpacking = false;
                     if (kinds == 1 && r.ticks() == 0) {
                         for (Stack o : r.outputs()) {
-                            if (o.key().equals(node.stack.key()) && o.amount >= 4) reversible = true;
+                            if (o.key().equals(key) && o.amount >= 4) unpacking = true;
                         }
                     }
-                    out.add(new Option(g.category(), r, reversible));
+                    candidates.add(new Candidate(g.category(), r, inputs, unpacking, singleKind));
                 }
             }
-            node.sources = String.join(", ", names);
         } catch (Throwable ignored) {
             // без рецептов узел считается сырьём
         }
-        node.options = out;
+        Loaded result = new Loaded(candidates, madeFromThis, String.join(", ", names));
+        loaded.put(key, result);
+        return result;
     }
 
     /** По умолчанию берём необратимый рецепт, для которого у игрока есть больше всего ингредиентов. */

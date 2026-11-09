@@ -201,6 +201,8 @@ public final class Lens {
         if (InventoryView.tracking()) {
             int have = InventoryView.count(info.stack);
             if (have > 0) counts += " · " + Component.translatable("ryscope.lens.have", have).getString();
+            long stored = info.stack.key() instanceof net.minecraft.world.item.Item item ? works.repka.ryscope.runtime.Storages.count(item) : 0;
+            if (stored > 0) counts += " · " + Component.translatable("ryscope.lens.stored", stored).getString();
         }
         Draw.text(g, Draw.ellipsize(counts, inner), x + PAD, cy, theme.c("text.body"));
         cy += 11;

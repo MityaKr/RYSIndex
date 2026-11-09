@@ -41,6 +41,7 @@ public final class SettingsScreen extends Screen {
             works.repka.ryscope.runtime.Units::cycleEnergyUnit, "ryscope.settings.energy_unit.note"));
         toggle("ryscope.settings.bookmarks", () -> c.bookmarksPanel, () -> c.bookmarksPanel = !c.bookmarksPanel, null);
         toggle("ryscope.settings.board", () -> c.boardHud, () -> c.boardHud = !c.boardHud, "ryscope.settings.board.note");
+        toggle("ryscope.settings.storages", () -> c.countStorages, () -> c.countStorages = !c.countStorages, "ryscope.settings.storages.note");
         toggle("ryscope.settings.groups", () -> c.groupItems, () -> {
             c.groupItems = !c.groupItems;
             works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());

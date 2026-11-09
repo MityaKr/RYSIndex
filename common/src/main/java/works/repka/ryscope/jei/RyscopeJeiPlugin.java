@@ -64,9 +64,16 @@ public final class RyscopeJeiPlugin implements IModPlugin {
 
     @Override
     public void onRuntimeAvailable(IJeiRuntime runtime) {
-        bridge = new JeiBridge(runtime);
-        Foreign.set(bridge);
-        RYScope.LOG.info("Мост JEI подключён");
+        JeiBridge created = new JeiBridge(runtime);
+        bridge = created;
+        Runnable connect = () -> {
+            if (bridge != created) return;
+            Foreign.set(created);
+            RYScope.LOG.info("Мост JEI подключён");
+        };
+        // при фоновой загрузке другие плагины ещё не закончили: подключаемся, когда JEI загрузится целиком
+        if (works.repka.ryscope.runtime.JeiAsync.onLoaderThread()) works.repka.ryscope.runtime.JeiAsync.publishWhenLoaded(connect);
+        else connect.run();
     }
 
     @Override

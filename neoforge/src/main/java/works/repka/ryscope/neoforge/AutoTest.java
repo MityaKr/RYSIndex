@@ -65,6 +65,12 @@ final class AutoTest {
 
     static void install(IEventBus bus) {
         RYScope.LOG.info("[autotest] включён, сценарий: {}", System.getProperty("ryscope.autotest"));
+        if (Boolean.getBoolean("ryscope.autotest.asPlayer")) {
+            // В dev-запуске NeoForge включает игровые тесты, и часть модов больших сборок от этого падает.
+            // У игрока этого режима нет, поэтому в проверке «как у игрока» он выключается.
+            net.minecraft.SharedConstants.IS_RUNNING_IN_IDE = false;
+            System.setProperty("neoforge.enableGameTest", "false");
+        }
         build();
         bus.addListener((ClientTickEvent.Post e) -> tick());
         bus.addListener((ScreenEvent.Render.Post e) -> {
@@ -126,7 +132,10 @@ final class AutoTest {
                     mc().screen);
             }
         }, 20);
-        step("world", () -> mc().player != null && mc().level != null && mc().screen == null, () -> {}, 40);
+        step("world", () -> {
+            skipBackupQuestion();
+            return mc().player != null && mc().level != null && mc().screen == null;
+        }, () -> {}, 40);
         step("jei", () -> !ModList.get().isLoaded("jei") || Foreign.get() != null || stuck > 400, () ->
             RYScope.LOG.info("[autotest] источник JEI: {}", Foreign.get() == null ? "нет" : Foreign.get().name()), 10);
         step("index", () -> Indexer.state() == Indexer.State.READY && !Indexer.snapshot().stacks.isEmpty(), () -> {
@@ -303,6 +312,64 @@ final class AutoTest {
         shot("settings");
         step("close", () -> mc().setScreen(null), 5);
 
+        // --- папки закладок, сохранённые запросы, вкладки, хранилища ---
+        step("folders", () -> {
+            works.repka.ryscope.runtime.Bookmarks.addFolder("Redstone");
+            works.repka.ryscope.runtime.Bookmarks.toggle(new ItemRes(new ItemStack(Items.REPEATER)));
+            works.repka.ryscope.runtime.Bookmarks.toggle(new ItemRes(new ItemStack(Items.OBSERVER)));
+            Config.get().savedSearches.clear();
+            Config.get().savedSearches.add("@minecraft #planks -oak");
+            Config.get().savedSearches.add("uses:piston");
+            Config.get().savedSearches.add("craftable");
+            mc().setScreen(new InventoryScreen(mc().player));
+        }, 10);
+        step("folders: check", () -> RYScope.LOG.info("[autotest] папок закладок: {}, открыта {}, закладок в ней: {}",
+            works.repka.ryscope.runtime.Bookmarks.folders().size(), works.repka.ryscope.runtime.Bookmarks.active() + 1,
+            works.repka.ryscope.runtime.Bookmarks.list().size()), 2);
+        step("saved: focus search", () -> {
+            int sw = mc().getWindow().getGuiScaledWidth();
+            moveMouse(sw - 40, 4 + 5 + 7);
+            click(0);
+        }, 8);
+        shot("folders_and_saved_searches");
+        step("saved: down", () -> pressKey(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN), 2);
+        step("saved: down", () -> pressKey(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN), 2);
+        step("saved: enter", () -> pressKey(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER), 8);
+        step("saved: check", () -> RYScope.LOG.info("[autotest] стрелками выбран сохранённый запрос (ожидается uses:piston): «{}»", SearchService.text()), 2);
+        shot("saved_search_applied");
+        step("saved: unfocus", () -> pressKey(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE), 4);
+        search("");
+        step("tabs", () -> {
+            RecipeScreen.clearTabs();
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES);
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.HOPPER)), Lookup.Mode.RECIPES);
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.IRON_INGOT)), Lookup.Mode.USES);
+        }, 10);
+        shot("item_tabs");
+        step("tabs: click first", () -> {
+            if (mc().screen instanceof RecipeScreen rs) {
+                int[] card = rs.cardBounds();
+                moveMouse(card[0] + 10, card[1] - 12);
+                click(0);
+            }
+        }, 8);
+        step("tabs: check", () -> RYScope.LOG.info("[autotest] вкладок: {}, после клика по первой открыт: {}", RecipeScreen.tabCount(),
+            mc().screen instanceof RecipeScreen rs && rs.focus() != null ? rs.focus().id() : "НЕ ЭКРАН РЕЦЕПТОВ"), 2);
+        shot("item_tabs_switched");
+        step("chest", () -> {
+            mc().setScreen(null);
+            command("setblock 0 -60 2 minecraft:chest{Items:[{Slot:0b,id:\"minecraft:redstone\",count:40},{Slot:1b,id:\"minecraft:quartz\",count:12}]}");
+            // хранилище запоминается по блоку, на который игрок смотрит в момент открытия
+            command("tp @s 0.5 -60 0.5 0 30");
+        }, 20);
+        step("chest: open", AutoTest::openBlock, 25);
+        step("chest: close", () -> mc().player.closeContainer(), 25);
+        step("chest: check", () -> RYScope.LOG.info("[autotest] хранилищ учтено: {}, редстоуна в них: {} (ожидается 40)",
+            works.repka.ryscope.runtime.Storages.inRange(), works.repka.ryscope.runtime.Storages.count(Items.REDSTONE)), 2);
+        step("tree with storages", () -> works.repka.ryscope.ui.TreeScreen.open(new ItemRes(new ItemStack(Items.COMPARATOR))), 12);
+        shot("tree_with_storages");
+        step("close", () -> mc().setScreen(null), 5);
+
         // верстак и перенос рецепта
         step("table", () -> command("setblock 0 -60 2 minecraft:crafting_table"), 10);
         step("open table", () -> {
@@ -354,6 +421,11 @@ final class AutoTest {
         step("stages: check blocked", () -> RYScope.LOG.info("[autotest] результат закрытого рецепта в верстаке (должно быть: пусто): {}",
             resultSlotFilled() ? "ВЫДАН" : "пусто"), 2);
         shot("stage_craft_blocked");
+        // даже если результат показан (его считает другой мод, например FastWorkbench), забрать его нельзя
+        step("stages: try take", () -> mc().gameMode.handleInventoryMouseClick(mc().player.containerMenu.containerId, 0, 0,
+            net.minecraft.world.inventory.ClickType.QUICK_MOVE, mc().player), 12);
+        step("stages: check take", () -> RYScope.LOG.info("[autotest] забрать результат закрытого рецепта (должно быть: не удалось): {}",
+            mc().player.getInventory().countItem(Items.DIAMOND_PICKAXE) > 0 ? "ЗАБРАН" : "не удалось"), 2);
         step("stages: grant", () -> command("ryscope stage grant @s config:diamond"), 25);
         step("stages: retry", () -> {
             RYScope.LOG.info("[autotest] после выдачи командой открыто: {}", works.repka.ryscope.runtime.Stages.unlockedIds());
@@ -406,6 +478,16 @@ final class AutoTest {
             slotFilled(3) ? "ВЫДАН" : "пусто"), 2);
         shot("stage_smithing_blocked");
 
+        step("machines: campfire", () -> {
+            mc().player.closeContainer();
+            command("clear @s");
+            command("give @s minecraft:beef 2");
+            command("setblock 0 -60 2 minecraft:campfire");
+        }, 20);
+        step("machines: campfire use", AutoTest::openBlock, 20);
+        step("machines: check campfire locked", () -> RYScope.LOG.info("[autotest] костёр, закрытый рецепт: в руке {} x{} (должно быть: говядина x2)",
+            mc().player.getMainHandItem().getItem(), mc().player.getMainHandItem().getCount()), 2);
+
         step("machines: furnace", () -> {
             mc().setScreen(null);
             command("clear @s");
@@ -446,6 +528,15 @@ final class AutoTest {
         }, 15);
         step("machines: check smithing open", () -> RYScope.LOG.info("[autotest] кузнечный стол после выдачи стадии (должно быть: есть): {}",
             slotFilled(3) ? "есть" : "ПУСТО"), 2);
+        step("machines: campfire 2", () -> {
+            mc().player.closeContainer();
+            command("clear @s");
+            command("give @s minecraft:beef 2");
+            command("setblock 0 -60 2 minecraft:campfire");
+        }, 20);
+        step("machines: campfire use 2", AutoTest::openBlock, 20);
+        step("machines: check campfire open", () -> RYScope.LOG.info("[autotest] костёр после выдачи стадии: в руке {} x{} (должно быть: говядина x1)",
+            mc().player.getMainHandItem().getItem(), mc().player.getMainHandItem().getCount()), 2);
         step("machines: cleanup", () -> {
             mc().setScreen(null);
             command("clear @s");
@@ -628,12 +719,29 @@ final class AutoTest {
                 """);
             java.nio.file.Files.writeString(dir.resolve("stages/machines.json"), """
                 { "name": "Machine age", "order": 4, "advancement": "minecraft:end/kill_dragon", "hint": "Defeat the Ender Dragon to unlock",
-                  "items": ["minecraft:netherite_pickaxe", "minecraft:stone_bricks", "minecraft:glass"] }
+                  "items": ["minecraft:netherite_pickaxe", "minecraft:stone_bricks", "minecraft:glass", "minecraft:cooked_beef"] }
                 """);
             works.repka.ryscope.content.HelpContent.reload(mc().getResourceManager());
             works.repka.ryscope.runtime.Stages.reload(mc().getResourceManager());
         } catch (Exception e) {
             RYScope.LOG.error("[autotest] примеры данных не записаны", e);
+        }
+    }
+
+    /**
+     * Повторное открытие мира в большой сборке останавливается на вопросе «сделать резервную копию?»
+     * (мир помечен как экспериментальный). Автотест отвечает «продолжить без копии».
+     */
+    private static void skipBackupQuestion() {
+        if (!(mc().screen instanceof net.minecraft.client.gui.screens.BackupConfirmScreen screen)) return;
+        for (var child : screen.children()) {
+            if (child instanceof net.minecraft.client.gui.components.Button button
+                && button.getMessage().getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents text
+                && "selectWorld.backupJoinSkipButton".equals(text.getKey())) {
+                RYScope.LOG.info("[autotest] вопрос о резервной копии мира: продолжаю без копии");
+                button.onPress();
+                return;
+            }
         }
     }
 

@@ -61,6 +61,12 @@ public final class Overlay {
     private static java.util.List<String> tagCache;
     private static works.repka.ryscope.runtime.Snapshot tagCacheFor;
     private static final int[] gearRect = new int[4];
+    /** Поле имени папки закладок, пока идёт переименование. */
+    private static EditBox folderEdit;
+    private static final int[] markHead = new int[3];
+    private static long folderDeleteArmed;
+    private static final List<String> savedShown = new ArrayList<>();
+    private static int savedIndex = -1;
 
     private Overlay() {}
 
@@ -71,7 +77,7 @@ public final class Overlay {
     }
 
     public static boolean searchFocused() {
-        return search != null && search.isFocused();
+        return (search != null && search.isFocused()) || folderEdit != null;
     }
 
     public static void toast(String message) {
@@ -98,6 +104,7 @@ public final class Overlay {
             search.setResponder(text -> {
                 SearchService.submit(text);
                 LIST.resetScroll();
+                savedIndex = -1;
             });
         }
         return search;
@@ -146,12 +153,24 @@ public final class Overlay {
         int[] b = hostBounds(screen);
         int left = b[0], right = b[0] + b[2];
         Foreign.Source foreign = Foreign.get();
+        int leftTop = MARGIN, leftBottom = sh - MARGIN, rightTop = MARGIN, rightBottom = sh - MARGIN;
         if (foreign != null && screen instanceof AbstractContainerScreen<?>) {
             try {
                 for (int[] area : foreign.exclusionAreas(screen)) {
-                    // боковые вкладки чужих экранов расширяют занятую область
-                    if (area[0] + area[2] > right && area[0] < right + 80) right = area[0] + area[2];
-                    if (area[0] < left && area[0] + area[2] > left - 80) left = area[0];
+                    boolean beside = area[1] < b[1] + b[3] && area[1] + area[3] > b[1];
+                    if (beside && area[0] + area[2] > right && area[0] <= right + 12) {
+                        // боковая вкладка, прилипшая к окну справа, расширяет занятую область
+                        right = area[0] + area[2];
+                    } else if (beside && area[0] < left && area[0] + area[2] >= left - 12) {
+                        left = area[0];
+                    } else if (area[0] + area[2] / 2 < sw / 2) {
+                        // чужие кнопки в углу экрана (например, боковая панель FTB): наши панели их обходят
+                        if (area[1] < sh / 2) leftTop = Math.max(leftTop, area[1] + area[3] + MARGIN);
+                        else leftBottom = Math.min(leftBottom, area[1] - MARGIN);
+                    } else {
+                        if (area[1] < sh / 2) rightTop = Math.max(rightTop, area[1] + area[3] + MARGIN);
+                        else rightBottom = Math.min(rightBottom, area[1] - MARGIN);
+                    }
                 }
             } catch (Throwable ignored) {
                 // чужой обработчик областей не должен мешать раскладке
@@ -169,15 +188,15 @@ public final class Overlay {
         // список справа
         int avail = sw - MARGIN - (right + MARGIN);
         int cols = Math.min(maxCols, (avail - PAD * 2 - 4) / cell);
-        if (cols < 3) {
+        if (cols < 3 || rightBottom - rightTop < 80) {
             LIST.hide();
         } else {
             LIST.cell = cell;
             LIST.cols = cols;
             LIST.w = cols * cell + PAD * 2 + 4;
             LIST.x = sw - MARGIN - LIST.w;
-            LIST.y = MARGIN;
-            LIST.h = sh - MARGIN * 2;
+            LIST.y = rightTop;
+            LIST.h = rightBottom - rightTop;
             searchRect[0] = LIST.x + PAD;
             searchRect[1] = LIST.y + PAD;
             searchRect[2] = LIST.w - PAD * 2;
@@ -196,16 +215,17 @@ public final class Overlay {
         List<Stack> marks = Bookmarks.list();
         int availL = left - MARGIN - MARGIN;
         int colsL = Math.min(maxCols, (availL - PAD * 2 - 4) / cell);
-        if (!cfg.bookmarksPanel || marks.isEmpty() || colsL < 2) {
+        boolean anyMarks = !marks.isEmpty() || Bookmarks.folders().size() > 1 || folderEdit != null;
+        if (!cfg.bookmarksPanel || !anyMarks || colsL < 2 || leftBottom - leftTop < PAD * 2 + 12 + cell) {
             MARKS.hide();
         } else {
             MARKS.cell = cell;
             MARKS.cols = colsL;
             MARKS.w = colsL * cell + PAD * 2 + 4;
             MARKS.x = MARGIN;
-            MARKS.y = MARGIN;
-            int rows = (marks.size() + colsL - 1) / colsL;
-            MARKS.h = Math.min(sh - MARGIN * 2, PAD * 2 + 12 + rows * cell);
+            MARKS.y = leftTop;
+            int rows = Math.max(1, (marks.size() + colsL - 1) / colsL);
+            MARKS.h = Math.min(leftBottom - leftTop, PAD * 2 + 12 + rows * cell);
             MARKS.gridX = MARKS.x + PAD;
             MARKS.gridY = MARKS.y + PAD + 12;
             MARKS.gridW = colsL * cell;
@@ -215,8 +235,8 @@ public final class Overlay {
 
         // недавние: под закладками, не больше двух рядов
         List<Stack> recent = works.repka.ryscope.runtime.History.list();
-        int top = MARKS.visible() ? MARKS.y + MARKS.h + MARGIN : MARGIN;
-        if (!cfg.recentPanel || recent.isEmpty() || colsL < 2 || top + PAD * 2 + 12 + cell > sh - MARGIN) {
+        int top = MARKS.visible() ? MARKS.y + MARKS.h + MARGIN : leftTop;
+        if (!cfg.recentPanel || recent.isEmpty() || colsL < 2 || top + PAD * 2 + 12 + cell > leftBottom) {
             RECENT.hide();
         } else {
             RECENT.cell = cell;
@@ -326,7 +346,7 @@ public final class Overlay {
 
         if (MARKS.visible()) {
             theme.panel(g, MARKS.x, MARKS.y, MARKS.w, MARKS.h);
-            Draw.textScaled(g, Component.translatable("ryscope.bookmarks").getString(), MARKS.x + PAD + 1, MARKS.y + PAD + 2, 0.75f, theme.c("text.muted"));
+            renderMarksHeader(g, theme, mx, my);
             MARKS.render(g, theme, mx, my, animate);
         }
         if (RECENT.visible()) {
@@ -345,13 +365,14 @@ public final class Overlay {
         if (Lens.held()) {
             Stack target = own != null ? own : hovered(screen, mx, my);
             if (target != null) Lens.renderCard(g, theme, target, mx, my, screen.width, screen.height);
-        } else if (own != null) {
+        } else if (own != null && savedRowAt(mx, my) < 0) {
             g.pose().pushPose();
             g.pose().translate(0, 0, 300);
             own.renderTooltip(g, mx, my);
             g.pose().popPose();
         }
         renderHelp(g, theme);
+        renderSaved(g, theme, mx, my);
         renderToast(screen, g);
     }
 
@@ -361,7 +382,7 @@ public final class Overlay {
         Font font = Minecraft.getInstance().font;
         List<String[]> lines = new ArrayList<>();
         int keyW = 0, textW = 0;
-        for (int i = 1; i <= 10; i++) {
+        for (int i = 1; i <= 11; i++) {
             String raw = Component.translatable("ryscope.help." + i).getString();
             int split = raw.indexOf(" — ");
             String[] parts = split < 0 ? new String[] {raw, ""} : new String[] {raw.substring(0, split), raw.substring(split + 3)};
@@ -482,6 +503,150 @@ public final class Overlay {
         acLast = value;
     }
 
+
+    // --- папки закладок ---
+
+    private static boolean overMarksHeader(double mx, double my) {
+        return MARKS.visible() && mx >= MARKS.x && mx < MARKS.x + MARKS.w && my >= MARKS.y && my < MARKS.gridY;
+    }
+
+    /** Заголовок панели закладок: имя открытой папки, стрелки между папками и «+» для новой. */
+    private static void renderMarksHeader(GuiGraphics g, Theme theme, int mx, int my) {
+        Bookmarks.Folder folder = Bookmarks.current();
+        boolean many = Bookmarks.folders().size() > 1;
+        int x = MARKS.x + PAD, y = MARKS.y + PAD, w = MARKS.w - PAD * 2;
+        int nameX = many ? x + 8 : x + 1;
+        int plusX = x + w - 6;
+        int nameW = (many ? plusX - 9 : plusX - 2) - nameX;
+        markHead[0] = nameX;
+        markHead[1] = nameW;
+        markHead[2] = plusX;
+        boolean hot = overMarksHeader(mx, my);
+        int dim = theme.c("text.dim"), accent = theme.c("accent");
+        if (many) {
+            Draw.textScaled(g, "<", x + 1, y + 2, 0.75f, hot && mx < nameX ? accent : dim);
+            Draw.textScaled(g, ">", plusX - 8, y + 2, 0.75f, hot && mx >= nameX + nameW && mx < plusX - 2 ? accent : dim);
+        }
+        Draw.textScaled(g, "+", plusX, y + 2, 0.75f, hot && mx >= plusX - 2 ? accent : dim);
+        if (folderEdit != null) {
+            folderEdit.setX(nameX);
+            folderEdit.setY(y + 1);
+            folderEdit.setWidth(nameW);
+            folderEdit.setTextColor(theme.c("input.fg") & 0xFFFFFF);
+            folderEdit.render(g, mx, my, 0);
+            return;
+        }
+        String name = folder.name.isEmpty() ? Component.translatable("ryscope.bookmarks").getString() : folder.name;
+        if (many) name = (Bookmarks.active() + 1) + "/" + Bookmarks.folders().size() + " " + name;
+        boolean nameHot = hot && mx >= nameX && mx < nameX + nameW;
+        Draw.textScaled(g, Draw.ellipsize(name, (int) (nameW / 0.75f)), nameX, y + 2, 0.75f, nameHot ? theme.c("text.body") : theme.c("text.muted"));
+    }
+
+    private static boolean marksHeaderClicked(double mx, int button) {
+        boolean many = Bookmarks.folders().size() > 1;
+        int nameX = markHead[0], nameW = markHead[1], plusX = markHead[2];
+        if (mx >= plusX - 2) {
+            commitFolderName();
+            if (Bookmarks.addFolder("")) startFolderRename();
+            else toast(Component.translatable("ryscope.bookmarks.folder.limit").getString());
+            return true;
+        }
+        if (many && (mx < nameX || mx >= nameX + nameW)) {
+            commitFolderName();
+            Bookmarks.setActive(Bookmarks.active() + (mx < nameX ? -1 : 1));
+            MARKS.resetScroll();
+            return true;
+        }
+        if (button == 0) {
+            if (folderEdit == null) startFolderRename();
+        } else if (button == 1) {
+            folderEdit = null;
+            long now = System.currentTimeMillis();
+            int size = Bookmarks.list().size();
+            if (size == 0 || now < folderDeleteArmed) {
+                Bookmarks.removeActive();
+                MARKS.resetScroll();
+                folderDeleteArmed = 0;
+                toast(Component.translatable("ryscope.bookmarks.folder.removed").getString());
+            } else {
+                folderDeleteArmed = now + 3000;
+                toast(Component.translatable("ryscope.bookmarks.folder.confirm", size).getString(), 3000);
+            }
+        }
+        return true;
+    }
+
+    private static void startFolderRename() {
+        if (search != null) search.setFocused(false);
+        folderEdit = new EditBox(Minecraft.getInstance().font, 0, 0, 40, 10, Component.empty());
+        folderEdit.setBordered(false);
+        folderEdit.setMaxLength(24);
+        folderEdit.setValue(Bookmarks.current().name);
+        folderEdit.setFocused(true);
+    }
+
+    private static void commitFolderName() {
+        if (folderEdit == null) return;
+        Bookmarks.renameActive(folderEdit.getValue());
+        folderEdit = null;
+    }
+
+    // --- сохранённые запросы ---
+
+    /** Сохранённые запросы, подходящие под набранное. Список пересобирается каждый кадр, пока поле в фокусе. */
+    private static List<String> savedCandidates() {
+        savedShown.clear();
+        if (search == null || !search.isFocused() || !LIST.visible()) return savedShown;
+        String typed = search.getValue().trim().toLowerCase(java.util.Locale.ROOT);
+        for (String s : Config.get().savedSearches) {
+            if (savedShown.size() >= 6) break;
+            String low = s.toLowerCase(java.util.Locale.ROOT);
+            if (typed.isEmpty() || (low.contains(typed) && !low.equals(typed))) savedShown.add(s);
+        }
+        if (savedIndex >= savedShown.size()) savedIndex = savedShown.size() - 1;
+        return savedShown;
+    }
+
+    private static int savedRowAt(double mx, double my) {
+        if (savedShown.isEmpty() || search == null || !search.isFocused()) return -1;
+        int x = searchRect[0], y = searchRect[1] + searchRect[3] + 1;
+        if (mx < x || mx >= x + searchRect[2] || my < y + 2 || my >= y + 2 + savedShown.size() * 10) return -1;
+        return (int) ((my - y - 2) / 10);
+    }
+
+    private static void renderSaved(GuiGraphics g, Theme theme, int mx, int my) {
+        List<String> rows = savedCandidates();
+        if (rows.isEmpty()) return;
+        int x = searchRect[0], y = searchRect[1] + searchRect[3] + 1, w = searchRect[2], h = rows.size() * 10 + 4;
+        int hover = savedRowAt(mx, my);
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 390);
+        theme.tooltipBox(g, x, y, w, h);
+        for (int i = 0; i < rows.size(); i++) {
+            int ry = y + 2 + i * 10;
+            if (i == hover || i == savedIndex) Draw.rect(g, x + 1, ry, w - 2, 10, (theme.c("accent") & 0xFFFFFF) | 0x38000000);
+            Draw.textScaled(g, Draw.ellipsize(rows.get(i), (int) ((w - 8) / 0.75f)), x + 4, ry + 2, 0.75f, theme.c("text.body"));
+        }
+        g.pose().popPose();
+    }
+
+    /** Ctrl+S в поле поиска: сохранить запрос или убрать его из сохранённых. */
+    private static void toggleSaved(String query) {
+        if (query.isEmpty()) {
+            toast(Component.translatable("ryscope.search.saved.empty").getString());
+            return;
+        }
+        List<String> saved = Config.get().savedSearches;
+        if (saved.remove(query)) {
+            toast(Component.translatable("ryscope.search.saved.removed").getString());
+        } else {
+            saved.add(0, query);
+            while (saved.size() > 24) saved.remove(saved.size() - 1);
+            toast(Component.translatable("ryscope.search.saved.added").getString());
+        }
+        Config.save();
+    }
+
     @Nullable
     private static Stack ownStackAt(double mx, double my) {
         Stack s = LIST.at(mx, my);
@@ -529,6 +694,19 @@ public final class Overlay {
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
         if (!active(screen)) return false;
         EditBox box = search();
+        if (!overMarksHeader(mx, my)) commitFolderName();
+        int savedRow = savedRowAt(mx, my);
+        if (savedRow >= 0) {
+            String query = savedShown.get(savedRow);
+            if (button == 1) {
+                Config.get().savedSearches.remove(query);
+                Config.save();
+                toast(Component.translatable("ryscope.search.saved.removed").getString());
+            } else {
+                box.setValue(query);
+            }
+            return true;
+        }
         boolean inSearch = LIST.visible() && mx >= searchRect[0] && mx < searchRect[0] + searchRect[2]
             && my >= searchRect[1] && my < searchRect[1] + searchRect[3];
         if (inSearch && button == 0 && !box.getValue().isEmpty() && mx >= searchRect[0] + searchRect[2] - 13) {
@@ -553,6 +731,7 @@ public final class Overlay {
             saveSearch();
         }
         if (!isOver(mx, my)) return false;
+        if (overMarksHeader(mx, my)) return marksHeaderClicked(mx, button);
         if (LIST.visible() && mx >= gearRect[0] - 2 && mx < gearRect[0] + 12 && my >= gearRect[1] - 2 && my < gearRect[1] + 12) {
             Minecraft.getInstance().setScreen(new SettingsScreen(screen));
             return true;
@@ -630,6 +809,12 @@ public final class Overlay {
             LIST.scrollBy(delta);
             return true;
         }
+        if (overMarksHeader(mx, my) && Bookmarks.folders().size() > 1) {
+            commitFolderName();
+            Bookmarks.setActive(Bookmarks.active() + (delta > 0 ? -1 : 1));
+            MARKS.resetScroll();
+            return true;
+        }
         if (MARKS.contains(mx, my)) {
             MARKS.scrollBy(delta);
             return true;
@@ -646,11 +831,33 @@ public final class Overlay {
         }
         if (!active(screen)) return false;
         EditBox box = search();
+        if (folderEdit != null) {
+            if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) commitFolderName();
+            else if (key == GLFW.GLFW_KEY_ESCAPE) folderEdit = null;
+            else folderEdit.keyPressed(key, scan, mods);
+            return true;
+        }
         if (key == GLFW.GLFW_KEY_H && Screen.hasControlDown() && LIST.visible() && (box.isFocused() || !typingElsewhere(screen))) {
             hideCurrent(box);
             return true;
         }
         if (box.isFocused()) {
+            if (key == GLFW.GLFW_KEY_S && Screen.hasControlDown()) {
+                toggleSaved(box.getValue().trim());
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_DOWN && !savedShown.isEmpty()) {
+                savedIndex = Math.min(savedShown.size() - 1, savedIndex + 1);
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_UP && savedIndex >= 0) {
+                savedIndex--;
+                return true;
+            }
+            if ((key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) && savedIndex >= 0 && savedIndex < savedShown.size()) {
+                box.setValue(savedShown.get(savedIndex));
+                return true;
+            }
             if (key == GLFW.GLFW_KEY_ESCAPE || key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
                 box.setFocused(false);
                 saveSearch();
@@ -710,6 +917,10 @@ public final class Overlay {
 
     public static boolean charTyped(Screen screen, char c, int mods) {
         if (!active(screen)) return false;
+        if (folderEdit != null) {
+            folderEdit.charTyped(c, mods);
+            return true;
+        }
         EditBox box = search();
         if (box.isFocused()) {
             box.charTyped(c, mods);
@@ -765,6 +976,8 @@ public final class Overlay {
 
     public static void onScreenClosed() {
         if (search != null) search.setFocused(false);
+        commitFolderName();
+        savedIndex = -1;
         draggingScroll = false;
         dragIndex = -1;
         saveSearch();

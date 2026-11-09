@@ -43,7 +43,7 @@ public final class TreeScreen extends Screen {
     private TreeScreen(@Nullable Screen parent, Stack stack) {
         super(Component.translatable("ryscope.tree.title"));
         this.parent = parent;
-        this.tree = new CraftTree(stack);
+        this.tree = new CraftTree(stack, true);
     }
 
     public static void open(Stack stack) {
@@ -74,6 +74,26 @@ public final class TreeScreen extends Screen {
         px = (width - pw) / 2;
         py = 6;
         theme.panel(g, px, py, pw, ph);
+
+        // дерево строится по частям, по несколько миллисекунд за кадр: окно открывается сразу
+        if (!tree.ready()) tree.recompute();
+        if (!tree.ready()) {
+            rows.clear();
+            tree.root.stack.render(g, px + PAD, py + PAD - 1);
+            Draw.text(g, Draw.ellipsize(tree.root.stack.name().getString(), pw - PAD * 2 - 28), px + PAD + 22, py + PAD + 3, theme.c("text.primary"));
+            String loading = Component.translatable("ryscope.tree.loading").getString();
+            String progress = Component.translatable("ryscope.tree.loading.progress", tree.examined()).getString();
+            int cy = py + ph / 2 - 12;
+            Draw.textCentered(g, loading, px + pw / 2, cy, theme.c("text.body"));
+            int bw = Math.min(160, pw - PAD * 4), bx = px + (pw - bw) / 2;
+            Draw.round(g, bx, cy + 14, bw, 2, 1f, theme.c("slot.bg"));
+            // бегущий отрезок: сколько всего ресурсов придётся просмотреть, заранее неизвестно
+            float phase = (System.currentTimeMillis() % 1200L) / 1200f;
+            int seg = bw / 4, sx = bx + Math.round((bw - seg) * (phase < 0.5f ? phase * 2 : 2 - phase * 2));
+            Draw.round(g, sx, cy + 14, seg, 2, 1f, theme.c("accent"));
+            Draw.textScaled(g, progress, px + pw / 2f - font.width(progress) * 0.375f, cy + 21, 0.75f, theme.c("text.muted"));
+            return;
+        }
 
         // --- шапка ---
         tree.root.stack.render(g, px + PAD, py + PAD - 1);
@@ -215,6 +235,9 @@ public final class TreeScreen extends Screen {
         }
         if (!InventoryView.tracking()) {
             Draw.textScaled(g, Component.translatable("ryscope.tree.creative").getString(), px + PAD, py + ph - 9, 0.75f, theme.c("text.dim"));
+        } else if (works.repka.ryscope.runtime.Storages.inRange() > 0) {
+            Draw.textScaled(g, Component.translatable("ryscope.tree.storages", works.repka.ryscope.runtime.Storages.inRange()).getString(),
+                px + PAD, py + ph - 9, 0.75f, theme.c("text.dim"));
         }
         boolean pinned = Board.contains(tree.root.stack);
         String goal = Component.translatable(pinned ? "ryscope.tree.unpin_goal" : "ryscope.tree.pin_goal").getString();
@@ -257,11 +280,12 @@ public final class TreeScreen extends Screen {
     @Override
     public void tick() {
         // инвентарь меняется, пока игрок собирает: пересчитываем раз в секунду
-        if (++refresh % 20 == 0) tree.recompute();
+        if (tree.ready() && ++refresh % 20 == 0) tree.recompute();
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
+        if (!tree.ready()) return true;
         Font font = Minecraft.getInstance().font;
         int ax = px + pw - PAD - 64, ay = py + PAD - 2;
         int[] tools = toolRects(font);
@@ -341,6 +365,7 @@ public final class TreeScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+        if (!tree.ready()) return true;
         int ax = px + pw - PAD - 64, ay = py + PAD - 2;
         if (over(mx, my, ax, ay - 2, 64, 18)) {
             tree.setAmount(tree.amount + (scrollY > 0 ? 1 : -1) * (hasShiftDown() ? 8 : 1));
@@ -356,6 +381,7 @@ public final class TreeScreen extends Screen {
             onClose();
             return true;
         }
+        if (!tree.ready()) return true;
         Node n = nodeAt(Overlay.mouseX(), Overlay.mouseY());
         if (n != null) {
             if (Keys.matches(Keys.RECIPES, key, scan)) return RecipeScreen.open(n.stack, Lookup.Mode.RECIPES);

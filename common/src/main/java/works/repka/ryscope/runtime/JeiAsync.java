@@ -33,6 +33,7 @@ import works.repka.ryscope.ui.Overlay;
  */
 public final class JeiAsync {
     private static final String PLUGIN_LOGGER = "mezz.jei.library.load.PluginCaller";
+    private static final String WATCHER = "ryscope-jei-watch";
     private static final Pattern VERIFY_LOCATION = Pattern.compile("Location:\\s+([\\w/$]+)\\.");
 
     private static final ExecutorService EXEC = Executors.newSingleThreadExecutor(r -> {
@@ -44,6 +45,10 @@ public final class JeiAsync {
     private static volatile boolean loading;
     private static volatile boolean queued;
     private static volatile Throwable failure;
+    /** Поток, в котором прямо сейчас загружается JEI, или null. */
+    private static volatile Thread loader;
+    /** Подключение нашего моста, отложенное до конца фоновой загрузки. */
+    private static volatile Runnable publish;
     private static Runnable rawStart;
     private static Runnable rawStop;
 
@@ -59,11 +64,24 @@ public final class JeiAsync {
         return failure;
     }
 
+    /** Вызов идёт из потока фоновой загрузки JEI: в это время с JEI работает только он. */
+    public static boolean onLoaderThread() {
+        return Thread.currentThread() == loader;
+    }
+
+    /**
+     * Мост к JEI подключается только после конца фоновой загрузки: пока она идёт, плагины ещё меняют
+     * данные JEI (скрывают предметы, добавляют рецепты), и читать их из других потоков нельзя.
+     */
+    public static void publishWhenLoaded(Runnable action) {
+        publish = action;
+    }
+
     public static Runnable wrapStart(Runnable start) {
         rawStart = start;
         return () -> {
             Config cfg = Config.get();
-            if (!cfg.asyncJei || cfg.asyncJeiUnsafe) {
+            if (!cfg.asyncJei || cfg.asyncJeiUnsafe || !cfg.replaceJeiInterface) {
                 queued = false;
                 try {
                     start.run();
@@ -95,20 +113,25 @@ public final class JeiAsync {
 
     private static Outcome watched(Runnable start) {
         AtomicInteger errors = new AtomicInteger();
-        org.apache.logging.log4j.core.Logger logger = null;
+        org.apache.logging.log4j.core.config.LoggerConfig root = null;
         AbstractAppender watcher = null;
         try {
-            // JEI ловит исключения плагинов сам и только пишет их в журнал: считаем такие записи
-            if (LogManager.getLogger(PLUGIN_LOGGER) instanceof org.apache.logging.log4j.core.Logger core) {
-                logger = core;
-                watcher = new AbstractAppender("ryscope-jei-watch", null, null, true, Property.EMPTY_ARRAY) {
+            // JEI ловит исключения плагинов сам и только пишет их в журнал: считаем такие записи.
+            // Наблюдатель вешается на корневой журнал и сам отбирает записи JEI. Вешать его на журнал JEI нельзя:
+            // log4j заводит для него отдельную настройку, и записи плагинов пропадают из журнала игры
+            // (так было до исправления: при проверке на сборке RepYS ошибки плагинов исчезли из latest.log).
+            if (LogManager.getContext(false) instanceof org.apache.logging.log4j.core.LoggerContext context) {
+                root = context.getConfiguration().getRootLogger();
+                watcher = new AbstractAppender(WATCHER, null, null, true, Property.EMPTY_ARRAY) {
                     @Override
                     public void append(LogEvent event) {
-                        if (event.getLevel().isMoreSpecificThan(Level.ERROR)) errors.incrementAndGet();
+                        if (PLUGIN_LOGGER.equals(event.getLoggerName()) && event.getLevel().isMoreSpecificThan(Level.ERROR)) {
+                            errors.incrementAndGet();
+                        }
                     }
                 };
                 watcher.start();
-                logger.addAppender(watcher);
+                root.addAppender(watcher, null, null);
             }
         } catch (Throwable t) {
             RYScope.LOG.debug("Наблюдение за журналом JEI недоступно: {}", t.toString());
@@ -119,9 +142,9 @@ public final class JeiAsync {
         } catch (Throwable t) {
             thrown = t;
         } finally {
-            if (logger != null && watcher != null) {
+            if (root != null && watcher != null) {
                 try {
-                    logger.removeAppender(watcher);
+                    root.removeAppender(WATCHER);
                     watcher.stop();
                 } catch (Throwable ignored) {
                     // журнал переживёт
@@ -134,9 +157,12 @@ public final class JeiAsync {
     private static void runStart(Runnable start) {
         long t0 = System.nanoTime();
         Outcome async;
+        publish = null;
+        loader = Thread.currentThread();
         try {
             async = watched(start);
         } finally {
+            loader = null;
             loading = false;
         }
         // для проверки страховки: считать, что плагин упал
@@ -145,6 +171,9 @@ public final class JeiAsync {
         Config cfg = Config.get();
         if (async.thrown() == null && async.errors() <= cfg.asyncJeiTolerated) {
             failure = null;
+            Runnable connect = publish;
+            publish = null;
+            if (connect != null) connect.run();
             if (async.errors() == 0) {
                 RYScope.LOG.info("JEI загружен в фоне за {} мс, главный поток не останавливался", ms);
             } else {
@@ -159,6 +188,7 @@ public final class JeiAsync {
             RYScope.LOG.warn("При фоновой загрузке JEI ошибок плагинов: {}. Сверяю с обычной загрузкой.", async.errors());
         }
         queued = false;
+        publish = null;
         Outcome first = async;
         Minecraft.getInstance().execute(() -> {
             if (Minecraft.getInstance().level == null) return;
