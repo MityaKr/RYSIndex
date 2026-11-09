@@ -1,6 +1,9 @@
 package works.repka.ryscope.ui;
 
 import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Icons;
+import works.repka.ryscore.ui.Kit;
+import works.repka.ryscore.ui.Type.Weight;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -19,7 +22,7 @@ import works.repka.ryscore.theme.ThemeManager;
 /** Настройки мода. Выглядят в текущей теме и применяются сразу. */
 public final class SettingsScreen extends Screen {
     private static final int ROW = 20;
-    private static final int PAD = 12;
+    private static final int PAD = Kit.PAD;
 
     private record Option(String key, Supplier<String> value, Runnable onClick, @Nullable String note) {}
 
@@ -28,6 +31,7 @@ public final class SettingsScreen extends Screen {
     private final List<Option> options = new ArrayList<>();
     private int px, py, pw, ph;
     private int scroll;
+    private final Kit.Hits hits = new Kit.Hits();
 
     public SettingsScreen(@Nullable Screen parent) {
         super(Component.translatable("ryscope.settings.title"));
@@ -112,66 +116,77 @@ public final class SettingsScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float partialTick) {
-        Theme theme = ThemeManager.get();
-        Font font = Minecraft.getInstance().font;
+        Theme t = ThemeManager.get();
+        hits.clear();
         renderBackground(g, mx, my, partialTick);
-        pw = Math.min(width - 12, 300);
-        ph = Math.min(height - 8, PAD * 2 + 18 + options.size() * ROW + 14);
+        pw = Math.min(width - 12, 320);
+        py = Kit.panelTop(height);
+        ph = Math.min(height - py - 4, Kit.HEADER_H + 8 + options.size() * ROW + 8);
         px = (width - pw) / 2;
-        py = (height - ph) / 2;
-        theme.panel(g, px, py, pw, ph);
-        Draw.text(g, title.getString(), px + PAD, py + PAD, theme.c("text.primary"));
-        String version = "RYScope";
-        Draw.textScaled(g, version, px + pw - PAD - Draw.widthScaled(version, 0.75f), py + PAD + 2, 0.75f, theme.c("text.dim"));
+        t.panel(g, px, py, pw, ph);
+        int iconX = px + PAD, iconY = py + 12, closeX = px + pw - PAD - 18;
+        Kit.iconTile(g, t, iconX, iconY);
+        Icons.draw(g, Icons.Shape.GEAR, iconX + 5.5f, iconY + 5.5f, 12f, t.c("text.muted"));
+        Kit.close(g, t, hits, closeX, py + 14, mx, my, this::onClose);
+        float textX = iconX + 23 + 7;
+        Kit.headerText(g, t, title.getString(), tr("ryscope.settings.footer"), textX, py, closeX - 7 - textX);
+        Kit.divider(g, t, px + 0.5f, py + Kit.HEADER_H - 0.5f, pw - 1);
 
-        String note = null;
-        int y = py + PAD + 18;
-        int visible = Math.max(1, (ph - PAD * 2 - 18 - 12) / ROW);
+        int top = py + Kit.HEADER_H + 4;
+        int visible = Math.max(1, (ph - Kit.HEADER_H - 8) / ROW);
         scroll = Math.max(0, Math.min(scroll, options.size() - visible));
+        String note = null;
+        int y = top;
         for (int i = scroll; i < Math.min(options.size(), scroll + visible); i++) {
             Option o = options.get(i);
-            boolean hov = mx >= px + PAD - 4 && mx < px + pw - PAD + 4 && my >= y && my < y + ROW;
+            boolean hov = mx >= px + 5 && mx < px + pw - 5 && my >= y && my < y + ROW;
             if (hov) {
-                Draw.round(g, px + PAD - 4, y, pw - PAD * 2 + 8, ROW - 1, theme.r("slot.radius"), Draw.alpha(theme.c("slot.hover"), 0.35f));
+                Draw.round(g, px + 5, y, pw - 10, ROW - 1, 4.5f, Draw.alpha(t.c("slot.hover"), 0.5f));
                 note = o.note;
             }
-            Draw.text(g, tr(o.key), px + PAD, y + 6, theme.c("text.body"));
+            float cy = y + ROW / 2f;
+            String label = tr(o.key);
+            Draw.label(g, label, px + PAD + 2, cy, 13, Weight.REGULAR, t.c("text.body"));
+            if (o.note != null) {
+                float lw = Draw.labelWidth(label, 13, Weight.REGULAR);
+                Draw.info(g, (int) (px + PAD + 2 + lw + 5), y + 5, t.c(hov ? "accent" : "text.dim"));
+            }
             String value = o.value.get();
-            int vw = Draw.width(value) + 12;
-            int vx = px + pw - PAD - vw;
-            boolean on = value.equals(tr("ryscope.settings.on"));
-            theme.button(g, vx, y + 3, vw, 14, hov, on);
-            Draw.text(g, value, vx + 6, y + 6, on ? theme.c("accent.text") : theme.c("text.body"));
+            boolean on = value.equals(tr("ryscope.settings.on")), off = value.equals(tr("ryscope.settings.off"));
+            int right = px + pw - PAD - 2;
+            if (on || off) {
+                Kit.toggle(g, t, right - 18, y + 5, on, hov);
+            } else {
+                float vw = Draw.labelWidth(value, 12, Weight.REGULAR) + 12;
+                int bx = (int) (right - vw);
+                Draw.roundBox(g, bx, y + 3, vw, 14, 4f, hov ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg"), t.c("button.border"));
+                Draw.label(g, value, bx + 6, cy, 12, Weight.REGULAR, t.c("button.fg"));
+            }
+            hits.add(px + 5, y, pw - 10, ROW, b -> {
+                o.onClick.run();
+                Config.save();
+            });
             y += ROW;
         }
         if (options.size() > visible) {
             int trackH = visible * ROW;
             int thumbH = Math.max(10, trackH * visible / options.size());
-            int thumbY = py + PAD + 18 + (trackH - thumbH) * scroll / Math.max(1, options.size() - visible);
-            Draw.round(g, px + pw - 5, thumbY, 2, thumbH, 1f, theme.c("scroll.thumb"));
+            int thumbY = top + (trackH - thumbH) * scroll / Math.max(1, options.size() - visible);
+            Draw.round(g, px + pw - 4, thumbY, 2, thumbH, 1f, t.c("scroll.thumb"));
         }
         Overlay.renderToast(this, g);
-        String footer = note != null ? tr(note) : tr("ryscope.settings.footer");
-        Draw.textScaled(g, Draw.ellipsize(footer, (int) ((pw - PAD * 2) / 0.75f)), px + PAD, py + ph - 11, 0.75f, theme.c("text.dim"));
+        if (note != null) {
+            g.pose().pushPose();
+            g.pose().translate(0, 0, 300);
+            Kit.tooltip(g, t, List.of(tr(note)), mx, my);
+            g.pose().popPose();
+        }
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
-        int y = py + PAD + 18;
-        int visible = Math.max(1, (ph - PAD * 2 - 18 - 12) / ROW);
-        for (int i = scroll; i < Math.min(options.size(), scroll + visible); i++) {
-            Option o = options.get(i);
-            if (mx >= px + PAD - 4 && mx < px + pw - PAD + 4 && my >= y && my < y + ROW) {
-                o.onClick.run();
-                Config.save();
-                return true;
-            }
-            y += ROW;
-        }
-        if (mx < px || mx >= px + pw || my < py || my >= py + ph) {
-            onClose();
-            return true;
-        }
+        if (hits.click(mx, my, button)) return true;
+        if (mx < px || mx >= px + pw || my < py || my >= py + ph) onClose();
         return true;
     }
 

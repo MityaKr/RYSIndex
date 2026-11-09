@@ -496,10 +496,9 @@ public final class Overlay {
                     Keys.label(Keys.BOOKMARK), Keys.label(Keys.TREE)).getString();
         }
         if (text == null) return;
-        g.pose().pushPose();
-        g.pose().translate(0, 0, 300);
-        g.renderComponentTooltip(font, infoLines(text), mx, my);
-        g.pose().popPose();
+        List<String> tip = new ArrayList<>();
+        for (Component line : infoLines(text)) tip.add(line.getString());
+        works.repka.ryscore.ui.Kit.tooltip(g, ThemeManager.get(), tip, mx, my);
     }
 
     /** Подсказки, линза и уведомления: поверх всего экрана. */

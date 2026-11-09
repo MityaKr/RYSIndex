@@ -1,7 +1,9 @@
 package works.repka.ryscope.ui;
 
 import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Kit;
 import works.repka.ryscore.ui.Loading;
+import works.repka.ryscore.ui.Type.Weight;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -26,7 +28,7 @@ import works.repka.ryscore.theme.ThemeManager;
  * Для каждого способа: сырьё, число шагов, время, энергия, побочные продукты и хватает ли запасов сейчас.
  */
 public final class CompareScreen extends Screen {
-    private static final int PAD = 10;
+    private static final int PAD = Kit.PAD;
     private static final int COL = 122;
 
     private static final class Route {
@@ -45,6 +47,7 @@ public final class CompareScreen extends Screen {
     private final List<Route> routes = new ArrayList<>();
     private int px, py, pw, ph;
     private int first;
+    private final Kit.Hits hits = new Kit.Hits();
 
     private CompareScreen(@Nullable Screen parent, Stack stack) {
         super(Component.translatable("ryscope.compare.title"));
@@ -55,7 +58,13 @@ public final class CompareScreen extends Screen {
 
     public static void open(Stack stack) {
         Minecraft mc = Minecraft.getInstance();
-        mc.setScreen(new CompareScreen(mc.screen, stack));
+        Screen parent = mc.screen instanceof PlannerScreen ps ? ps.backTarget() : mc.screen;
+        mc.setScreen(new CompareScreen(parent, stack));
+    }
+
+    /** Куда вернуться, минуя соседние вкладки. */
+    Screen backTarget() {
+        return parent;
     }
 
     private final CraftTree probe;
@@ -143,97 +152,111 @@ public final class CompareScreen extends Screen {
     }
 
     private int visible() {
-        return Math.max(1, Math.min(routes.size(), (width - 24 - PAD * 2) / COL));
+        return Math.max(1, Math.min(routes.size(), Math.min(4, (width - 24 - PAD * 2) / COL)));
     }
+
+    private static final int CARD_H = 158;
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float partialTick) {
         Theme theme = ThemeManager.get();
-        Font font = Minecraft.getInstance().font;
+        hits.clear();
         renderBackground(g, mx, my, partialTick);
         int cols = visible();
-        first = Math.max(0, Math.min(first, routes.size() - cols));
-        pw = cols * COL + PAD * 2;
-        ph = Math.min(height - 12, 196);
+        first = Math.max(0, Math.min(first, Math.max(0, routes.size() - cols)));
+        pw = Math.max(320, cols * COL + PAD * 2 - 4);
+        py = Kit.panelTop(height);
+        ph = Math.min(height - py - 4, Kit.HEADER_H + Kit.TABS_H + 8 + CARD_H + PAD);
         px = (width - pw) / 2;
-        py = (height - ph) / 2;
         theme.panel(g, px, py, pw, ph);
         if (!done) {
             advance();
             Loading.render(g, theme, px, py, pw, ph, "ryscope.compare.loading", probe.examined());
             return;
         }
-        target.render(g, px + PAD, py + PAD - 1);
-        Draw.text(g, Draw.ellipsize(target.name().getString(), pw - 120), px + PAD + 22, py + PAD - 1, theme.c("text.primary"));
-        String sub = Component.translatable("ryscope.compare.count", routes.size()).getString();
-        Draw.textScaled(g, sub, px + PAD + 22, py + PAD + 9, 0.75f, theme.c("text.muted"));
+        int iconX = px + PAD, iconY = py + 12, buttonY = py + 14;
+        Kit.iconTile(g, theme, iconX, iconY);
+        target.render(g, iconX + 4, iconY + 4);
+        int closeX = px + pw - PAD - 18;
+        Kit.close(g, theme, hits, closeX, buttonY, mx, my, this::onClose);
+        int right = closeX - 7;
         if (routes.size() > cols) {
             String page = (first + 1) + "–" + (first + cols) + " / " + routes.size();
-            int w = Draw.width(page);
-            int nx = px + pw - PAD - w - 22;
-            Draw.chevron(g, nx, py + PAD + 1, false, theme.c("text.muted"));
-            Draw.text(g, page, nx + 11, py + PAD + 1, theme.c("text.muted"));
-            Draw.chevron(g, nx + 15 + w, py + PAD + 1, true, theme.c("text.muted"));
+            float w = Draw.labelWidth(page, 13, Weight.REGULAR);
+            int nx = right - 5, px1 = (int) (nx - w - 18);
+            float cy = buttonY + 9;
+            Draw.label(g, "‹", px1, cy, 13, Weight.REGULAR, over(mx, my, px1 - 2, buttonY, 9, 18) ? theme.c("accent") : theme.c("button.fg"));
+            Draw.label(g, page, px1 + 9, cy, 13, Weight.REGULAR, theme.c("text.muted"));
+            Draw.label(g, "›", nx, cy, 13, Weight.REGULAR, over(mx, my, nx - 2, buttonY, 9, 18) ? theme.c("accent") : theme.c("button.fg"));
+            hits.add(px1 - 2, buttonY, 9, 18, b -> first -= cols);
+            hits.add(nx - 2, buttonY, 9, 18, b -> first += cols);
+            right = px1 - 7;
         }
+        float textX = iconX + 23 + 7;
+        Kit.headerText(g, theme, target.name().getString(), Component.translatable("ryscope.compare.count", routes.size()).getString(), textX, py, right - textX);
+
+        int ty = py + Kit.HEADER_H;
+        Kit.divider(g, theme, px + 0.5f, ty + Kit.TABS_H - 0.5f, pw - 1);
+        int tx = px + PAD;
+        tx += Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.tab"), false, mx, my, this::backToTree) + 2;
+        tx += Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.plan"), false, mx, my, () -> PlannerScreen.open(target)) + 2;
+        Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.compare"), true, mx, my, () -> {});
 
         Stack hover = null;
-        for (int c = 0; c < cols; c++) {
+        int cardTop = ty + Kit.TABS_H + 8;
+        int cardH = ph - (cardTop - py) - PAD;
+        for (int c = 0; c < Math.min(cols, routes.size() - first); c++) {
             Route r = routes.get(first + c);
-            int x = px + PAD + c * COL, y = py + PAD + 24, w = COL - 4, h = ph - PAD * 2 - 24;
-            theme.card(g, x, y, w, h);
-            int cx = x + 6, cy = y + 6;
+            int x = px + PAD + c * COL, y = cardTop, w = COL - 4;
+            theme.card(g, x, y, w, cardH);
+            hits.add(x, y, w, cardH, b -> RecipeScreen.open(target, Lookup.Mode.RECIPES));
+            int cx = x + 6;
             try {
-                r.option.category.renderIcon(g, cx, cy);
+                r.option.category.renderIcon(g, cx, y + 5);
             } catch (Throwable ignored) {
                 // значок чужой категории
             }
-            Draw.text(g, Draw.ellipsize(r.option.category.title.getString(), w - 30), cx + 20, cy + 4, theme.c("text.body"));
-            cy += 22;
-
-            Draw.textScaled(g, tr("ryscope.compare.raw"), cx, cy, 0.75f, theme.c("text.muted"));
-            cy += 9;
-            int i = 0;
+            Draw.label(g, Draw.ellipsize(r.option.category.title.getString(), w - 30, 13, Weight.MEDIUM), cx + 20, y + 13, 13, Weight.MEDIUM, theme.c("text.primary"));
+            Kit.section(g, theme, tr("ryscope.compare.raw"), cx, y + 30);
+            int i = 0, rawY = y + 36;
             for (CraftTree.Raw raw : r.tree.raw.values()) {
                 if (i >= 10) break;
-                int sx = cx + (i % 5) * 21, sy = cy + (i / 5) * 21;
-                theme.slot(g, sx, sy, 20, over(mx, my, sx, sy, 20, 20));
+                int sx = cx + (i % 5) * 21, sy = rawY + (i / 5) * 21;
+                boolean hot = over(mx, my, sx, sy, 20, 20);
+                Kit.tile(g, theme, sx, sy, hot);
                 raw.stack.render(g, sx + 2, sy + 2);
-                String count = Units.compact(raw.need);
-                g.pose().pushPose();
-                g.pose().translate(0, 0, 200);
-                Draw.textScaled(g, count, sx + 19 - Draw.width(count) * 0.6f, sy + 14, 0.6f, 0xFFFFFFFF);
-                g.pose().popPose();
-                if (over(mx, my, sx, sy, 20, 20)) hover = raw.stack;
+                Kit.count(g, Units.compact(raw.need), sx, sy);
+                if (hot) hover = raw.stack;
+                Stack stack = raw.stack;
+                hits.add(sx, sy, 20, 20, b -> RecipeScreen.open(stack, b == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES));
                 i++;
             }
-            if (r.tree.raw.isEmpty()) Draw.textScaled(g, "—", cx, cy + 4, 0.75f, theme.c("text.dim"));
-            cy += 44;
-
-            cy = row(g, theme, cx, cy, w, tr("ryscope.compare.steps"), Integer.toString(r.tree.steps));
-            cy = row(g, theme, cx, cy, w, tr("ryscope.compare.time"), r.timed ? Units.time(r.ticks) : tr("ryscope.compare.unknown"));
-            cy = row(g, theme, cx, cy, w, tr("ryscope.compare.energy"), r.energy > 0 ? Units.energy(r.energy) : "—");
-
-            Draw.textScaled(g, tr("ryscope.compare.byproducts"), cx, cy + 2, 0.75f, theme.c("text.muted"));
-            int bx = x + w - 8;
+            if (r.tree.raw.isEmpty()) Draw.label(g, "—", cx, rawY + 8, 12, Weight.REGULAR, theme.c("text.dim"));
+            float ry = y + 88;
+            row(g, theme, cx, ry, w, tr("ryscope.compare.steps"), Integer.toString(r.tree.steps));
+            row(g, theme, cx, ry + 11, w, tr("ryscope.compare.time"), r.timed ? Units.time(r.ticks) : tr("ryscope.compare.unknown"));
+            row(g, theme, cx, ry + 22, w, tr("ryscope.compare.energy"), r.energy > 0 ? Units.energy(r.energy) : "—");
+            Kit.section(g, theme, tr("ryscope.compare.byproducts"), cx, ry + 33);
+            int bx = x + w - 6;
             if (r.byproducts.isEmpty()) {
-                Draw.textScaled(g, "—", bx - 4, cy + 2, 0.75f, theme.c("text.dim"));
+                Draw.label(g, "—", bx - 5, ry + 33, 12, Weight.REGULAR, theme.c("text.dim"));
             } else {
                 for (int b = Math.min(3, r.byproducts.size()) - 1; b >= 0; b--) {
                     bx -= 13;
+                    int by = (int) ry + 27;
                     g.pose().pushPose();
-                    g.pose().translate(bx, cy - 1, 0);
+                    g.pose().translate(bx, by, 0);
                     g.pose().scale(0.75f, 0.75f, 1f);
                     r.byproducts.get(b).render(g, 0, 0);
                     g.pose().popPose();
-                    if (over(mx, my, bx, cy - 1, 12, 12)) hover = r.byproducts.get(b);
+                    if (over(mx, my, bx, by, 12, 12)) hover = r.byproducts.get(b);
                 }
             }
-            cy += 13;
-
             boolean ok = r.missingNow == 0;
             String now = ok ? tr("ryscope.compare.now_yes") : Component.translatable("ryscope.compare.now_no", r.missingNow).getString();
-            // состояние передано и текстом, и цветом
-            Draw.textScaled(g, Draw.ellipsize(now, (int) ((w - 12) / 0.75f)), cx, cy + 3, 0.75f, ok ? theme.c("state.ok") : theme.c("state.warn"));
+            float sy = y + cardH - 9;
+            Draw.dot(g, cx, (int) sy - 2, 4, theme.c(ok ? "state.ok" : "state.warn"));
+            Draw.label(g, Draw.ellipsize(now, w - 18, 12, Weight.REGULAR), cx + 8, sy, 12, Weight.REGULAR, ok ? theme.c("state.ok") : theme.c("state.warn"));
         }
 
         g.pose().pushPose();
@@ -243,11 +266,15 @@ public final class CompareScreen extends Screen {
         Overlay.renderToast(this, g);
     }
 
-    private static int row(GuiGraphics g, Theme theme, int x, int y, int w, String label, String value) {
-        Font font = Minecraft.getInstance().font;
-        Draw.textScaled(g, label, x, y + 2, 0.75f, theme.c("text.muted"));
-        Draw.textScaled(g, value, x + w - 12 - Draw.widthScaled(value, 0.75f), y + 2, 0.75f, theme.c("text.body"));
-        return y + 11;
+    private void backToTree() {
+        Minecraft mc = Minecraft.getInstance();
+        if (parent instanceof TreeScreen) mc.setScreen(parent);
+        else TreeScreen.open(target);
+    }
+
+    private static void row(GuiGraphics g, Theme theme, int x, float cy, int w, String label, String value) {
+        Kit.section(g, theme, label, x, cy);
+        Draw.label(g, value, x + w - 12 - Draw.labelWidth(value, 12, Weight.REGULAR), cy, 12, Weight.REGULAR, theme.c("text.body"));
     }
 
     @Override
@@ -261,22 +288,8 @@ public final class CompareScreen extends Screen {
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (!done) return true;
-        if (!over(mx, my, px, py, pw, ph)) {
-            onClose();
-            return true;
-        }
-        int cols = visible();
-        if (routes.size() > cols && my < py + PAD + 16) {
-            first += mx > px + pw - PAD - 14 ? cols : mx > px + pw - PAD - 80 ? -cols : 0;
-            return true;
-        }
-        for (int c = 0; c < cols; c++) {
-            int x = px + PAD + c * COL;
-            if (over(mx, my, x, py + PAD + 24, COL - 4, ph - PAD * 2 - 24)) {
-                RecipeScreen.open(target, Lookup.Mode.RECIPES);
-                return true;
-            }
-        }
+        if (hits.click(mx, my, button)) return true;
+        if (!over(mx, my, px, py, pw, ph)) onClose();
         return true;
     }
 

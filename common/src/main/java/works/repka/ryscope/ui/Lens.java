@@ -142,10 +142,10 @@ public final class Lens {
             cy += 11;
         }
         info.stack.render(g, x + PAD, cy);
-        Draw.text(g, Draw.ellipsize(info.stack.name().getString(), inner - 22), x + PAD + 21, cy, theme.c("text.primary"));
+        Draw.label(g, Draw.ellipsize(info.stack.name().getString(), inner - 22, 13, Weight.SEMIBOLD), x + PAD + 21, cy + 4, 13, Weight.SEMIBOLD, theme.c("text.primary"));
         String mod = Platform.get().modName(info.stack.namespace());
         String id = info.stack.id().toString();
-        Draw.textScaled(g, Draw.ellipsize(mod + " · " + id, (int) ((inner - 22) / 0.75f)), x + PAD + 21, cy + 10, 0.75f, theme.c("text.muted"));
+        Draw.label(g, Draw.ellipsize(mod + " · " + id, inner - 22, 11, Weight.REGULAR), x + PAD + 21, cy + 13, 11, Weight.REGULAR, theme.c("text.muted"));
         cy += 20;
 
         if (!info.tags.isEmpty()) {
@@ -186,7 +186,7 @@ public final class Lens {
             cy += 4;
             String title = info.previewCategory != null ? info.previewCategory.title.getString()
                 : info.preview instanceof SourceView ? Component.translatable("ryscope.lens.drops").getString() : "";
-            Draw.textScaled(g, title, x + PAD, cy, 0.75f, theme.c("text.muted"));
+            Draw.label(g, title, x + PAD, cy + 4, 12, Weight.REGULAR, theme.c("text.muted"));
             cy += 9;
             int plate = info.preview.needsPlate() ? 3 : 0;
             int px = x + (w - info.preview.width()) / 2, py = cy + plate;
@@ -206,10 +206,10 @@ public final class Lens {
             long stored = info.stack.key() instanceof net.minecraft.world.item.Item item ? works.repka.ryscope.runtime.Storages.count(item) : 0;
             if (stored > 0) counts += " · " + Component.translatable("ryscope.lens.stored", stored).getString();
         }
-        Draw.text(g, Draw.ellipsize(counts, inner), x + PAD, cy, theme.c("text.body"));
+        Draw.label(g, Draw.ellipsize(counts, inner, 12, Weight.REGULAR), x + PAD, cy + 4, 12, Weight.REGULAR, theme.c("text.secondary"));
         cy += 11;
         String hint = Component.translatable("ryscope.lens.hint", Keys.label(Keys.RECIPES), Keys.label(Keys.USES), Keys.label(Keys.BOOKMARK)).getString();
-        Draw.textScaled(g, Draw.ellipsize(hint, (int) (inner / 0.75f)), x + PAD, cy, 0.75f, theme.c("text.dim"));
+        Draw.label(g, Draw.ellipsize(hint, inner, 11, Weight.REGULAR), x + PAD, cy + 4, 11, Weight.REGULAR, theme.c("text.dim"));
     }
 
     // --- мир ---

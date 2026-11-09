@@ -691,7 +691,7 @@ public final class RecipeScreen extends Screen {
         if (hovered != null) {
             if (!Lens.held() && !byRecipe) hovered.renderTooltip(g, mx, my);
         } else if (hoveredTab != null) {
-            g.renderTooltip(font, hoveredTab.title, mx, my);
+            works.repka.ryscore.ui.Kit.tooltip(g, t, List.of(hoveredTab.title.getString()), mx, my);
         } else {
             boolean drawn = false;
             for (Placed p : placed) {
@@ -716,7 +716,7 @@ public final class RecipeScreen extends Screen {
                             g.renderComponentTooltip(font, tr.lines(), mx, my);
                         } else {
                             String key = tr.applicable() ? "ryscope.transfer.hint" : tr.message();
-                            g.renderTooltip(font, Component.translatable(key == null ? "ryscope.transfer.missing" : key), mx, my);
+                            works.repka.ryscore.ui.Kit.tooltip(g, t, List.of(tr(key == null ? "ryscope.transfer.missing" : key)), mx, my);
                         }
                     }
                 }

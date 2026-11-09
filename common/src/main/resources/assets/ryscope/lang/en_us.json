@@ -232,6 +232,7 @@
   "ryscope.recipe.instant": "instant",
   "ryscope.lens.pill": "Lens · %s",
   "ryscope.lens.keys": "[%s] recipes [%s] uses",
+  "ryscope.tree.tab": "Tree",
   "ryscope.goals.removed": "Goal removed",
   "ryscope.settings.search_bottom": "Search at the bottom of the list",
   "ryscope.settings.list_paged": "Paged list",

@@ -1167,6 +1167,17 @@ final class AutoTest {
         shot("design_recipe");
         step("design: lens", () -> mc().setScreen(null), 10);
         shot("design_world");
+        step("design: tree", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            works.repka.ryscope.ui.TreeScreen.open(new ItemRes(new ItemStack(Items.COMPARATOR)));
+        }, 30);
+        shot("design_tree");
+        step("design: plan", () -> works.repka.ryscope.ui.PlannerScreen.open(new ItemRes(new ItemStack(Items.PISTON))), 40);
+        shot("design_plan");
+        step("design: compare", () -> works.repka.ryscope.ui.CompareScreen.open(new ItemRes(new ItemStack(Items.STICK))), 40);
+        shot("design_compare");
+        step("design: settings", () -> mc().setScreen(new works.repka.ryscope.ui.SettingsScreen(null)), 10);
+        shot("design_settings");
         step("quit", () -> mc().stop(), 0);
     }
 

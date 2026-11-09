@@ -232,6 +232,7 @@
   "ryscope.recipe.instant": "мгновенно",
   "ryscope.lens.pill": "Линза · %s",
   "ryscope.lens.keys": "[%s] рецепты [%s] использования",
+  "ryscope.tree.tab": "Дерево",
   "ryscope.goals.removed": "Убрано из списка",
   "ryscope.settings.search_bottom": "Поиск внизу списка",
   "ryscope.settings.list_paged": "Список страницами",
