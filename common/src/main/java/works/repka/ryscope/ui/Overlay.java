@@ -88,6 +88,14 @@ public final class Overlay {
     private static long toastUntil;
     private static String lastQuery = "";
     private static int dragIndex = -1;
+    /** Нажатие на предмет: клик или начало перетаскивания, решится движением мыши. */
+    @Nullable
+    private static Stack pressStack;
+    private static double pressX, pressY;
+    /** Предмет тащат в призрачный слот чужого окна (фильтр) или в закладки. */
+    @Nullable
+    private static Stack ghostStack;
+    private static final int GHOST_THRESHOLD = 4;
     private static boolean highlight;
     private static long lastSearchClick;
     private static SearchService.Results highlightFor;
@@ -199,6 +207,8 @@ public final class Overlay {
         int left = b[0], right = b[0] + b[2];
         Foreign.Source foreign = Foreign.get();
         int leftTop = MARGIN, leftBottom = sh - MARGIN, rightTop = MARGIN, rightBottom = sh - MARGIN;
+        int areaRight = right;
+        List<int[]> attachedRight = new ArrayList<>();
         if (foreign != null && screen instanceof AbstractContainerScreen<?>) {
             try {
                 for (int[] raw : foreign.exclusionAreas(screen)) {
@@ -210,8 +220,9 @@ public final class Overlay {
                     int[] area = toUi(raw);
                     boolean beside = area[1] < b[1] + b[3] && area[1] + area[3] > b[1];
                     if (beside && area[0] + area[2] > right && area[0] <= right + 12) {
-                        // боковая вкладка, прилипшая к окну справа, расширяет занятую область
-                        right = area[0] + area[2];
+                        // боковая вкладка, прилипшая к окну справа, расширяет занятую область (если панель ещё влезет)
+                        areaRight = Math.max(areaRight, area[0] + area[2]);
+                        attachedRight.add(area);
                     } else if (beside && area[0] < left && area[0] + area[2] >= left - 12) {
                         left = area[0];
                     } else if (area[0] + area[2] <= b[0]) {
@@ -242,6 +253,17 @@ public final class Overlay {
         // панель справа: размеры из макета, половина пикселя на единицу GUI
         boolean flush = ThemeManager.get().flushSidebar;
         int edge = flush ? 0 : MARGIN;
+        // прилипшая справа картинка чужого окна (большой значок фильтра Create) не должна прятать панель:
+        // если после неё не остаётся трёх столбцов, панель важнее, как у JEI
+        if (areaRight > right && (sw - edge - (areaRight + MARGIN) - 16) / cell >= 3) {
+            right = areaRight;
+        } else {
+            // рядом не влезает: панель обходит картинку сверху или снизу, как чужие кнопки справа
+            for (int[] area : attachedRight) {
+                if (area[1] + area[3] / 2 < sh / 2) rightTop = Math.max(rightTop, area[1] + area[3] + MARGIN);
+                else rightBottom = Math.min(rightBottom, area[1] - MARGIN);
+            }
+        }
         // карточка рецептов сама встаёт левее панели, панель из-за неё не сжимается
         sidebarCollapsed = false;
         cardCollapsed = false;
@@ -660,10 +682,33 @@ public final class Overlay {
             g.pose().popPose();
         }
         Dock.renderTooltip(g, mx, my);
+        renderGhost(g, theme, mx, my);
         renderInfoTooltips(screen, g, mx, my);
         renderHelp(g, theme);
         renderSaved(g, theme, mx, my);
         renderToast(screen, g);
+    }
+
+    /** Перетаскиваемый предмет у курсора и подсветка фильтров, которые его примут. */
+    private static void renderGhost(GuiGraphics g, Theme theme, int mx, int my) {
+        if (ghostStack == null) return;
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 450);
+        works.repka.ryscope.runtime.Foreign.Source foreign = works.repka.ryscope.runtime.Foreign.get();
+        if (foreign != null) {
+            for (int[] a : foreign.ghostAreas()) {
+                float x = (float) UiScale.fromGui(a[0]), y = (float) UiScale.fromGui(a[1]);
+                float w = (float) UiScale.fromGui(a[2]), h = (float) UiScale.fromGui(a[3]);
+                boolean hot = mx >= x && mx < x + w && my >= y && my < y + h;
+                Draw.roundBox(g, x, y, w, h, 2f, Draw.alpha(theme.c("accent"), hot ? 0.45f : 0.22f), theme.c("accent"));
+            }
+        }
+        if (MARKS.visible() && MARKS.contains(mx, my)) {
+            Draw.roundBorder(g, MARKS.x, MARKS.y, MARKS.w, MARKS.h, 6f, theme.c("accent"));
+        }
+        g.pose().translate(0, 0, 50);
+        ghostStack.render(g, mx - 8, my - 8);
+        g.pose().popPose();
     }
 
     /** Шпаргалка по языку поиска: при наведении на значок «?» внизу списка. */
@@ -1257,6 +1302,13 @@ public final class Overlay {
             give(stack, Screen.hasShiftDown());
             return true;
         }
+        if (button == 0 && screen instanceof AbstractContainerScreen<?>) {
+            // клик или перетаскивание в фильтр: решится при движении или отпускании
+            pressStack = stack;
+            pressX = mx;
+            pressY = my;
+            return true;
+        }
         if (button == 0 || button == 1) {
             RecipeScreen.open(stack, button == 0 ? Lookup.Mode.RECIPES : Lookup.Mode.USES);
         }
@@ -1264,6 +1316,27 @@ public final class Overlay {
     }
 
     public static boolean mouseReleased(Screen screen, double mx, double my, int button) {
+        if (ghostStack != null) {
+            Stack dragged = ghostStack;
+            ghostStack = null;
+            works.repka.ryscope.runtime.Foreign.Source foreign = works.repka.ryscope.runtime.Foreign.get();
+            boolean placed = false;
+            if (foreign != null) {
+                placed = foreign.ghostDrop(UiScale.toGui(mx), UiScale.toGui(my));
+                foreign.ghostEnd();
+            }
+            if (!placed && MARKS.contains(mx, my) && !Bookmarks.contains(dragged)) {
+                Bookmarks.toggle(dragged);
+                toast(Component.translatable("ryscope.bookmark.added").getString());
+            }
+            return true;
+        }
+        if (pressStack != null && button == 0) {
+            Stack clicked = pressStack;
+            pressStack = null;
+            RecipeScreen.open(clicked, Lookup.Mode.RECIPES);
+            return true;
+        }
         if (dragIndex >= 0) {
             int to = MARKS.indexAt(mx, my);
             if (to >= 0) Bookmarks.move(dragIndex, to);
@@ -1278,6 +1351,13 @@ public final class Overlay {
     }
 
     public static boolean mouseDragged(Screen screen, double mx, double my, int button) {
+        if (pressStack != null && Math.hypot(mx - pressX, my - pressY) > GHOST_THRESHOLD) {
+            ghostStack = pressStack;
+            pressStack = null;
+            works.repka.ryscope.runtime.Foreign.Source foreign = works.repka.ryscope.runtime.Foreign.get();
+            if (foreign != null) foreign.ghostStart(screen, ghostStack);
+        }
+        if (ghostStack != null || pressStack != null) return true;
         if (draggingScroll) {
             LIST.scrollbarDrag(Math.max(mx, LIST.gridX + LIST.gridW), my);
             return true;
@@ -1481,6 +1561,12 @@ public final class Overlay {
         savedIndex = -1;
         draggingScroll = false;
         dragIndex = -1;
+        pressStack = null;
+        if (ghostStack != null) {
+            ghostStack = null;
+            works.repka.ryscope.runtime.Foreign.Source foreign = works.repka.ryscope.runtime.Foreign.get();
+            if (foreign != null) foreign.ghostEnd();
+        }
         saveSearch();
     }
 

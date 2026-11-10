@@ -48,7 +48,35 @@ public final class Lookup {
                 RYScope.LOG.warn("Источник {} не ответил на запрос рецептов", foreign.name(), t);
             }
         }
-        return preferOriginals(groups);
+        List<Group> out = preferOriginals(groups);
+        out.sort(java.util.Comparator.comparingInt(g -> rank(g.category(), stack, mode, snap)));
+        return out;
+    }
+
+    /**
+     * Порядок вкладок: у машины в «Использованиях» сначала то, что она делает; затем верстак;
+     * дальше машины и процессы в своём порядке; служебное (теги, квесты) и лут (сундуки, зачарования,
+     * мобы, генерация мира) в самом конце.
+     */
+    private static int rank(Category c, Stack stack, Mode mode, Snapshot snap) {
+        String ns = c.id.getNamespace(), path = c.id.getPath();
+        if (mode == Mode.USES && isStation(c, stack, snap)) return 0;
+        if (path.equals("crafting") && (ns.equals("minecraft") || ns.equals(RYScope.MOD_ID))) return 1;
+        if (LOOT_NAMESPACES.contains(ns) || LOOT_PATHS.contains(path) || path.endsWith("_loot") || path.endsWith("_drops")) return 9;
+        if (path.startsWith("tag_recipes") || path.equals("information") || path.equals("info") || ns.equals("ftbquests") || ns.equals("rysquests")) return 8;
+        if (path.equals("trades")) return 7;
+        return 5;
+    }
+
+    /** Лут и сведения о мире: всегда в конце. Машины вроде «loot_fabricator» сюда не попадают. */
+    private static final java.util.Set<String> LOOT_NAMESPACES = java.util.Set.of("jeresources", "lootjs", "jei_biome", "jei_structures");
+    private static final java.util.Set<String> LOOT_PATHS = java.util.Set.of("loot", "loot_crate", "chest_loot", "mob_drops", "dungeon",
+        "enchantment", "villager", "worldgen", "plant", "mob");
+
+    private static boolean isStation(Category c, Stack stack, Snapshot snap) {
+        for (Stack st : c.stations) if (st.key().equals(stack.key())) return true;
+        for (Category own : snap.stationOf(stack)) if (own.id.equals(c.id)) return true;
+        return false;
     }
 
     /**

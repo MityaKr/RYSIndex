@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("ghost".equals(System.getProperty("ryscope.autotest"))) {
+            buildGhost();
+            return;
+        }
         if ("originals".equals(System.getProperty("ryscope.autotest"))) {
             buildOriginals();
             return;
@@ -1117,6 +1121,60 @@ final class AutoTest {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private static void setGhost(Object stack) {
+        try {
+            java.lang.reflect.Field f = Overlay.class.getDeclaredField("ghostStack");
+            f.setAccessible(true);
+            f.set(null, stack);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Перетаскивание предмета в фильтр Create и порядок категорий колёс. */
+    private static void buildGhost() {
+        step("ghost: order", () -> {
+            StringBuilder out = new StringBuilder();
+            for (Lookup.Group g : Lookup.find(new ItemRes(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+                net.minecraft.resources.ResourceLocation.parse("create:crushing_wheel")))), Lookup.Mode.USES)) out.append(' ').append(g.category().id);
+            RYScope.LOG.info("[ghost] порядок категорий колёс в использованиях:{}", out);
+            StringBuilder rec = new StringBuilder();
+            for (Lookup.Group g : Lookup.find(new ItemRes(new ItemStack(Items.IRON_INGOT)), Lookup.Mode.RECIPES)) rec.append(' ').append(g.category().id);
+            RYScope.LOG.info("[ghost] порядок категорий рецептов слитка:{}", rec);
+            command("clear @s");
+            command("give @s create:filter");
+        }, 20);
+        step("ghost: hold", () -> mc().player.getInventory().selected = 0, 5);
+        step("ghost: open", () -> mc().gameMode.useItem(mc().player, InteractionHand.MAIN_HAND), 30);
+        ItemRes iron = new ItemRes(new ItemStack(Items.IRON_INGOT));
+        step("ghost: start", () -> {
+            var foreign = works.repka.ryscope.runtime.Foreign.get();
+            boolean any = foreign != null && foreign.ghostStart(mc().screen, iron);
+            RYScope.LOG.info("[ghost] экран {}, целей {}", mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName(),
+                foreign == null ? -1 : foreign.ghostAreas().size());
+            logAreas();
+            setGhost(iron);
+        }, 5);
+        shot("ghost_drag");
+        step("ghost: drop", () -> {
+            var foreign = works.repka.ryscope.runtime.Foreign.get();
+            List<int[]> areas = foreign.ghostAreas();
+            boolean placed = !areas.isEmpty() && foreign.ghostDrop(areas.get(0)[0] + areas.get(0)[2] / 2.0, areas.get(0)[1] + areas.get(0)[3] / 2.0);
+            foreign.ghostEnd();
+            setGhost(null);
+            RYScope.LOG.info("[ghost] положен: {}", placed);
+        }, 10);
+        step("ghost: check", () -> {
+            List<String> items = new ArrayList<>();
+            for (var slot : mc().player.containerMenu.slots) {
+                if (!(slot.container instanceof net.minecraft.world.entity.player.Inventory) && !slot.getItem().isEmpty()) items.add(slot.getItem().getItem().toString());
+            }
+            RYScope.LOG.info("[ghost] в ячейках фильтра: {}", items);
+        }, 3);
+        shot("ghost_done");
+        step("quit", () -> mc().stop(), 0);
     }
 
     /** Рецепты модов: вид JEI от разработчиков, наши раскладки только там, где оригинала нет. */

@@ -301,6 +301,73 @@ public final class JeiBridge implements Foreign.Source {
         return out;
     }
 
+    private record Ghost(mezz.jei.api.gui.handlers.IGhostIngredientHandler.Target<?> target, Object ingredient) {}
+
+    private List<mezz.jei.api.gui.handlers.IGhostIngredientHandler<Screen>> ghostHandlers = List.of();
+    private List<Ghost> ghosts = List.of();
+
+    @Override
+    public boolean ghostStart(Screen screen, Stack stack) {
+        ghostEnd();
+        Optional<ITypedIngredient<?>> typed = toTyped(stack);
+        if (typed.isEmpty()) return false;
+        List<mezz.jei.api.gui.handlers.IGhostIngredientHandler<Screen>> handlers = runtime.getScreenHelper().getGhostIngredientHandlers(screen);
+        List<Ghost> found = new ArrayList<>();
+        for (var handler : handlers) {
+            try {
+                collectGhosts(handler, screen, typed.get(), found);
+            } catch (Throwable t) {
+                RYScope.LOG.debug("Цели перетаскивания не получены: {}", t.toString());
+            }
+        }
+        ghostHandlers = handlers;
+        ghosts = found;
+        return !found.isEmpty();
+    }
+
+    private static <I> void collectGhosts(mezz.jei.api.gui.handlers.IGhostIngredientHandler<Screen> handler, Screen screen, ITypedIngredient<I> typed, List<Ghost> out) {
+        for (var target : handler.getTargetsTyped(screen, typed, true)) out.add(new Ghost(target, typed.getIngredient()));
+    }
+
+    @Override
+    public List<int[]> ghostAreas() {
+        List<int[]> out = new ArrayList<>();
+        for (Ghost g : ghosts) {
+            var a = g.target().getArea();
+            out.add(new int[] {a.getX(), a.getY(), a.getWidth(), a.getHeight()});
+        }
+        return out;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public boolean ghostDrop(double x, double y) {
+        for (Ghost g : ghosts) {
+            if (!g.target().getArea().contains((int) x, (int) y)) continue;
+            try {
+                ((mezz.jei.api.gui.handlers.IGhostIngredientHandler.Target<Object>) g.target()).accept(g.ingredient());
+                return true;
+            } catch (Throwable t) {
+                RYScope.LOG.warn("Предмет не положен в фильтр: {}", t.toString());
+                return false;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public void ghostEnd() {
+        for (var handler : ghostHandlers) {
+            try {
+                handler.onComplete();
+            } catch (Throwable ignored) {
+                // чужой обработчик
+            }
+        }
+        ghostHandlers = List.of();
+        ghosts = List.of();
+    }
+
     @Override
     public List<Lookup.Group> categoryById(ResourceLocation id) {
         IFocusGroup empty = runtime.getJeiHelpers().getFocusFactory().getEmptyFocusGroup();

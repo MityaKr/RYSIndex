@@ -32,6 +32,27 @@ public final class Foreign {
         @Nullable
         Stack stackUnderMouse(Screen screen, double mouseX, double mouseY);
 
+        /**
+         * Перетаскивание предмета в призрачный слот чужого окна (фильтры шин AE2, фильтры Create): начать и
+         * собрать цели. Координаты целей в единицах GUI игры. @return есть ли куда положить
+         */
+        default boolean ghostStart(Screen screen, Stack stack) {
+            return false;
+        }
+
+        /** Цели текущего перетаскивания: x, y, w, h в единицах GUI игры. */
+        default List<int[]> ghostAreas() {
+            return List.of();
+        }
+
+        /** Отпускание в точке (единицы GUI игры): кладёт предмет в цель под курсором. */
+        default boolean ghostDrop(double x, double y) {
+            return false;
+        }
+
+        /** Конец перетаскивания: обработчики модов узнают, что подсветку можно убрать. */
+        default void ghostEnd() {}
+
         /** Все рецепты категории источника с этим id, без сверки с нашими: для просмотра категории целиком. */
         default List<Lookup.Group> categoryById(net.minecraft.resources.ResourceLocation id) {
             return List.of();
