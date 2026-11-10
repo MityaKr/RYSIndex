@@ -226,10 +226,8 @@ public final class Overlay {
                     } else if (beside && area[0] < left && area[0] + area[2] >= left - 12) {
                         left = area[0];
                     } else if (area[0] + area[2] <= b[0]) {
-                        // чужие кнопки в углу экрана: панели колонки их обходят.
-                        // Области над самим окном (инструменты терминала AE2) к колонкам отношения не имеют
-                        if (area[1] < sh / 2) leftTop = Math.max(leftTop, area[1] + area[3] + MARGIN);
-                        else leftBottom = Math.min(leftBottom, area[1] - MARGIN);
+                        // левая колонка (кнопки FTB, закладки) всегда прижата к верху экрана: чужие области
+                        // слева её не сдвигают, иначе на части экранов AE2 она уезжала в середину
                     } else if (area[0] >= b[0] + b[2]) {
                         if (area[1] < sh / 2) rightTop = Math.max(rightTop, area[1] + area[3] + MARGIN);
                         else rightBottom = Math.min(rightBottom, area[1] - MARGIN);

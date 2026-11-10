@@ -51,6 +51,9 @@ public final class RecipeScreen extends ScaledScreen {
     private static final int HISTORY_SLOT = 13, HISTORY_PAD = 2, HISTORY_GAP = 2, HISTORY_OFFSET = 23;
     private static final int BUTTON = 14, BUTTON_GAP = 3;
     private static final int MAX_PER_PAGE = 3;
+    /** Карточка всегда одной высоты, как окно рецептов JEI: вся доступная высота, но не больше этого. */
+    private static final int MAX_CARD_H = 360;
+    private static final int SCROLL_STEP = 24;
     private static final int MAX_TABS = 11;
 
     /** Разделы карточки. Пятый, «Граф», открывает дерево крафта. */
@@ -127,11 +130,8 @@ public final class RecipeScreen extends ScaledScreen {
     private Object pagesFor;
     private int pagesAvail;
     private int tallestPage;
-    /** Самая высокая страница по всем категориям рейки: карточка не меняет высоту при листании и смене категории. */
-    private int tallestAll;
-    @Nullable
-    private Object tallestFor;
-    private int tallestAvail;
+    /** Прокрутка страницы, которая не помещается в карточку целиком, и границы области рецептов. */
+    private int pageScroll, recipeTop, recipeBottom = Integer.MAX_VALUE, pageContent;
     @Nullable
     private String pendingTip;
 
@@ -216,6 +216,7 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     private void clearCaches() {
+        pageScroll = 0;
         transfers.clear();
         statuses.clear();
         pagesFor = null;
@@ -335,15 +336,6 @@ public final class RecipeScreen extends ScaledScreen {
         return tallest;
     }
 
-    private int tallestOfAll(int avail) {
-        if (tallestFor != nav.groups || tallestAvail != avail) {
-            tallestFor = nav.groups;
-            tallestAvail = avail;
-            tallestAll = 0;
-            for (Group each : nav.groups) tallestAll = Math.max(tallestAll, paginate(each.recipes(), avail, null));
-        }
-        return Math.max(tallestAll, tallestPage);
-    }
 
     private void relayout() {
         cardW = Math.min(width - 8, preferredWidth());
@@ -353,11 +345,10 @@ public final class RecipeScreen extends ScaledScreen {
         boolean strip = TABS.size() > 1;
         int top = strip ? HISTORY_OFFSET + 4 : 4;
         int chrome = chromeHeight();
-        // высота под самую высокую страницу всех категорий, как в JEI, и по центру по вертикали
-        int avail = Math.max(1, height - top - 4 - chrome);
-        buildPages(group().recipes(), avail);
-        cardH = Math.min(height - top - 4, chrome + tallestOfAll(avail));
+        // одна высота для любого предмета, как в JEI; что не влезает, прокручивается
+        cardH = Math.min(height - top - 4, MAX_CARD_H);
         cardY = Math.max(top, (height - cardH) / 2);
+        buildPages(group().recipes(), Math.max(1, cardH - chrome));
         nav.page = Math.max(0, Math.min(nav.page, pageCount() - 1));
     }
 
@@ -623,6 +614,12 @@ public final class RecipeScreen extends ScaledScreen {
         List<RecipeView> recipes = group().recipes();
         if (pages.isEmpty()) return;
         Page page = pages.get(nav.page);
+        int bottom = cardY + cardH - BOTTOM;
+        recipeTop = top;
+        recipeBottom = bottom;
+        pageContent = 0;
+        for (int i = page.start; i < page.end; i++) pageContent += blockHeight(recipes.get(i)) + BLOCK_MARGIN * 2;
+        pageScroll = Math.max(0, Math.min(pageScroll, maxScroll()));
         works.repka.ryscope.content.NativeRecipe.missingBadges = true;
         works.repka.ryscope.runtime.Ae2Terminal.setActive(parent instanceof AbstractContainerScreen<?> host ? host.getMenu() : null);
         // блок рецепта не шире, чем нужно самому широкому рецепту раздела; на широкой карточке стоит по центру
@@ -632,12 +629,18 @@ public final class RecipeScreen extends ScaledScreen {
         // упор у края постраничного списка: рецепты чуть сдвигаются и возвращаются
         double scale = Draw.scale();
         float push = (float) (Math.round(edge.update(0) * scale) / scale);
+        Draw.scissor(g, cardX, top, cardX + cardW, bottom);
         g.pose().pushPose();
         g.pose().translate(0, -push, 0);
-        int y = top + BLOCK_MARGIN;
+        int y = top + BLOCK_MARGIN - pageScroll;
         for (int i = page.start; i < page.end; i++) {
             RecipeView r = recipes.get(i);
             int h = blockHeight(r);
+            if (y + h < top || y > bottom) {
+                // прокручен за край: не рисуется и не ловит мышь
+                y += h + BLOCK_MARGIN * 2;
+                continue;
+            }
             Draw.roundBox(g, blockX, y, blockW, h, 5f, t.c("card.bg"), t.c("panel.border"));
             int plate = r.needsPlate() ? 3 : 0;
             int rowH = recipeRow(r);
@@ -655,11 +658,28 @@ public final class RecipeScreen extends ScaledScreen {
             Placed row = new Placed(r, rx, ry, innerX, rowY, innerW, rowH);
             placed.add(row);
             renderLock(g, t, r, blockX, y, blockW, h);
-            renderButtons(g, t, row, mx, my);
+            // кнопки только целиком видимые: срезанные краем не должны нажиматься сквозь шапку
+            if (rowY >= top && rowY + BUTTON * 2 + BUTTON_GAP <= bottom) renderButtons(g, t, row, mx, my);
             if (r.isCrafting()) renderStatus(g, t, r, innerX, innerW, rowY + rowH + STATUS_GAP, mx, my);
             y += h + BLOCK_MARGIN * 2;
         }
         g.pose().popPose();
+        g.disableScissor();
+        int max = maxScroll();
+        if (max > 0) {
+            int areaH = bottom - top, thumb = Math.max(12, areaH * areaH / pageContent);
+            int thumbY = top + (areaH - thumb) * pageScroll / max;
+            Draw.round(g, cardX + cardW - 5, thumbY, 2, thumb, 1f, Draw.alpha(t.c("text.dim"), 0.7f));
+        }
+    }
+
+    private int maxScroll() {
+        return Math.max(0, pageContent - (recipeBottom - recipeTop));
+    }
+
+    /** Курсор над видимой частью области рецептов. */
+    private boolean inRecipes(double my) {
+        return my >= recipeTop && my < recipeBottom;
     }
 
     private void renderLock(GuiGraphics g, Theme t, RecipeView r, int x, int y, int w, int h) {
@@ -878,6 +898,7 @@ public final class RecipeScreen extends ScaledScreen {
     @Nullable
     private Stack recipeStackAt(int mx, int my) {
         for (Placed p : placed) {
+            if (!inRecipes(my)) break;
             if (!over(mx, my, p.x - 4, p.y - 4, p.recipe.width() + 8, p.recipe.height() + 8)) continue;
             try {
                 Stack s = p.recipe.stackAt(p.x, p.y, mx, my);
@@ -941,6 +962,7 @@ public final class RecipeScreen extends ScaledScreen {
     private void setPage(int page) {
         int n = pageCount();
         nav.page = ((page % n) + n) % n;
+        pageScroll = 0;
         transfers.clear();
         statuses.clear();
     }
@@ -977,7 +999,7 @@ public final class RecipeScreen extends ScaledScreen {
             return true;
         }
         for (Placed p : placed) {
-            if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseClicked(mx, my, button)) {
+            if (inRecipes(my) && over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseClicked(mx, my, button)) {
                 dragging = p.recipe;
                 return true;
             }
@@ -1026,9 +1048,19 @@ public final class RecipeScreen extends ScaledScreen {
             return true;
         }
         for (Placed p : placed) {
-            if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseScrolled(mx, my, scrollX, scrollY)) return true;
+            if (inRecipes(my) && over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseScrolled(mx, my, scrollX, scrollY)) return true;
         }
         if (over(mx, my, cardX, cardY, cardW, cardH)) {
+            // страница выше карточки: сначала прокрутка, у края листание
+            int max = maxScroll();
+            if (scrollY < 0 && pageScroll < max) {
+                pageScroll = Math.min(max, pageScroll + SCROLL_STEP);
+                return true;
+            }
+            if (scrollY > 0 && pageScroll > 0) {
+                pageScroll = Math.max(0, pageScroll - SCROLL_STEP);
+                return true;
+            }
             // по кругу, как стрелки: с последней страницы на первую; одна страница отвечает упругим отскоком
             if (pageCount() > 1) setPage(nav.page + (scrollY < 0 ? 1 : -1));
             else edge.by(scrollY < 0 ? 1 : -1);

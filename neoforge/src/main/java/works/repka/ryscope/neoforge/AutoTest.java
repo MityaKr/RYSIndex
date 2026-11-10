@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("scroll".equals(System.getProperty("ryscope.autotest"))) {
+            buildScroll();
+            return;
+        }
         if ("ghost".equals(System.getProperty("ryscope.autotest"))) {
             buildGhost();
             return;
@@ -1121,6 +1125,61 @@ final class AutoTest {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** Наибольшая и текущая прокрутка страницы в карточке рецептов. */
+    private static int[] scrollState() {
+        try {
+            var screen = mc().screen;
+            java.lang.reflect.Method max = RecipeScreen.class.getDeclaredMethod("maxScroll");
+            java.lang.reflect.Field now = RecipeScreen.class.getDeclaredField("pageScroll");
+            max.setAccessible(true);
+            now.setAccessible(true);
+            return new int[] {(int) max.invoke(screen), now.getInt(screen)};
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            return new int[] {-1, -1};
+        }
+    }
+
+    /** Карточка постоянной высоты: обычный рецепт, затем высокая страница на низком окне с прокруткой. */
+    private static void buildScroll() {
+        step("scroll: piston", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 30);
+        shot("scroll_piston");
+        step("scroll: wheel", () -> RecipeScreen.open(new ItemRes(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+            net.minecraft.resources.ResourceLocation.parse("create:crushing_wheel")))), Lookup.Mode.USES), 30);
+        shot("scroll_wheel_uses");
+        step("scroll: low window", () -> org.lwjgl.glfw.GLFW.glfwSetWindowSize(mc().getWindow().getWindow(), 1280, 250), 30);
+        step("scroll: structure", () -> {
+            try {
+                Object item = Class.forName("es.degrassi.mmreborn.common.item.ControllerItem")
+                    .getMethod("makeMachineItem", net.minecraft.resources.ResourceLocation.class)
+                    .invoke(null, net.minecraft.resources.ResourceLocation.parse("repys:kinetic_foundry"));
+                RecipeScreen.open(new ItemRes((ItemStack) item), Lookup.Mode.USES);
+            } catch (ReflectiveOperationException e) {
+                RYScope.LOG.error("[scroll] controller", e);
+            }
+        }, 60);
+        for (int tab = 0; tab < 4; tab++) {
+            step("scroll: find tall tab", () -> {
+                if (scrollState()[0] > 0) return;
+                mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+            }, 40);
+        }
+        step("scroll: state", () -> RYScope.LOG.info("[scroll] прокрутка до {}, сейчас {}", scrollState()[0], scrollState()[1]), 2);
+        shot("scroll_structure_top");
+        for (int i = 0; i < 6; i++) {
+            step("scroll: down", () -> {
+                var screen = mc().screen;
+                // у правого края карточки, мимо 3D-превью: над ним колесо приближает модель
+                int[] b = ((RecipeScreen) screen).cardBounds();
+                double x = works.repka.ryscore.ui.UiScale.toGui(b[0] + b[2] - 8), y = works.repka.ryscore.ui.UiScale.toGui(b[1] + b[3] / 2.0);
+                screen.mouseScrolled(x, y, 0, -1);
+            }, 3);
+        }
+        step("scroll: after", () -> RYScope.LOG.info("[scroll] после колеса: до {}, сейчас {}", scrollState()[0], scrollState()[1]), 2);
+        shot("scroll_structure_down");
+        step("scroll: restore", () -> org.lwjgl.glfw.GLFW.glfwSetWindowSize(mc().getWindow().getWindow(), 1280, 720), 20);
+        step("quit", () -> mc().stop(), 0);
     }
 
     private static void setGhost(Object stack) {
