@@ -306,6 +306,14 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("originals".equals(System.getProperty("ryscope.autotest"))) {
+            buildOriginals();
+            return;
+        }
+        if ("mmr".equals(System.getProperty("ryscope.autotest"))) {
+            buildMmr();
+            return;
+        }
         if ("detach".equals(System.getProperty("ryscope.autotest"))) {
             buildDetach();
             return;
@@ -1111,6 +1119,44 @@ final class AutoTest {
         }
     }
 
+    /** Рецепты модов: вид JEI от разработчиков, наши раскладки только там, где оригинала нет. */
+    private static void buildOriginals() {
+        String[] items = {"create:crushing_wheel", "ae2:inscriber", "mekanism:crusher"};
+        for (String id : items) {
+            step("originals: " + id, () -> {
+                ItemStack stack = new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse(id)));
+                StringBuilder out = new StringBuilder();
+                for (Lookup.Group g : Lookup.find(new ItemRes(stack), Lookup.Mode.USES)) {
+                    int ours = 0, jei = 0;
+                    for (var r : g.recipes()) {
+                        if (r instanceof works.repka.ryscope.content.NativeRecipe n && n.fromLayout) ours++;
+                        else jei++;
+                    }
+                    out.append(" [").append(g.category().id).append(": JEI ").append(jei).append(", наших ").append(ours).append(']');
+                }
+                RYScope.LOG.info("[originals] {}:{}", id, out);
+                RecipeScreen.open(new ItemRes(stack), Lookup.Mode.USES);
+            }, 40);
+            shot("originals_" + id.replace(':', '_'));
+        }
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    /** Окно контроллера Modular Machinery: всё окно рисуется внутри его renderBackground. */
+    private static void buildMmr() {
+        step("mmr: place", () -> {
+            command("fill 3 -60 3 3 -58 3 minecraft:air");
+            command("setblock 3 -60 3 modular_machinery_reborn:controller");
+        }, 20);
+        step("mmr: open", () -> use(new BlockPos(3, -60, 3), Direction.NORTH, new Vec3(3.5, -59.5, 3.0)), 30);
+        step("mmr: state", () -> {
+            RYScope.LOG.info("[mmr] экран: {}", mc().screen == null ? "нет" : mc().screen.getClass().getName());
+            logAreas();
+        }, 5);
+        shot("mmr_controller");
+        step("quit", () -> mc().stop(), 0);
+    }
+
     private static void buildDetach() {
         step("detach: marks", () -> {
             works.repka.ryscope.runtime.Config.get().bookmarksDetached = false;
@@ -1344,6 +1390,15 @@ final class AutoTest {
         return out.toString();
     }
 
+    /** Рамка окна и чужие области в единицах GUI игры: по ним раскладываются наши колонки. */
+    private static void logAreas() {
+        if (!(mc().screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> acs)) return;
+        StringBuilder out = new StringBuilder(java.util.Arrays.toString(works.repka.ryscope.platform.Platform.get().screenBounds(acs)));
+        works.repka.ryscope.runtime.Foreign.Source foreign = works.repka.ryscope.runtime.Foreign.get();
+        if (foreign != null) for (int[] area : foreign.exclusionAreas(acs)) out.append(' ').append(java.util.Arrays.toString(area));
+        RYScope.LOG.info("[areas] окно {} и области:{}, экран {}x{}", acs.getClass().getSimpleName(), out, acs.width, acs.height);
+    }
+
     private static void buildAe2() {
         step("ae2: setup", () -> {
             command("clear @s");
@@ -1372,6 +1427,7 @@ final class AutoTest {
         step("ae2: open terminal", () -> use(AE_CABLE, Direction.NORTH, new Vec3(0.5, -58.5, 2.1)), 30);
         step("ae2: fill network", () -> {
             RYScope.LOG.info("[ae2] экран терминала: {}", mc().screen == null ? "нет" : mc().screen.getClass().getName());
+            logAreas();
             quickMoveAll(Items.OAK_PLANKS);
         }, 30);
         shot("ae2_terminal");

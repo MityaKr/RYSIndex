@@ -205,8 +205,8 @@ public final class Dock {
         if (!available() || entries.isEmpty()) return outerTop;
         int left = (int) Math.floor(outerLeft / SCALE), top = (int) Math.ceil(outerTop / SCALE);
         int bottom = (int) Math.floor(outerBottom / SCALE);
-        // столбцов столько же, сколько было без уменьшения: восемь
-        int width = Math.min((int) Math.floor(outerWidth / SCALE), 8 * (BUTTON + GAP) - GAP + PAD * 2);
+        // ширина как у левой колонки, кнопок в ряду сколько влезет
+        int width = (int) Math.floor(outerWidth / SCALE);
         int min = BUTTON + PAD * 2;
         if (width < min) return outerTop;
         cols = Math.max(1, (width - PAD * 2 + GAP) / (BUTTON + GAP));

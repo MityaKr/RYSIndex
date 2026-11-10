@@ -32,6 +32,11 @@ public final class Foreign {
         @Nullable
         Stack stackUnderMouse(Screen screen, double mouseX, double mouseY);
 
+        /** Все рецепты категории источника с этим id, без сверки с нашими: для просмотра категории целиком. */
+        default List<Lookup.Group> categoryById(net.minecraft.resources.ResourceLocation id) {
+            return List.of();
+        }
+
         /** Рецепты, скрытые в источнике (например, скриптом сборки): свои раскладки их тоже не показывают. */
         default java.util.Set<net.minecraft.resources.ResourceLocation> hiddenRecipeIds() {
             return java.util.Set.of();

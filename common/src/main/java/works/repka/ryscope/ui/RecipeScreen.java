@@ -127,6 +127,11 @@ public final class RecipeScreen extends ScaledScreen {
     private Object pagesFor;
     private int pagesAvail;
     private int tallestPage;
+    /** Самая высокая страница по всем категориям рейки: карточка не меняет высоту при листании и смене категории. */
+    private int tallestAll;
+    @Nullable
+    private Object tallestFor;
+    private int tallestAvail;
     @Nullable
     private String pendingTip;
 
@@ -306,7 +311,13 @@ public final class RecipeScreen extends ScaledScreen {
         pagesFor = group();
         pagesAvail = avail;
         List<Page> out = new ArrayList<>();
-        tallestPage = 0;
+        tallestPage = paginate(recipes, avail, out);
+        pages = out;
+    }
+
+    /** Страницы рецептов под доступную высоту. @return высота самой высокой страницы */
+    private static int paginate(List<RecipeView> recipes, int avail, @Nullable List<Page> out) {
+        int tallest = 0;
         int start = 0;
         while (start < recipes.size()) {
             int used = 0, end = start;
@@ -317,23 +328,36 @@ public final class RecipeScreen extends ScaledScreen {
                 used += h;
                 end++;
             }
-            out.add(new Page(start, end));
-            tallestPage = Math.max(tallestPage, used);
+            if (out != null) out.add(new Page(start, end));
+            tallest = Math.max(tallest, used);
             start = end;
         }
-        pages = out;
+        return tallest;
+    }
+
+    private int tallestOfAll(int avail) {
+        if (tallestFor != nav.groups || tallestAvail != avail) {
+            tallestFor = nav.groups;
+            tallestAvail = avail;
+            tallestAll = 0;
+            for (Group each : nav.groups) tallestAll = Math.max(tallestAll, paginate(each.recipes(), avail, null));
+        }
+        return Math.max(tallestAll, tallestPage);
     }
 
     private void relayout() {
         cardW = Math.min(width - 8, preferredWidth());
         int sidebar = Overlay.sidebarLeft(this);
-        // как в макете: карточка смещена вправо внутри свободной части, чтобы слева было видно инвентарь
-        cardX = Math.max(4, Math.min(sidebar - cardW - 4, (sidebar - cardW) * 5 / 6));
+        // по центру экрана; если там задевает правую панель, левее, но не за край
+        cardX = Math.max(4, Math.min(sidebar - cardW - 4, (width - cardW) / 2));
         boolean strip = TABS.size() > 1;
-        cardY = Math.max(strip ? HISTORY_OFFSET + 4 : 4, height * 52 / 400);
+        int top = strip ? HISTORY_OFFSET + 4 : 4;
         int chrome = chromeHeight();
-        buildPages(group().recipes(), Math.max(1, height - cardY - 4 - chrome));
-        cardH = Math.min(height - cardY - 4, chrome + tallestPage);
+        // высота под самую высокую страницу всех категорий, как в JEI, и по центру по вертикали
+        int avail = Math.max(1, height - top - 4 - chrome);
+        buildPages(group().recipes(), avail);
+        cardH = Math.min(height - top - 4, chrome + tallestOfAll(avail));
+        cardY = Math.max(top, (height - cardH) / 2);
         nav.page = Math.max(0, Math.min(nav.page, pageCount() - 1));
     }
 
@@ -1005,8 +1029,8 @@ public final class RecipeScreen extends ScaledScreen {
             if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseScrolled(mx, my, scrollX, scrollY)) return true;
         }
         if (over(mx, my, cardX, cardY, cardW, cardH)) {
-            int next = nav.page + (scrollY < 0 ? 1 : -1);
-            if (next >= 0 && next < pageCount()) setPage(next);
+            // по кругу, как стрелки: с последней страницы на первую; одна страница отвечает упругим отскоком
+            if (pageCount() > 1) setPage(nav.page + (scrollY < 0 ? 1 : -1));
             else edge.by(scrollY < 0 ? 1 : -1);
             return true;
         }

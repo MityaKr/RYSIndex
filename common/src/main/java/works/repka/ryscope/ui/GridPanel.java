@@ -88,8 +88,8 @@ public final class GridPanel {
 
     public void scrollBy(double wheel) {
         if (paged) {
-            int next = page + (wheel > 0 ? -1 : 1);
-            if (next >= 0 && next < pages()) setPage(next);
+            // страницы по кругу: с последней на первую и обратно; одна страница отвечает упругим отскоком
+            if (pages() > 1) setPage(Math.floorMod(page + (wheel > 0 ? -1 : 1), pages()));
             else edge.by(wheel > 0 ? -1 : 1);
             return;
         }
@@ -110,7 +110,7 @@ public final class GridPanel {
 
     public void pageBy(int pages) {
         if (paged) {
-            setPage(page + pages);
+            setPage(Math.floorMod(page + pages, pages()));
             return;
         }
         scroller.by(pages * Math.max(cell, gridH - cell));

@@ -235,10 +235,12 @@ public final class JeiBridge implements Foreign.Source {
         return out;
     }
 
-    /** Категория JEI целиком заменена раскладкой RYScope с другим id: показывать её второй раз незачем. */
+    /**
+     * Категории JEI больше не прячутся за раскладками RYScope: оригинальный вид разработчиков мода важнее,
+     * наши раскладки показываются только для рецептов, которых в JEI нет (см. {@code Lookup.preferOriginals}).
+     */
     private static boolean replaced(IRecipeCategory<?> c, Snapshot snapshot) {
-        ResourceLocation uid = c.getRecipeType().getUid();
-        return !snapshot.hasCategory(uid) && works.repka.ryscope.content.JsonLayout.replacedCategories().contains(uid);
+        return false;
     }
 
     private <T> List<RecipeView> views(IRecipeManager rm, IRecipeCategory<T> c, List<IFocus<?>> focuses, IFocusGroup group, Snapshot snapshot) {
@@ -281,7 +283,10 @@ public final class JeiBridge implements Foreign.Source {
             java.util.Set<ResourceLocation> ids = new java.util.HashSet<>();
             Category own = snapshot.category(u);
             if (own != null) {
-                for (RecipeView r : snapshot.recipes(own)) if (r.id() != null) ids.add(r.id());
+                // рецепты наших JSON-раскладок не вытесняют оригинал JEI
+                for (RecipeView r : snapshot.recipes(own)) {
+                    if (r.id() != null && !(r instanceof works.repka.ryscope.content.NativeRecipe n && n.fromLayout)) ids.add(r.id());
+                }
             }
             return ids;
         });
@@ -293,6 +298,18 @@ public final class JeiBridge implements Foreign.Source {
         runtime.getRecipeManager().createRecipeCategoryLookup().get().forEach(c -> {
             if (!snapshot.hasCategory(c.getRecipeType().getUid()) && !replaced(c, snapshot)) out.add(category(c));
         });
+        return out;
+    }
+
+    @Override
+    public List<Lookup.Group> categoryById(ResourceLocation id) {
+        IFocusGroup empty = runtime.getJeiHelpers().getFocusFactory().getEmptyFocusGroup();
+        List<Lookup.Group> out = new ArrayList<>();
+        for (IRecipeCategory<?> c : runtime.getRecipeManager().createRecipeCategoryLookup().get().toList()) {
+            if (!c.getRecipeType().getUid().equals(id)) continue;
+            List<RecipeView> views = views(runtime.getRecipeManager(), c, List.of(), empty, Snapshot.EMPTY);
+            if (!views.isEmpty()) out.add(new Lookup.Group(category(c), views));
+        }
         return out;
     }
 

@@ -48,16 +48,48 @@ public final class Lookup {
                 RYScope.LOG.warn("Источник {} не ответил на запрос рецептов", foreign.name(), t);
             }
         }
+        return preferOriginals(groups);
+    }
+
+    /**
+     * Наша раскладка рецепта мода уступает виду JEI: если JEI показывает рецепт с тем же id (в любой категории),
+     * наш вариант убирается. Свой остаётся только там, где у рецепта нет оригинального вида.
+     */
+    private static List<Group> preferOriginals(Map<Category, List<RecipeView>> groups) {
+        java.util.Set<net.minecraft.resources.ResourceLocation> original = new java.util.HashSet<>();
+        for (List<RecipeView> list : groups.values()) {
+            for (RecipeView r : list) if (!(r instanceof works.repka.ryscope.content.NativeRecipe) && r.id() != null) original.add(r.id());
+        }
         List<Group> out = new ArrayList<>();
-        groups.forEach((c, list) -> out.add(new Group(c, list)));
+        groups.forEach((c, list) -> {
+            List<RecipeView> kept = new ArrayList<>(list.size());
+            for (RecipeView r : list) {
+                if (r instanceof works.repka.ryscope.content.NativeRecipe n && n.fromLayout && r.id() != null && original.contains(r.id())) continue;
+                kept.add(r);
+            }
+            if (!kept.isEmpty()) out.add(new Group(c, kept));
+        });
         return out;
     }
 
     public static List<Group> category(Category category) {
         Snapshot snap = Indexer.snapshot();
         List<RecipeView> own = snap.recipes(category);
-        if (!own.isEmpty()) return List.of(new Group(category, own));
         Foreign.Source foreign = Foreign.get();
+        boolean layout = false;
+        for (RecipeView r : own) layout |= r instanceof works.repka.ryscope.content.NativeRecipe n && n.fromLayout;
+        if (layout && foreign != null) {
+            try {
+                // категория раскладки: оригинальные рецепты JEI плюс наши только там, где оригинала нет
+                Map<Category, List<RecipeView>> groups = new LinkedHashMap<>();
+                groups.put(category, new ArrayList<>(own));
+                for (Group g : foreign.categoryById(category.id)) groups.get(category).addAll(g.recipes());
+                return preferOriginals(groups);
+            } catch (Throwable t) {
+                RYScope.LOG.warn("Источник {} не отдал категорию {}", foreign.name(), category.id, t);
+            }
+        }
+        if (!own.isEmpty()) return List.of(new Group(category, own));
         if (foreign != null) {
             try {
                 return foreign.category(category);

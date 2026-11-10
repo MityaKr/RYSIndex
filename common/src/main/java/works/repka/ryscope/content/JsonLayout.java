@@ -218,6 +218,7 @@ public final class JsonLayout {
 
     private NativeRecipe build(RecipeHolder<?> holder, JsonElement json) {
         NativeRecipe r = new NativeRecipe(NativeRecipe.Kind.OTHER, holder, width, height);
+        r.fromLayout = true;
         JsonElement time = timePath == null ? null : JsonStacks.path(json, timePath);
         r.ticks = time != null && time.isJsonPrimitive() && time.getAsJsonPrimitive().isNumber() ? Math.max(0, time.getAsInt()) : timeDefault;
         r.energy = (long) energyPerTick * r.ticks;

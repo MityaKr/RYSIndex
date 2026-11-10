@@ -66,6 +66,11 @@ public final class NativeRecipe implements RecipeView {
     public long energy;
     /** false для обмена и других способов получения, которые не являются рецептом (торговля). */
     public boolean crafting = true;
+    /**
+     * Рецепт разложен по JSON-раскладке RYScope для чужого мода. В окне показывается, только если у JEI
+     * нет своего вида этого рецепта: оригинал разработчиков мода важнее. В индексе и подсчётах остаётся всегда.
+     */
+    public boolean fromLayout;
     /** Размеры слотов на экране. */
     public int slotSize = SLOT, largeSize = LARGE;
     /**

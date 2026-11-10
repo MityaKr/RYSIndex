@@ -59,6 +59,8 @@ public final class Overlay {
     /** Ширина свёрнутой панели или карточки: полоска с кнопкой раскрытия. */
     public static final int STRIP_W = 16;
     private static final int AUTO_COLUMNS_MIN = 8, AUTO_COLUMNS_MAX = 20;
+    /** Ячеек в ряду у откреплённых закладок слева. */
+    private static final int LEFT_COLUMNS = 8;
     /** Боковая панель свёрнута, пока открыта карточка: места на обоих не хватает. */
     private static boolean sidebarCollapsed;
     /** Игрок раскрыл панель вместо карточки. */
@@ -200,6 +202,10 @@ public final class Overlay {
         if (foreign != null && screen instanceof AbstractContainerScreen<?>) {
             try {
                 for (int[] raw : foreign.exclusionAreas(screen)) {
+                    // пустые и лежащие за краем экрана области не занимают места: терминал AE2 отдаёт
+                    // скрытую панель с x = -491, и колонка слева из-за неё уезжала в середину
+                    if (raw[2] <= 0 || raw[3] <= 0 || raw[0] + raw[2] <= 0 || raw[1] + raw[3] <= 0
+                        || raw[0] >= screen.width || raw[1] >= screen.height) continue;
                     if (Dock.isFtbArea(screen, raw)) continue;
                     int[] area = toUi(raw);
                     boolean beside = area[1] < b[1] + b[3] && area[1] + area[3] > b[1];
@@ -310,8 +316,10 @@ public final class Overlay {
 
         // панель кнопок FTB занимает верх левой колонки
         int availL = left - MARGIN - MARGIN;
-        int freeTop = Dock.layout(screen, MARGIN, Math.min(availL, 8 * 20 + 14), leftTop, leftBottom);
-        layoutLeftMarks(screen, cfg, cell, freeTop, leftBottom, availL, marks);
+        // левая колонка одной ширины: кнопки FTB и откреплённые закладки по восемь ячеек
+        int leftW = Math.min(availL, LEFT_COLUMNS * cell + 16);
+        int freeTop = Dock.layout(screen, MARGIN, leftW, leftTop, leftBottom);
+        layoutLeftMarks(screen, cfg, cell, freeTop, leftBottom, leftW, marks);
     }
 
     /** Откреплённые закладки: колонка слева под кнопками FTB, на всю свободную высоту и ширину до окна. */

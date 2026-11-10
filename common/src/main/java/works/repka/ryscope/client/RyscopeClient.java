@@ -113,8 +113,28 @@ public final class RyscopeClient {
         return screen instanceof AbstractContainerScreen<?>;
     }
 
+    /** Панели в этом кадре уже нарисованы на событии фона контейнера. */
+    private static boolean panelsDrawn;
+
     public static void renderContainerBackground(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
-        if (container(screen)) UiScale.render(g, scaled -> Overlay.renderBackground(screen, scaled, uiMouseX(), uiMouseY(), partialTick));
+        if (!container(screen)) return;
+        panelsDrawn = true;
+        // чужое окно может оставить включённую обрезку или прозрачный цвет (контроллер Modular Machinery
+        // рисует всё окно внутри renderBackground): тогда панели не видны, хотя мышь по ним работает
+        boolean scissor = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+        int[] box = new int[4];
+        if (scissor) org.lwjgl.opengl.GL11.glGetIntegerv(org.lwjgl.opengl.GL11.GL_SCISSOR_BOX, box);
+        float[] color = com.mojang.blaze3d.systems.RenderSystem.getShaderColor().clone();
+        g.flush();
+        com.mojang.blaze3d.systems.RenderSystem.disableScissor();
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        try {
+            UiScale.render(g, scaled -> Overlay.renderBackground(screen, scaled, uiMouseX(), uiMouseY(), partialTick));
+        } finally {
+            g.flush();
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(color[0], color[1], color[2], color[3]);
+            if (scissor) com.mojang.blaze3d.systems.RenderSystem.enableScissor(box[0], box[1], box[2], box[3]);
+        }
     }
 
     /** Экран чужого мода: не инвентарь и не наш собственный (квесты, справочники). */
@@ -123,6 +143,12 @@ public final class RyscopeClient {
     }
 
     public static void renderScreenPost(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
+        boolean drawn = panelsDrawn;
+        panelsDrawn = false;
+        // окно, которое не шлёт событие фона (контроллер Modular Machinery переопределяет render целиком):
+        // панели рисуются в конце кадра, иначе они невидимы, а мышь натыкается на прошлую раскладку
+        if (container(screen) && !drawn) renderContainerBackground(screen, g, mx, my, partialTick);
+        panelsDrawn = false;
         if (container(screen)) {
             Overlay.renderContainerMarks(screen, g);
             UiScale.render(g, scaled -> Overlay.renderTop(screen, scaled, uiMouseX(), uiMouseY(), partialTick));
