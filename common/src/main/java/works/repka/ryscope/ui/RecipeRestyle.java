@@ -60,6 +60,15 @@ public final class RecipeRestyle {
         };
     }
 
+    /** Фон, который мод рисует сам через {@code RenderSystem.setShader}, минуя blit: так делает Just Enough Resources. */
+    public static Supplier<ShaderInstance> direct(Supplier<ShaderInstance> original) {
+        if (!active) return original;
+        ShaderInstance chosen = original.get();
+        if (chosen != null && chosen == net.minecraft.client.renderer.GameRenderer.getPositionTexShader()) return shader(original, false);
+        if (chosen != null && chosen == net.minecraft.client.renderer.GameRenderer.getPositionTexColorShader()) return shader(original, true);
+        return () -> chosen;
+    }
+
     /**
      * Сплошная серая заливка мода: те же опорные оттенки, что в шейдере. Полупрозрачные заливки
      * (подсветка слота под курсором) остаются как есть.

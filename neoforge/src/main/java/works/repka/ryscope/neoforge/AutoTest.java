@@ -165,7 +165,60 @@ final class AutoTest {
             mc().resizeDisplay();
             command("time set noon");
         }, 5);
+        step("jer enchant glass", () -> {
+            ThemeManager.select("ryscore:glass");
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.DIAMOND_SWORD)), Lookup.Mode.USES);
+            openJerTab("enchantment");
+        }, 40);
+        shot("jer_enchant_glass");
+        step("jer mob", () -> {
+            ThemeManager.select("ryscore:slate");
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.ROTTEN_FLESH)), Lookup.Mode.RECIPES);
+            openSources();
+            openJerTab("mob");
+        }, 40);
+        shot("jer_mob_slate");
+        step("glass", () -> ThemeManager.select("ryscore:glass"), 20);
+        shot("jer_mob_glass");
+        step("slate", () -> ThemeManager.select("ryscore:slate"), 2);
         step("done", () -> mc().stop(), 1);
+    }
+
+    private static void openSources() {
+        try {
+            Class<?> section = Class.forName("works.repka.ryscope.ui.RecipeScreen$Section");
+            Object sources = section.getEnumConstants()[2];
+            java.lang.reflect.Method switchSection = RecipeScreen.class.getDeclaredMethod("switchSection", section);
+            switchSection.setAccessible(true);
+            switchSection.invoke(mc().screen, sources);
+        } catch (ReflectiveOperationException e) {
+            RYScope.LOG.error("[autotest] sources", e);
+        }
+    }
+
+    /** Выбирает вкладку Just Enough Resources, id которой содержит {@code part}. */
+    private static void openJerTab(String part) {
+        try {
+            java.lang.reflect.Field navField = RecipeScreen.class.getDeclaredField("nav");
+            navField.setAccessible(true);
+            Object nav = navField.get(mc().screen);
+            java.lang.reflect.Field groupsField = nav.getClass().getDeclaredField("groups");
+            groupsField.setAccessible(true);
+            List<Lookup.Group> groups = (List<Lookup.Group>) groupsField.get(nav);
+            for (int i = 0; i < groups.size(); i++) {
+                String id = groups.get(i).category().id.toString();
+                if (id.startsWith("jeresources") && id.contains(part)) {
+                    java.lang.reflect.Method setGroup = RecipeScreen.class.getDeclaredMethod("setGroup", int.class);
+                    setGroup.setAccessible(true);
+                    setGroup.invoke(mc().screen, i);
+                    RYScope.LOG.info("[autotest] tab {}", id);
+                    return;
+                }
+            }
+            RYScope.LOG.warn("[autotest] tab {} not found", part);
+        } catch (ReflectiveOperationException e) {
+            RYScope.LOG.error("[autotest] tab", e);
+        }
     }
 
     private static void build() {
