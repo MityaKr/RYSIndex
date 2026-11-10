@@ -42,6 +42,11 @@ public final class Stickers {
         return goal.amount > 1 ? name + " ×" + goal.amount : name;
     }
 
+    /** Высота ряда стикеров над экранами с инвентарём, 0, если целей нет. */
+    public static int rowHeight() {
+        return Board.goals().isEmpty() ? 0 : H;
+    }
+
     /** Ряд стикеров. {@code bottom} это нижний край, {@code limit} правая граница, {@code avoid} окно, которое нельзя перекрывать. */
     public static void drawRow(GuiGraphics g, Theme t, int x, int bottom, int limit, @Nullable int[] avoid) {
         SPOTS.clear();

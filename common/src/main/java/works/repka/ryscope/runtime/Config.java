@@ -21,6 +21,8 @@ public final class Config {
     public String density = "comfortable";
     public boolean overlayEnabled = true;
     public boolean bookmarksPanel = true;
+    /** Закладки откреплены от панели справа и показываются отдельной колонкой слева, как в JEI. */
+    public boolean bookmarksDetached = false;
     /** В творческом режиме клик по предмету в списке выдаёт его. */
     public boolean cheatMode = false;
     /** Дополнительные языки для поиска помимо текущего. "*" = все загруженные. */

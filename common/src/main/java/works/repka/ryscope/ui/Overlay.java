@@ -72,6 +72,11 @@ public final class Overlay {
     static {
         MARKS.accentTiles = true;
     }
+    /** Закладки сейчас стоят колонкой слева, а не полосой внизу панели. */
+    private static boolean marksLeft;
+    private static final int[] marksPanel = new int[4];
+    /** Кнопка «открепить» или «закрепить» в шапке закладок: x, y, или x = -1, если её нет. */
+    private static final int[] detachRect = {-1, 0};
     private static Field search;
     /** Последняя стрелка листала историю запросов: тогда и стрелка вниз идёт по истории, а не в сохранённые. */
     private static boolean browsingHistory;
@@ -263,7 +268,8 @@ public final class Overlay {
             LIST.h = (flush && rightBottom == sh - MARGIN ? sh : rightBottom) - LIST.y;
             int innerX = LIST.x + SIDE_PAD, top = LIST.y + SIDE_PAD;
             int bottom = LIST.y + LIST.h - SIDE_BOTTOM;
-            boolean anyMarks = cfg.bookmarksPanel && (!marks.isEmpty() || Bookmarks.folders().size() > 1 || folderEdit != null);
+            boolean anyMarks = cfg.bookmarksPanel && !cfg.bookmarksDetached
+                && (!marks.isEmpty() || Bookmarks.folders().size() > 1 || folderEdit != null);
             if (anyMarks) {
                 int gridY = bottom - 21;
                 int header = gridY - 4 - 7;
@@ -304,7 +310,43 @@ public final class Overlay {
 
         // панель кнопок FTB занимает верх левой колонки
         int availL = left - MARGIN - MARGIN;
-        Dock.layout(screen, MARGIN, Math.min(availL, 8 * 20 + 14), leftTop, leftBottom);
+        int freeTop = Dock.layout(screen, MARGIN, Math.min(availL, 8 * 20 + 14), leftTop, leftBottom);
+        layoutLeftMarks(screen, cfg, cell, freeTop, leftBottom, availL, marks);
+    }
+
+    /** Откреплённые закладки: колонка слева под кнопками FTB, на всю свободную высоту и ширину до окна. */
+    private static void layoutLeftMarks(Screen screen, Config cfg, int cell, int top, int bottom, int width, List<Stack> marks) {
+        marksLeft = false;
+        if (!cfg.bookmarksDetached) return;
+        if (filter == FILTER_BOOKMARKS) setFilter(FILTER_ALL);
+        // ряд стикеров целей внизу экрана остаётся свободным
+        if (screen instanceof AbstractContainerScreen<?> && Stickers.rowHeight() > 0) {
+            bottom = Math.min(bottom, UiScale.height() - 14 - Stickers.rowHeight() - MARGIN);
+        }
+        int cols = (width - 16) / cell;
+        if (cols < 2 || bottom - top < 60) {
+            MARKS.hide();
+            marksTop = -1;
+            return;
+        }
+        int px = MARGIN, pw = cols * cell + 16, py = top, ph = bottom - top;
+        marksPanel[0] = px;
+        marksPanel[1] = py;
+        marksPanel[2] = pw;
+        marksPanel[3] = ph;
+        MARKS.cell = cell;
+        MARKS.cols = cols;
+        MARKS.x = px + 4;
+        MARKS.w = pw - 8;
+        MARKS.y = py + 4;
+        MARKS.h = ph - 4;
+        marksTop = MARKS.y + 1;
+        MARKS.gridX = px + SIDE_PAD;
+        MARKS.gridY = MARKS.y + 18;
+        MARKS.gridW = cols * cell;
+        MARKS.gridH = py + ph - SIDE_BOTTOM - MARKS.gridY;
+        MARKS.setItems(marks);
+        marksLeft = true;
     }
 
     /** Отметки на слотах контейнера: они в координатах самого экрана, поэтому вне масштаба интерфейса. */
@@ -343,6 +385,10 @@ public final class Overlay {
             works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.CHEVRON_LEFT, stripRect[0] + (STRIP_W - 8) / 2f, stripRect[1] + (stripRect[3] - 8) / 2f, 8f, hot ? theme.c("accent") : theme.c("button.fg"));
         }
         Dock.render(g, theme, mx, my);
+        if (marksLeft && MARKS.visible()) {
+            theme.sidebar(g, marksPanel[0], marksPanel[1], marksPanel[2], marksPanel[3]);
+            renderMarks(g, theme, mx, my, animate);
+        }
         if (screen instanceof AbstractContainerScreen<?>) {
             Stickers.drawRow(g, theme, 4, UiScale.height() - 14, LIST.visible() ? LIST.x - 6 : UiScale.width() - 4, hostBounds(screen));
         } else {
@@ -410,7 +456,7 @@ public final class Overlay {
             Draw.label(g, Draw.ellipsize(footer, textEnd - LIST.x - SIDE_PAD, 12, Weight.REGULAR), LIST.x + SIDE_PAD, fy, 12, Weight.REGULAR, t.c("text.muted"));
         }
 
-        if (MARKS.visible()) renderMarks(g, t, mx, my, animate);
+        if (MARKS.visible() && !marksLeft) renderMarks(g, t, mx, my, animate);
     }
 
     private static String plural(String key, int n, String shown) {
@@ -439,15 +485,18 @@ public final class Overlay {
         int limit = helpIcon[0] - 4;
         String[] keys = {"ryscope.filter.all", "ryscope.filter.craftable", "ryscope.filter.bookmarks"};
         String[] counts = {"", Integer.toString(SearchService.craftable()), Integer.toString(Bookmarks.list().size())};
+        // откреплённые закладки живут в своей колонке слева, вкладка им не нужна
+        int tabs = cfg.bookmarksDetached ? 2 : 3;
+        filterRects[FILTER_BOOKMARKS][1] = 0;
         int x = LIST.x + SIDE_PAD;
         boolean withCounts = true;
         for (int pass = 0; pass < 2; pass++) {
             float total = 0;
-            for (int i = 0; i < 3; i++) total += tabWidth(Component.translatable(keys[i]).getString(), withCounts ? counts[i] : "", i) + (i > 0 ? 3 : 0);
+            for (int i = 0; i < tabs; i++) total += tabWidth(Component.translatable(keys[i]).getString(), withCounts ? counts[i] : "", i) + (i > 0 ? 3 : 0);
             if (x + total <= limit) break;
             withCounts = false;
         }
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < tabs; i++) {
             String label = Component.translatable(keys[i]).getString();
             String count = withCounts ? counts[i] : "";
             int w = (int) Math.ceil(tabWidth(label, count, i));
@@ -486,21 +535,53 @@ public final class Overlay {
     }
 
     private static void renderMarks(GuiGraphics g, Theme t, int mx, int my, boolean animate) {
-        Draw.round(g, LIST.x + SIDE_PAD, marksTop, LIST.w - SIDE_PAD * 2, 0.5f, 0.02f, t.c("panel.border"));
+        int left = MARKS.x + PAD, right = MARKS.x + MARKS.w - PAD;
+        if (!marksLeft) Draw.round(g, left - 1, marksTop, right - left + 2, 0.5f, 0.02f, t.c("panel.border"));
         float cy = marksTop + 6 + 4;
+        // открепить или закрепить: булавка в правом конце шапки, у откреплённых она наклонена
+        detachRect[0] = right - 10;
+        detachRect[1] = (int) cy - 5;
+        boolean detachHot = overInfo(detachRect, mx, my);
+        int pinColor = detachHot ? t.c("accent") : t.c("text.dim");
+        if (marksLeft) works.repka.ryscore.ui.Icons.drawRotated(g, works.repka.ryscore.ui.Icons.Shape.PIN, detachRect[0] + 1, detachRect[1] + 1, 8f, 45f, pinColor);
+        else works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.PIN, detachRect[0] + 1, detachRect[1] + 1, 8f, pinColor);
+        showAllRect[1] = 0;
         if (Bookmarks.folders().size() > 1 || folderEdit != null) {
             renderFolderTabs(g, t, mx, my);
         } else {
-            Draw.label(g, Component.translatable("ryscope.bookmarks").getString(), LIST.x + SIDE_PAD, cy, 12, Weight.REGULAR, t.c("text.muted"));
-            String all = Component.translatable("ryscope.bookmarks.show_all").getString();
-            float allW = Draw.labelWidth(all, 12, Weight.REGULAR);
-            float ax = LIST.x + LIST.w - SIDE_PAD - allW;
-            showAllRect[0] = (int) ax;
-            showAllRect[1] = (int) Math.ceil(allW);
-            boolean hot = mx >= ax && mx < ax + allW && my >= cy - 5 && my < cy + 5;
-            Draw.label(g, all, ax, cy, 12, Weight.REGULAR, hot ? t.c("accent") : t.c("text.muted"));
+            Draw.label(g, Component.translatable("ryscope.bookmarks").getString(), left, cy, 12, Weight.REGULAR, t.c("text.muted"));
+            if (!marksLeft) {
+                String all = Component.translatable("ryscope.bookmarks.show_all").getString();
+                float allW = Draw.labelWidth(all, 12, Weight.REGULAR);
+                float ax = detachRect[0] - 4 - allW;
+                showAllRect[0] = (int) ax;
+                showAllRect[1] = (int) Math.ceil(allW);
+                boolean hot = mx >= ax && mx < ax + allW && my >= cy - 5 && my < cy + 5;
+                Draw.label(g, all, ax, cy, 12, Weight.REGULAR, hot ? t.c("accent") : t.c("text.muted"));
+            }
         }
         MARKS.render(g, t, mx, my, animate);
+        if (marksLeft && MARKS.items().isEmpty()) {
+            String hint = Component.translatable("ryscope.bookmarks.empty", Keys.label(Keys.BOOKMARK)).getString();
+            List<String> lines = Draw.wrapLabel(hint, MARKS.gridW, 11, Weight.REGULAR, 3);
+            for (int i = 0; i < lines.size(); i++) {
+                Draw.label(g, lines.get(i), MARKS.gridX, MARKS.gridY + 6 + i * 11, 11, Weight.REGULAR, t.c("text.dim"));
+            }
+        }
+    }
+
+    private static boolean overDetach(double mx, double my) {
+        return MARKS.visible() && detachRect[0] >= 0 && overInfo(detachRect, mx, my);
+    }
+
+    private static void toggleDetached() {
+        commitFolderName();
+        Config cfg = Config.get();
+        cfg.bookmarksDetached = !cfg.bookmarksDetached;
+        Config.save();
+        if (cfg.bookmarksDetached && filter == FILTER_BOOKMARKS) setFilter(FILTER_ALL);
+        MARKS.resetScroll();
+        detachRect[0] = -1;
     }
 
     /** Чипы и цвета запроса в поле поиска. */
@@ -539,6 +620,9 @@ public final class Overlay {
     private static void renderInfoTooltips(Screen screen, GuiGraphics g, int mx, int my) {
         Font font = Minecraft.getInstance().font;
         String text = null;
+        if (overDetach(mx, my)) {
+            text = Component.translatable(marksLeft ? "ryscope.bookmarks.attach" : "ryscope.bookmarks.detach").getString();
+        }
         if (LIST.visible() && overInfo(listInfo, mx, my)) {
             text = (LIST.paged ? Component.translatable("ryscope.list.count", listCount).getString() + " · " : "")
                 + Component.translatable("ryscope.list.keys", Keys.label(Keys.RECIPES), Keys.label(Keys.USES),
@@ -711,8 +795,9 @@ public final class Overlay {
         return MARKS.visible() && mx >= MARKS.x && mx < MARKS.x + MARKS.w && my >= MARKS.y && my < MARKS.gridY;
     }
 
+    /** Плюс новой папки стоит левее булавки «открепить». */
     private static int folderPlusX() {
-        return MARKS.x + MARKS.w - PAD - 10;
+        return MARKS.x + MARKS.w - PAD - 10 - 13;
     }
 
     private static int folderNatural(int index) {
@@ -789,12 +874,12 @@ public final class Overlay {
             Draw.textScaled(g, label, tx + (tw - textW) / 2f, top + 3, 0.75f, current ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
         }
         int plusX = folderPlusX();
-        boolean plusHot = overMarksHeader(mx, my) && mx >= plusX - 1;
+        boolean plusHot = overMarksHeader(mx, my) && mx >= plusX - 1 && mx < plusX + 11;
         works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.PLUS, plusX + 2, top + 2, 8f, plusHot ? theme.c("accent") : theme.c("text.dim"));
     }
 
     private static boolean marksHeaderClicked(double mx, double my, int button) {
-        if (mx >= folderPlusX() - 1) {
+        if (mx >= folderPlusX() - 1 && mx < folderPlusX() + 11) {
             commitFolderName();
             if (Bookmarks.addFolder("")) startFolderRename();
             else toast(Component.translatable("ryscope.bookmarks.folder.limit").getString());
@@ -1087,7 +1172,11 @@ public final class Overlay {
                 }
             }
         }
-        if (MARKS.visible() && Bookmarks.folders().size() <= 1 && folderEdit == null && my >= marksTop && my < MARKS.gridY
+        if (button == 0 && overDetach(mx, my)) {
+            toggleDetached();
+            return true;
+        }
+        if (MARKS.visible() && !marksLeft && Bookmarks.folders().size() <= 1 && folderEdit == null && my >= marksTop && my < MARKS.gridY
             && mx >= showAllRect[0] && mx < showAllRect[0] + showAllRect[1]) {
             setFilter(FILTER_BOOKMARKS);
             return true;

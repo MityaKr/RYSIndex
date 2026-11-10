@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("detach".equals(System.getProperty("ryscope.autotest"))) {
+            buildDetach();
+            return;
+        }
         if ("supply".equals(System.getProperty("ryscope.autotest"))) {
             buildSupply();
             return;
@@ -1095,6 +1099,44 @@ final class AutoTest {
 
     private static void searchKey(int key) {
         Overlay.keyPressed(mc().screen, key, 0, 0);
+    }
+
+    private static void overlayCall(String method) {
+        try {
+            java.lang.reflect.Method m = Overlay.class.getDeclaredMethod(method);
+            m.setAccessible(true);
+            m.invoke(null);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void buildDetach() {
+        step("detach: marks", () -> {
+            works.repka.ryscope.runtime.Config.get().bookmarksDetached = false;
+            int added = 0;
+            for (net.minecraft.world.item.Item item : net.minecraft.core.registries.BuiltInRegistries.ITEM) {
+                if (item == Items.AIR) continue;
+                ItemRes res = new ItemRes(new ItemStack(item));
+                if (!works.repka.ryscope.runtime.Bookmarks.contains(res)) works.repka.ryscope.runtime.Bookmarks.toggle(res);
+                if (++added >= 30) break;
+            }
+            mc().setScreen(new InventoryScreen(mc().player));
+        }, 30);
+        shot("detach_pinned");
+        step("detach: unpin", () -> overlayCall("toggleDetached"), 10);
+        shot("detach_left");
+        step("detach: recipes", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 30);
+        shot("detach_left_recipes");
+        step("detach: glass", () -> ThemeManager.select("ryscore:glass"), 10);
+        shot("detach_left_glass");
+        step("detach: slate", () -> {
+            ThemeManager.select("ryscore:slate");
+            mc().setScreen(new InventoryScreen(mc().player));
+        }, 10);
+        step("detach: pin back", () -> overlayCall("toggleDetached"), 10);
+        shot("detach_back");
+        step("quit", () -> mc().stop(), 0);
     }
 
     private static void buildSupply() {
