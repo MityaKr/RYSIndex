@@ -166,7 +166,7 @@ public final class GridPanel {
         int pad = (int) ((tile - 16) / 2);
         float itemScale = cell > 24 ? (cell - 7) / 16f : 1f;
         float scaledPad = (tile - 16 * itemScale) / 2f;
-        g.enableScissor(gridX, gridY, gridX + gridW, gridY + gridH);
+        Draw.scissor(g, gridX, gridY, gridX + gridW, gridY + gridH);
         if (tiled) {
             int count = 0;
             int capacity = (last - first + 1) * cols * 2;

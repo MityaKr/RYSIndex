@@ -29,7 +29,7 @@ public final class Config {
     public boolean lensInWorld = true;
     public boolean animations = true;
     /** Максимальная ширина панели списка в колонках; 0 = сколько помещается. */
-    public int maxColumns = 8;
+    public int maxColumns = 0;
     public boolean showModName = true;
     public String lastSearch = "";
     public boolean keepSearch = true;
@@ -107,6 +107,11 @@ public final class Config {
                 instance.designVersion = 1;
                 instance.maxColumns = 8;
                 instance.listPaged = true;
+            }
+            if (instance.designVersion < 2) {
+                // столбцы подбираются под ширину экрана
+                instance.designVersion = 2;
+                if (instance.maxColumns == 8) instance.maxColumns = 0;
             }
             if (instance.searchLanguages == null) instance.searchLanguages = new ArrayList<>(List.of("en_us"));
             if (instance.expandedGroups == null) instance.expandedGroups = new ArrayList<>();

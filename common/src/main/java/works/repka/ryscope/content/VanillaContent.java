@@ -67,10 +67,10 @@ public final class VanillaContent {
             StonecutterRecipe recipe = holder.value();
             ItemStack result = recipe.getResultItem(registries);
             if (result.isEmpty() || recipe.getIngredients().isEmpty()) continue;
-            NativeRecipe r = sized(NativeRecipe.Kind.SINGLE, holder, 103, 33);
+            NativeRecipe r = sized(NativeRecipe.Kind.SINGLE, holder, 61, 22);
             r.input(Ing.of(recipe.getIngredients().get(0)), 0, 4);
-            r.flow(34, 16, 27, instant());
-            r.output(ItemRes.of(result), 70, 0, true);
+            r.flow(22, 11, 9, "");
+            r.output(ItemRes.of(result), 39, 0, true);
             b.recipe(stonecutting, r);
         }
 
@@ -82,12 +82,12 @@ public final class VanillaContent {
                 Ingredient addition = field(recipe, "addition");
                 ItemStack result = recipe.getResultItem(registries);
                 if (result.isEmpty()) continue;
-                NativeRecipe r = sized(NativeRecipe.Kind.SMITHING, holder, 159, 33);
+                NativeRecipe r = sized(NativeRecipe.Kind.SMITHING, holder, 93, 22);
                 r.input(Ing.of(template), 0, 4);
                 r.input(Ing.of(base), DESIGN_PITCH, 4);
                 r.input(Ing.of(addition), DESIGN_PITCH * 2, 4);
-                r.flow(90, 16, 27, instant());
-                r.output(ItemRes.of(result), 126, 0, true);
+                r.flow(54, 11, 9, "");
+                r.output(ItemRes.of(result), 71, 0, true);
                 b.recipe(smithing, r);
             } catch (ReflectiveOperationException e) {
                 RYScope.LOG.debug("Кузнечный рецепт {} недоступен: {}", holder.id(), e.toString());
@@ -130,7 +130,7 @@ public final class VanillaContent {
             return null;
         }
         if (w > 3 || h > 3) return null;
-        NativeRecipe r = sized(NativeRecipe.Kind.CRAFTING, holder, 159, 81);
+        NativeRecipe r = sized(NativeRecipe.Kind.CRAFTING, holder, 93, 46);
         r.gridW = w;
         r.gridH = h;
         r.shapeless = shapeless;
@@ -144,9 +144,9 @@ public final class VanillaContent {
                 if (col >= w || row >= h) r.slots.add(new NativeRecipe.SlotW(Ing.EMPTY, col * DESIGN_PITCH, row * DESIGN_PITCH, false, false));
             }
         }
-        r.flow(90, 40, 27, instant());
-        if (shapeless) r.shapelessMark(100, 18);
-        r.output(ItemRes.of(result), 126, 24, true);
+        r.flow(54, 23, 9, "");
+        if (shapeless) r.shapelessMark(55, 10);
+        r.output(ItemRes.of(result), 71, 12, true);
         return r;
     }
 
@@ -155,33 +155,29 @@ public final class VanillaContent {
             T recipe = holder.value();
             ItemStack result = recipe.getResultItem(registries);
             if (result.isEmpty() || recipe.getIngredients().isEmpty()) continue;
-            NativeRecipe r = sized(NativeRecipe.Kind.COOKING, holder, 112, 40);
+            NativeRecipe r = sized(NativeRecipe.Kind.COOKING, holder, 96, 28);
             r.ticks = recipe.getCookingTime();
             r.input(Ing.of(recipe.getIngredients().get(0)), 0, 0);
-            r.flame(6, 28);
+            r.flame(1, 16);
             String time = Component.translatable("ryscope.recipe.seconds", trim(recipe.getCookingTime() / 20f)).getString();
             String text = time;
             if (recipe.getExperience() > 0) {
                 text += " · " + Component.translatable("ryscope.recipe.xp", trim(recipe.getExperience())).getString();
             }
-            r.flow(30, 16, 46, text);
-            r.output(ItemRes.of(result), 80, 0, true);
+            r.flow(20, 11, 48, text);
+            r.output(ItemRes.of(result), 74, 0, true);
             b.recipe(category, r);
         }
     }
 
-    private static final int DESIGN_PITCH = 28;
+    private static final int DESIGN_PITCH = 16;
 
     /** Рецепт с размерами слотов из макета. */
     private static NativeRecipe sized(NativeRecipe.Kind kind, RecipeHolder<?> holder, int width, int height) {
         NativeRecipe r = new NativeRecipe(kind, holder, width, height);
-        r.slotSize = 25;
-        r.largeSize = 33;
+        r.slotSize = 14;
+        r.largeSize = 22;
         return r;
-    }
-
-    private static String instant() {
-        return Component.translatable("ryscope.recipe.instant").getString();
     }
 
     private static String trim(float v) {

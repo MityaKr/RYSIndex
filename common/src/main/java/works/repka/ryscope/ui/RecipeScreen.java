@@ -8,7 +8,6 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.IntConsumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -31,47 +30,41 @@ import works.repka.ryscore.theme.Theme;
 import works.repka.ryscore.theme.ThemeManager;
 import works.repka.ryscore.ui.Draw;
 import works.repka.ryscore.ui.Icons;
+import works.repka.ryscore.ui.Kit;
+import works.repka.ryscore.ui.ScaledScreen;
 import works.repka.ryscore.ui.Scroller;
 import works.repka.ryscore.ui.Type.Weight;
 
 /**
- * Карточка предмета, размеры из {@code design/Main.dc.html}. Числа в единицах GUI: половина пикселя макета.
- * Шапка, разделы, строка категории, рецепт, строка наличия.
+ * Карточка предмета, размеры из {@code design/CardV2.dc.html}. Числа в единицах интерфейса: половина пикселя макета.
+ * История над карточкой, рейка категорий, шапка, вкладки, строка категории, рецепты со своей строкой наличия.
  */
-public final class RecipeScreen extends Screen {
+public final class RecipeScreen extends ScaledScreen {
     private static final int CARD_W = 260;
-    private static final int PAD_X = 9;
-    private static final float HEADER_H = 44f;
-    private static final float TABS_H = works.repka.ryscore.ui.Kit.TABS_H;
-    private static final int BODY_TOP = 8;
-    private static final int GAP = 7;
-    private static final int STRIP_H = 22;
-    private static final int TAB_W = 22;
+    private static final int RAIL_W = 24, RAIL_SLOT = 17, RAIL_GAP = 2, RAIL_PAD = 5;
+    private static final int PAD_X = 7;
+    private static final int HEADER_H = 32;
+    private static final int TABS_H = 16;
+    private static final int ROW_H = 14;
+    private static final int BLOCK_MARGIN = 3, BLOCK_PAD = 5, STATUS_GAP = 4, STATUS_H = 8;
+    private static final int BOTTOM = 4;
+    private static final int HISTORY_SLOT = 13, HISTORY_PAD = 2, HISTORY_GAP = 2, HISTORY_OFFSET = 23;
+    private static final int BUTTON = 14, BUTTON_GAP = 3;
+    private static final int MAX_PER_PAGE = 3;
     private static final int MAX_TABS = 11;
-    private static final int ROW_H_CATEGORY = 9;
-    private static final int STATUS_H = 27;
-    private static final int BOTTOM = 9;
-    /** Плюсик и значок списка: столбец справа от рецепта. */
-    private static final int BUTTONS_W = 14;
-    private static final int BUTTONS_GAP = 3;
-    private static final int MANY_RECIPES = 6;
-    private static final int TAB_GAP = 2;
-    private static final float TAB_NUMBER_GAP = 3f;
-    private static final float TAB_PAD_MIN = 3f;
-    private static final float TAB_PAD_MAX = 7f;
 
     /** Разделы карточки. Пятый, «Граф», открывает дерево крафта. */
     private enum Section { RECIPES, USES, SOURCES, HELP }
 
     private record Tab(Stack stack, Lookup.Mode mode) {}
 
-    private record Hit(int x, int y, int w, int h, IntConsumer action) {}
-
-    private record Status(String head, String tail, String link, String color) {}
+    private record Status(String head, String tail, Kit.State state) {}
 
     public record Placed(RecipeView recipe, int x, int y, int rowX, int rowY, int rowW, int rowH) {}
 
-    private record StationSpot(Stack stack, int x, int y) {}
+    private record StationSpot(Stack stack, int x, int y, int size) {}
+
+    private record Page(int start, int end) {}
 
     private static final List<Tab> TABS = new ArrayList<>();
 
@@ -110,25 +103,32 @@ public final class RecipeScreen extends Screen {
         }
     }
 
+    /** Для автотеста: дополнительная ширина карточки, чтобы проверить нехватку места. */
+    public static int testExtraWidth;
+
     @Nullable
     private final Screen parent;
     private final Deque<Nav> history = new ArrayDeque<>();
     private Nav nav;
     private int cardX, cardY, cardW, cardH;
-    private int perPage = 1, rowH;
     private int widestCard;
-    private int tabScroll;
-    private int stripY;
-    private boolean strip;
-    private final List<Hit> hits = new ArrayList<>();
+    private final Kit.Hits hits = new Kit.Hits();
     private final List<StationSpot> stations = new ArrayList<>();
+    private final List<StationSpot> historySpots = new ArrayList<>();
     private final List<Placed> placed = new ArrayList<>();
     private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
     private final Map<RecipeView, Status> statuses = new IdentityHashMap<>();
     private int transferAge;
     private final Scroller edge = new Scroller();
+    private final Scroller rail = new Scroller();
     @Nullable
     private RecipeView dragging;
+    private List<Page> pages = List.of();
+    private Object pagesFor;
+    private int pagesAvail;
+    private int tallestPage;
+    @Nullable
+    private String pendingTip;
 
     private RecipeScreen(@Nullable Screen parent, Nav nav) {
         super(Component.translatable("ryscope.recipes.title"));
@@ -138,13 +138,6 @@ public final class RecipeScreen extends Screen {
 
     private static String tr(String key, Object... args) {
         return Component.translatable(key, args).getString();
-    }
-
-    /** Формы множественного числа: окончание ключа one, few или many. */
-    private static String plural(String key, int n) {
-        int a = Math.abs(n) % 100, b = a % 10;
-        String form = a >= 11 && a <= 14 ? "many" : b == 1 ? "one" : b >= 2 && b <= 4 ? "few" : "many";
-        return tr(key + "." + form, n);
     }
 
     private static Map<Section, List<Group>> split(Stack stack) {
@@ -191,6 +184,7 @@ public final class RecipeScreen extends Screen {
             }
         }
         remember(focus, section == Section.USES ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
+        Overlay.showCard();
         show(Minecraft.getInstance(), new Nav(focus, section, sections));
         return true;
     }
@@ -200,6 +194,7 @@ public final class RecipeScreen extends Screen {
         if (groups.isEmpty()) return false;
         Map<Section, List<Group>> sections = new EnumMap<>(Section.class);
         for (Section s : Section.values()) sections.put(s, s == Section.RECIPES ? groups : List.of());
+        Overlay.showCard();
         show(Minecraft.getInstance(), new Nav(null, Section.RECIPES, sections));
         return true;
     }
@@ -208,12 +203,17 @@ public final class RecipeScreen extends Screen {
         if (mc.screen instanceof RecipeScreen rs) {
             rs.history.push(rs.nav);
             rs.nav = nav;
-            rs.tabScroll = 0;
-            rs.transfers.clear();
-            rs.statuses.clear();
+            rs.rail.reset();
+            rs.clearCaches();
         } else {
             mc.setScreen(new RecipeScreen(mc.screen, nav));
         }
+    }
+
+    private void clearCaches() {
+        transfers.clear();
+        statuses.clear();
+        pagesFor = null;
     }
 
     /** Ресурс, рецепты которого сейчас показаны, или null для просмотра категории. */
@@ -222,27 +222,21 @@ public final class RecipeScreen extends Screen {
         return nav.focus;
     }
 
+    public int[] cardBounds() {
+        return new int[] {cardX, cardY, cardW, cardH};
+    }
+
     /** Показанные рецепты с их положением на экране. */
     public List<Placed> placed() {
         return placed;
-    }
-
-    public int[] cardBounds() {
-        return new int[] {cardX, cardY, cardW, cardH};
     }
 
     private Group group() {
         return nav.groups.get(Math.min(nav.group, nav.groups.size() - 1));
     }
 
-    private int pages() {
-        return Math.max(1, (group().recipes().size() + perPage - 1) / perPage);
-    }
-
-    // --- вкладки открытых предметов над карточкой ---
-
-    private int tabStart() {
-        return Math.max(0, TABS.size() - Math.max(1, cardW / TAB_W));
+    private int pageCount() {
+        return Math.max(1, pages.size());
     }
 
     private int currentTab() {
@@ -275,38 +269,72 @@ public final class RecipeScreen extends Screen {
 
     // --- раскладка ---
 
-    private boolean categoryStrip() {
+    private boolean hasRail() {
         return nav.groups.size() > 1;
     }
 
+    private int railWidth() {
+        return hasRail() ? RAIL_W : 0;
+    }
+
     private int chromeHeight() {
-        return (int) Math.ceil(HEADER_H + (nav.focus != null ? TABS_H : 0)) + BODY_TOP + ROW_H_CATEGORY + GAP + STATUS_H + GAP + BOTTOM;
+        return HEADER_H + (nav.focus != null ? TABS_H : 0) + ROW_H + BOTTOM;
+    }
+
+    private static int recipeRow(RecipeView r) {
+        int plate = r.needsPlate() ? 3 : 0;
+        return Math.max(r.height() + plate * 2, BUTTON * 2 + BUTTON_GAP);
+    }
+
+    private static int blockHeight(RecipeView r) {
+        return BLOCK_PAD * 2 + recipeRow(r) + (r.isCrafting() ? STATUS_GAP + STATUS_H : 0);
+    }
+
+    /** Ширина карточки, которая нужна этому разделу. */
+    public int preferredWidth() {
+        int need = 0;
+        for (RecipeView r : group().recipes()) {
+            int plate = r.needsPlate() ? 3 : 0;
+            need = Math.max(need, r.width() + plate * 2);
+        }
+        widestCard = Math.max(widestCard, Math.max(CARD_W, need + BUTTON + 6 + BLOCK_PAD * 2 + PAD_X * 2 + railWidth()));
+        return widestCard + testExtraWidth;
+    }
+
+    private void buildPages(List<RecipeView> recipes, int avail) {
+        if (pagesFor == group() && pagesAvail == avail) return;
+        pagesFor = group();
+        pagesAvail = avail;
+        List<Page> out = new ArrayList<>();
+        tallestPage = 0;
+        int start = 0;
+        while (start < recipes.size()) {
+            int used = 0, end = start;
+            // рецепт модов берёт свою настоящую высоту: если второй не помещается, на странице остаётся один
+            while (end < recipes.size() && end - start < MAX_PER_PAGE) {
+                int h = blockHeight(recipes.get(end)) + BLOCK_MARGIN * 2;
+                if (end > start && used + h > avail) break;
+                used += h;
+                end++;
+            }
+            out.add(new Page(start, end));
+            tallestPage = Math.max(tallestPage, used);
+            start = end;
+        }
+        pages = out;
     }
 
     private void relayout() {
-        List<RecipeView> recipes = group().recipes();
-        int maxW = 124, maxH = 20;
-        for (RecipeView r : recipes) {
-            maxW = Math.max(maxW, r.width());
-            maxH = Math.max(maxH, r.height());
-        }
-        int plate = !recipes.isEmpty() && recipes.get(0).needsPlate() ? 3 : 0;
-        rowH = Math.max(maxH + plate * 2, 30);
-        widestCard = Math.max(widestCard, Math.max(CARD_W, maxW + plate * 2 + BUTTONS_W + 8 + PAD_X * 2));
-        cardW = Math.min(width - 8, widestCard);
+        cardW = Math.min(width - 8, preferredWidth());
         int sidebar = Overlay.sidebarLeft(this);
         // как в макете: карточка смещена вправо внутри свободной части, чтобы слева было видно инвентарь
-        cardX = Math.max(categoryStrip() ? 28 : 4, Math.min(sidebar - cardW - 4, (sidebar - cardW) * 5 / 6));
-        strip = TABS.size() > 1;
-        cardY = Math.max(strip ? STRIP_H + 2 : 4, height * 36 / 400);
+        cardX = Math.max(4, Math.min(sidebar - cardW - 4, (sidebar - cardW) * 5 / 6));
+        boolean strip = TABS.size() > 1;
+        cardY = Math.max(strip ? HISTORY_OFFSET + 4 : 4, height * 52 / 400);
         int chrome = chromeHeight();
-        int avail = height - cardY - 4 - chrome;
-        // немного рецептов листаются по одному, как в макете; длинные списки занимают всю высоту
-        int fit = Math.max(1, (avail + GAP) / (rowH + GAP));
-        perPage = recipes.size() <= MANY_RECIPES ? 1 : Math.min(recipes.size(), fit);
-        int needed = chrome + perPage * (rowH + GAP) - GAP;
-        cardH = Math.min(height - cardY - 4, needed);
-        nav.page = Math.max(0, Math.min(nav.page, pages() - 1));
+        buildPages(group().recipes(), Math.max(1, height - cardY - 4 - chrome));
+        cardH = Math.min(height - cardY - 4, chrome + tallestPage);
+        nav.page = Math.max(0, Math.min(nav.page, pageCount() - 1));
     }
 
     @Override
@@ -314,222 +342,88 @@ public final class RecipeScreen extends Screen {
         g.fill(0, 0, width, height, ThemeManager.get().c("overlay"));
     }
 
-    private void hit(int x, int y, int w, int h, IntConsumer action) {
-        hits.add(new Hit(x, y, w, h, action));
-    }
-
     private static boolean over(double mx, double my, int x, int y, int w, int h) {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }
 
     @Override
-    public void render(GuiGraphics g, int mx, int my, float partialTick) {
+    protected void draw(GuiGraphics g, int mx, int my, float partialTick) {
         Theme t = ThemeManager.get();
         hits.clear();
+        pendingTip = null;
+        placed.clear();
+        stations.clear();
+        historySpots.clear();
         relayout();
         renderBackground(g, mx, my, partialTick);
         Overlay.renderBackground(this, g, mx, my, partialTick);
+        if (Overlay.cardCollapsed()) {
+            renderCardStrip(g, t, mx, my);
+            Overlay.renderTop(this, g, mx, my, partialTick);
+            return;
+        }
+        renderHistory(g, t, mx, my);
         t.panel(g, cardX, cardY, cardW, cardH);
-        renderStrip(g, t, mx, my);
+        Category hoveredCategory = hasRail() ? renderRail(g, t, mx, my) : null;
         renderHeader(g, t, mx, my);
-        float y = cardY + HEADER_H;
+        int y = cardY + HEADER_H;
         if (nav.focus != null) {
             renderSections(g, t, mx, my, y);
             y += TABS_H;
         }
-        int by = (int) Math.ceil(y) + BODY_TOP;
-        Category hoveredTab = null;
-        if (categoryStrip()) hoveredTab = renderCategories(g, t, mx, my);
-        renderCategoryRow(g, t, mx, my, by);
-        by += ROW_H_CATEGORY + GAP;
-        renderRecipes(g, t, mx, my, partialTick, by);
-
+        renderCategoryRow(g, t, mx, my, y);
+        y += ROW_H;
+        renderRecipes(g, t, mx, my, partialTick, y);
         Overlay.renderTop(this, g, mx, my, partialTick);
-        renderTooltips(g, t, mx, my, hoveredTab);
+        renderTooltips(g, t, mx, my, hoveredCategory);
     }
 
-    private void renderStrip(GuiGraphics g, Theme t, int mx, int my) {
-        if (!strip) return;
-        stripY = cardY - STRIP_H + 1;
-        int start = tabStart();
+    /** Карточка уступила место панели: остаётся полоска с кнопкой вернуть её. */
+    private void renderCardStrip(GuiGraphics g, Theme t, int mx, int my) {
+        int x = 4, y = 4, w = Overlay.STRIP_W, h = height - 8;
+        t.panel(g, x, y, w, h);
+        boolean hot = over(mx, my, x, y, w, h);
+        Icons.draw(g, Icons.Shape.CHEVRON_RIGHT, x + (w - 8) / 2f, y + (h - 8) / 2f, 8f, hot ? t.c("accent") : t.c("button.fg"));
+        hits.add(x, y, w, h, b -> Overlay.showCard());
+    }
+
+    // --- история ---
+
+    private void renderHistory(GuiGraphics g, Theme t, int mx, int my) {
+        if (TABS.size() <= 1) return;
+        String label = tr("ryscope.history");
+        float labelW = Draw.labelWidth(label, 10.5f, Weight.REGULAR);
+        int leading = HISTORY_PAD + 2 + Math.round(labelW) + 3;
+        int fit = Math.max(1, (cardW - leading - HISTORY_PAD + HISTORY_GAP) / (HISTORY_SLOT + HISTORY_GAP));
+        int start = Math.max(0, TABS.size() - fit), count = TABS.size() - start;
+        int w = leading + count * HISTORY_SLOT + (count - 1) * HISTORY_GAP + HISTORY_PAD;
+        int h = HISTORY_SLOT + HISTORY_PAD * 2;
+        int y = cardY - HISTORY_OFFSET;
+        Draw.roundBox(g, cardX, y, w, h, 5f, t.c("panel.bg"), t.c("panel.border"));
+        Draw.label(g, label, cardX + HISTORY_PAD + 2, y + h / 2f, 10.5f, Weight.REGULAR, t.c("text.dim"));
+        int sx = cardX + leading;
+        int sy = y + HISTORY_PAD;
         for (int i = start; i < TABS.size(); i++) {
-            int sx = cardX + (i - start) * TAB_W, index = i;
+            int index = i;
             Tab tab = TABS.get(i);
             boolean current = nav.focus != null && tab.stack.same(nav.focus);
-            t.tab(g, sx, stripY, TAB_W - 2, 20, current, over(mx, my, sx, stripY, TAB_W - 2, 20));
-            tab.stack.render(g, sx + 2, stripY + 2);
-            hit(sx, stripY, TAB_W - 2, 20, button -> {
+            boolean hot = over(mx, my, sx, sy, HISTORY_SLOT, HISTORY_SLOT);
+            Draw.roundBox(g, sx, sy, HISTORY_SLOT, HISTORY_SLOT, 3f, hot ? t.c("slot.hover") : t.c("slot.bg"), current ? 0 : t.c("card.border"));
+            if (current) Draw.roundBorder(g, sx, sy, HISTORY_SLOT, HISTORY_SLOT, 3f, t.c("accent"), 1f);
+            renderScaled(g, tab.stack, sx + 2.5f, sy + 2.5f, 0.5f);
+            historySpots.add(new StationSpot(tab.stack, sx, sy, HISTORY_SLOT));
+            hits.add(sx, sy, HISTORY_SLOT, HISTORY_SLOT, button -> {
                 if (button != 0) closeTab(index);
                 else if (nav.focus == null || !tab.stack.same(nav.focus)) open(tab.stack, tab.mode);
             });
+            sx += HISTORY_SLOT + HISTORY_GAP;
         }
     }
 
-    private void renderHeader(GuiGraphics g, Theme t, int mx, int my) {
-        int iconX = cardX + PAD_X;
-        int iconY = cardY + 12;
-        Draw.roundBox(g, iconX, iconY, 23, 23, 5f, t.c("slot.bg"), t.c("card.border"));
-        Stack shown = nav.focus;
-        if (shown != null) shown.render(g, iconX + 4, iconY + 4);
-        else group().category().renderIcon(g, iconX + 4, iconY + 4);
-        int buttonY = cardY + 14;
-        int closeX = cardX + cardW - PAD_X - 18, starX = closeX - 18 - 7;
-        boolean closeHot = over(mx, my, closeX, buttonY, 18, 18);
-        iconButton(g, t, closeX, buttonY, closeHot);
-        Draw.cross(g, closeX + 5, buttonY + 5, closeHot ? t.c("accent") : t.c("button.fg"));
-        hit(closeX, buttonY, 18, 18, b -> onClose());
-        if (shown != null) {
-            boolean starHot = over(mx, my, starX, buttonY, 18, 18), marked = Bookmarks.contains(shown);
-            iconButton(g, t, starX, buttonY, starHot);
-            Draw.star(g, starX + 5, buttonY + 5, marked, marked || starHot ? t.c("accent") : t.c("button.fg"));
-            hit(starX, buttonY, 18, 18, b -> Overlay.toast(tr(Bookmarks.toggle(nav.focus) ? "ryscope.bookmark.added" : "ryscope.bookmark.removed")));
-        }
-        float textX = iconX + 23 + 7;
-        float room = starX - 7 - textX;
-        String title = shown != null ? shown.name().getString() : group().category().title.getString();
-        Draw.label(g, Draw.ellipsize(title, room, 20, Weight.SEMIBOLD), textX, cardY + 15f, 20, Weight.SEMIBOLD, t.c("text.primary"));
-        // подзаголовок переносится на вторую строку, как в макете; место под неё есть всегда, поэтому карточка не прыгает
-        float subY = cardY + 26f;
-        for (String line : Draw.wrapLabel(subtitle(), room, 12, Weight.REGULAR, 2)) {
-            Draw.label(g, line, textX, subY, 12, Weight.REGULAR, t.c("text.muted"));
-            subY += 8f;
-        }
-    }
-
-    private void iconButton(GuiGraphics g, Theme t, int x, int y, boolean hot) {
-        Draw.roundBox(g, x, y, 18, 18, 4.5f, hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg"), t.c("button.border"));
-    }
-
-    private String subtitle() {
-        if (nav.focus == null) return plural("ryscope.count.recipes", total(nav.groups));
-        StringBuilder out = new StringBuilder(nav.focus.id().toString());
-        List<String> tags = nav.focus.tags();
-        if (!tags.isEmpty()) out.append(" · #").append(tags.get(0));
-        out.append(" · ").append(plural("ryscope.count.recipes", total(nav.sections.get(Section.RECIPES))));
-        out.append(" · ").append(plural("ryscope.count.uses", total(nav.sections.get(Section.USES))));
-        return out.toString();
-    }
-
-    private void renderSections(GuiGraphics g, Theme t, int mx, int my, float y) {
-        Draw.round(g, cardX + 0.5f, y + TABS_H - 0.5f, cardW - 1, 0.5f, 0.02f, t.c("card.border"));
-        Section[] all = Section.values();
-        String[] labels = new String[all.length + 1];
-        int[] counts = new int[all.length + 1];
-        for (int i = 0; i < all.length; i++) {
-            labels[i] = tr("ryscope.section." + all[i].name().toLowerCase(java.util.Locale.ROOT));
-            counts[i] = all[i] != Section.HELP ? total(nav.sections.get(all[i])) : -1;
-        }
-        labels[all.length] = tr("ryscope.section.graph");
-        counts[all.length] = -1;
-        int room = cardW - PAD_X * 2;
-        float pad = tabPadding(labels, counts, true, room);
-        boolean numbers = pad >= TAB_PAD_MIN;
-        if (!numbers) pad = Math.max(TAB_PAD_MIN, tabPadding(labels, counts, false, room));
-        int x = cardX + PAD_X, right = cardX + cardW - PAD_X;
-        int top = (int) y, h = (int) Math.ceil(TABS_H);
-        for (int i = 0; i < labels.length; i++) {
-            Section s = i < all.length ? all[i] : null;
-            int count = numbers ? counts[i] : -1;
-            boolean enabled = s == null || total(nav.sections.get(s)) > 0;
-            IntConsumer action = !enabled ? null : s == null ? b -> TreeScreen.open(nav.focus) : b -> switchSection(s);
-            x = sectionTab(g, t, mx, my, x, top, h, right, pad, labels[i], count, s != null && nav.section == s, action);
-        }
-    }
-
-    /** Ширина текста вкладки: для расчёта всегда как у активной, чтобы вкладки не сдвигались при переключении. */
-    private static float tabTextWidth(String label, int count) {
-        float w = Draw.labelWidth(label, 13, Weight.MEDIUM);
-        return count >= 0 ? w + TAB_NUMBER_GAP + Draw.labelWidth(Integer.toString(count), 13, Weight.REGULAR) : w;
-    }
-
-    /** Отступ внутри вкладки, при котором все вкладки помещаются в строку. */
-    private static float tabPadding(String[] labels, int[] counts, boolean numbers, int room) {
-        float text = 0;
-        for (int i = 0; i < labels.length; i++) text += tabTextWidth(labels[i], numbers ? counts[i] : -1);
-        return Math.min(TAB_PAD_MAX, (room - text - TAB_GAP * (labels.length - 1)) / (labels.length * 2f));
-    }
-
-    private int sectionTab(GuiGraphics g, Theme t, int mx, int my, int x, int top, int h, int right, float pad, String label, int count, boolean active, @Nullable IntConsumer action) {
-        int w = Math.round(tabTextWidth(label, count) + pad * 2);
-        if (x + w > right + 1) return x;
-        boolean hot = action != null && over(mx, my, x, top, w, h);
-        t.tabLine(g, x, top, w, h, active, hot);
-        float cy = top + (h - 1) / 2f, tx = x + pad;
-        int color = action == null ? t.c("text.dim") : t.tabLineFg(active, hot);
-        Draw.label(g, label, tx, cy, 13, active ? Weight.MEDIUM : Weight.REGULAR, color);
-        if (count >= 0) {
-            float nx = tx + Draw.labelWidth(label, 13, Weight.MEDIUM) + TAB_NUMBER_GAP;
-            Draw.label(g, Integer.toString(count), nx, cy, 13, Weight.REGULAR, t.c("text.dim"));
-        }
-        if (action != null) hit(x, top, w, h, action);
-        return x + w + TAB_GAP;
-    }
-
-    /** Значки категорий столбцом слева от карточки: сама карточка остаётся как в макете. */
-    @Nullable
-    private Category renderCategories(GuiGraphics g, Theme t, int mx, int my) {
-        int x = cardX - 25, top = cardY + 8;
-        int visible = Math.max(1, (height - top - 4) / 24);
-        tabScroll = Math.max(0, Math.min(tabScroll, Math.max(0, nav.groups.size() - visible)));
-        if (nav.group < tabScroll) tabScroll = nav.group;
-        if (nav.group >= tabScroll + visible) tabScroll = nav.group - visible + 1;
-        Category hovered = null;
-        for (int i = tabScroll; i < Math.min(nav.groups.size(), tabScroll + visible); i++) {
-            int ty = top + (i - tabScroll) * 24, index = i;
-            boolean hov = over(mx, my, x, ty, 22, 22);
-            t.tab(g, x, ty, 22, 22, i == nav.group, hov);
-            try {
-                nav.groups.get(i).category().renderIcon(g, x + 3, ty + 3);
-            } catch (Throwable ignored) {
-                // значок чужой категории
-            }
-            if (hov) hovered = nav.groups.get(i).category();
-            hit(x, ty, 22, 22, b -> setGroup(index));
-        }
-        return hovered;
-    }
-
-    private void renderCategoryRow(GuiGraphics g, Theme t, int mx, int my, int y) {
-        Group group = group();
-        float cy = y + ROW_H_CATEGORY / 2f;
-        int x = cardX + PAD_X;
-        stations.clear();
-        Stack mainStation = group.category().stations.isEmpty() ? null : group.category().stations.get(0);
-        if (mainStation != null) {
-            renderSmall(g, mainStation, x, y);
-            stations.add(new StationSpot(mainStation, x, y));
-        }
-        float textX = x + (mainStation != null ? 13 : 0);
-        int pageRight = cardX + cardW - PAD_X;
-        String pageText = (nav.page + 1) + " / " + pages();
-        float pageW = Draw.labelWidth(pageText, 13, Weight.REGULAR);
-        float nextX = pageRight - 5, prevX = nextX - 10;
-        boolean multi = pages() > 1;
-        int prevC = multi && over(mx, my, (int) prevX - 2, y - 1, 8, 11) ? t.c("accent") : t.c("button.fg");
-        int nextC = multi && over(mx, my, (int) nextX - 2, y - 1, 8, 11) ? t.c("accent") : t.c("button.fg");
-        Draw.label(g, "‹", prevX, cy, 13, Weight.REGULAR, prevC);
-        Draw.label(g, "›", nextX, cy, 13, Weight.REGULAR, nextC);
-        Draw.label(g, pageText, prevX - 5 - pageW, cy, 13, Weight.REGULAR, t.c("text.muted"));
-        hit((int) prevX - 2, y - 1, 8, 11, b -> setPage(nav.page - 1));
-        hit((int) nextX - 2, y - 1, 8, 11, b -> setPage(nav.page + 1));
-        float titleRoom = prevX - 5 - pageW - 8 - textX;
-        String title = Draw.ellipsize(group.category().title.getString(), titleRoom, 13, Weight.REGULAR);
-        Draw.label(g, title, textX, cy, 13, Weight.REGULAR, t.c("text.secondary"));
-        // остальные станции, на которых делается то же самое
-        float stx = textX + Draw.labelWidth(title, 13, Weight.REGULAR) + 6;
-        for (int i = 1; i < group.category().stations.size() && stations.size() < 6; i++) {
-            if (stx + 9 > prevX - 5 - pageW - 6) break;
-            Stack station = group.category().stations.get(i);
-            renderSmall(g, station, (int) stx, y);
-            stations.add(new StationSpot(station, (int) stx, y));
-            stx += 11;
-        }
-    }
-
-    private static void renderSmall(GuiGraphics g, Stack stack, int x, int y) {
+    private static void renderScaled(GuiGraphics g, Stack stack, float x, float y, float scale) {
         g.pose().pushPose();
         g.pose().translate(x, y, 0);
-        g.pose().scale(0.5625f, 0.5625f, 1f);
+        g.pose().scale(scale, scale, 1f);
         try {
             stack.render(g, 0, 0);
         } catch (Throwable ignored) {
@@ -538,60 +432,221 @@ public final class RecipeScreen extends Screen {
         g.pose().popPose();
     }
 
+    // --- рейка категорий ---
+
+    private int railContent() {
+        return nav.groups.size() * (RAIL_SLOT + RAIL_GAP) - RAIL_GAP;
+    }
+
+    @Nullable
+    private Category renderRail(GuiGraphics g, Theme t, int mx, int my) {
+        int top = cardY + RAIL_PAD, bottom = cardY + cardH - RAIL_PAD;
+        if (!t.beveled()) {
+            float radius = t.r("panel.radius");
+            Draw.scissor(g, cardX, cardY, cardX + RAIL_W, cardY + cardH);
+            Draw.round(g, cardX + 0.5f, cardY + 0.5f, cardW - 1, cardH - 1, radius, t.c("sidebar.bg"));
+            g.disableScissor();
+        }
+        Draw.round(g, cardX + RAIL_W - 0.5f, cardY + 0.5f, 0.5f, cardH - 1, 0.02f, t.c("panel.border"));
+        float position = rail.update(Math.max(0, railContent() - (bottom - top)));
+        int x = cardX + (RAIL_W - RAIL_SLOT) / 2;
+        Category hovered = null;
+        hits.clip(top, bottom);
+        Draw.scissor(g, cardX, top, cardX + RAIL_W, bottom);
+        int size = nav.groups.size();
+        for (int i = 0; i < size; i++) {
+            int y = top + i * (RAIL_SLOT + RAIL_GAP) - Math.round(position);
+            if (y + RAIL_SLOT < top || y > bottom) continue;
+            int index = i;
+            boolean active = i == nav.group, hot = over(mx, my, x, y, RAIL_SLOT, RAIL_SLOT) && my >= top && my < bottom;
+            if (t.beveled()) {
+                t.tab(g, x, y, RAIL_SLOT, RAIL_SLOT, active, hot);
+            } else if (active) {
+                Draw.roundBox(g, x, y, RAIL_SLOT, RAIL_SLOT, 4f, t.c("button.bg"), t.c("button.border"));
+                Draw.round(g, cardX + 0.5f, y + 4, 1.5f, RAIL_SLOT - 8, 0.75f, t.c("accent"));
+            } else if (hot) {
+                Draw.round(g, x, y, RAIL_SLOT, RAIL_SLOT, 4f, t.c("slot.hover"));
+            }
+            g.pose().pushPose();
+            g.pose().translate(x + 3.5f, y + 3.5f, 0);
+            g.pose().scale(0.625f, 0.625f, 1f);
+            try {
+                nav.groups.get(i).category().renderIcon(g, 0, 0);
+            } catch (Throwable ignored) {
+                // значок чужой категории
+            }
+            g.pose().popPose();
+            if (hot) hovered = nav.groups.get(i).category();
+            hits.add(x, y, RAIL_SLOT, RAIL_SLOT, b -> setGroup(index));
+        }
+        g.disableScissor();
+        hits.unclip();
+        return hovered;
+    }
+
+    private void revealRail() {
+        int visible = cardH - RAIL_PAD * 2;
+        int y = nav.group * (RAIL_SLOT + RAIL_GAP);
+        float position = rail.position();
+        if (y < position) rail.jump(y);
+        else if (y + RAIL_SLOT > position + visible) rail.jump(y + RAIL_SLOT - visible);
+    }
+
+    // --- шапка ---
+
+    private void renderHeader(GuiGraphics g, Theme t, int mx, int my) {
+        int left = cardX + railWidth() + PAD_X;
+        int iconY = cardY + 7;
+        Draw.roundBox(g, left, iconY, 20, 20, 4.5f, t.c("slot.bg"), t.c("button.border"));
+        Stack shown = nav.focus;
+        if (shown != null) shown.render(g, left + 2, iconY + 2);
+        else group().category().renderIcon(g, left + 2, iconY + 2);
+        int buttonY = cardY + 9;
+        int closeX = cardX + cardW - PAD_X - 15, starX = closeX - 15 - 3;
+        boolean closeHot = over(mx, my, closeX, buttonY, 15, 15);
+        iconButton(g, t, closeX, buttonY, closeHot);
+        Icons.draw(g, Icons.Shape.CROSS, closeX + 3.5f, buttonY + 3.5f, 8f, closeHot ? t.c("accent") : t.c("button.fg"));
+        hits.add(closeX, buttonY, 15, 15, b -> onClose());
+        if (shown != null) {
+            boolean starHot = over(mx, my, starX, buttonY, 15, 15), marked = Bookmarks.contains(shown);
+            iconButton(g, t, starX, buttonY, starHot);
+            Icons.draw(g, Icons.Shape.STAR, starX + 3.5f, buttonY + 3.5f, 8f, marked || starHot ? t.c("accent") : t.c("button.fg"));
+            hits.add(starX, buttonY, 15, 15, b -> Overlay.toast(tr(Bookmarks.toggle(nav.focus) ? "ryscope.bookmark.added" : "ryscope.bookmark.removed")));
+        }
+        float textX = left + 20 + 6;
+        float room = starX - 6 - textX;
+        String title = shown != null ? shown.name().getString() : group().category().title.getString();
+        Draw.label(g, Draw.ellipsize(title, room, 17, Weight.SEMIBOLD), textX, iconY + 5.5f, 17, Weight.SEMIBOLD, t.c("text.primary"));
+        String full = subtitle();
+        String sub = Draw.ellipsize(full, room, 11.5f, Weight.REGULAR);
+        Draw.label(g, sub, textX, iconY + 15f, 11.5f, Weight.REGULAR, t.c("text.muted"));
+        if (!sub.equals(full) && mx >= textX && mx < textX + room && my >= iconY + 11 && my < iconY + 19) pendingTip = full;
+    }
+
+    private void iconButton(GuiGraphics g, Theme t, int x, int y, boolean hot) {
+        Draw.roundBox(g, x, y, 15, 15, 4f, hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg"), t.c("button.border"));
+    }
+
+    /** Только id и тег: счётчики есть во вкладках. */
+    private String subtitle() {
+        if (nav.focus == null) return tr("ryscope.recipes.count", total(nav.groups));
+        StringBuilder out = new StringBuilder(nav.focus.id().toString());
+        List<String> tags = nav.focus.tags();
+        if (!tags.isEmpty()) out.append(" · #").append(tags.get(0));
+        return out.toString();
+    }
+
+    private void renderSections(GuiGraphics g, Theme t, int mx, int my, int y) {
+        Draw.round(g, cardX + railWidth(), y + TABS_H - 0.5f, cardW - railWidth() - 0.5f, 0.5f, 0.02f, t.c("panel.border"));
+        List<Kit.Tab> tabs = new ArrayList<>();
+        for (Section s : Section.values()) {
+            int count = total(nav.sections.get(s));
+            String label = tr("ryscope.section." + s.name().toLowerCase(java.util.Locale.ROOT));
+            tabs.add(new Kit.Tab(label, s != Section.HELP ? count : -1, nav.section == s, count > 0 ? () -> switchSection(s) : null));
+        }
+        tabs.add(new Kit.Tab(tr("ryscope.section.graph"), -1, false, () -> TreeScreen.open(nav.focus)));
+        Kit.tabs(g, t, hits, cardX + railWidth() + 4, y, TABS_H, cardW - railWidth() - 8, tabs, mx, my);
+    }
+
+    private void renderCategoryRow(GuiGraphics g, Theme t, int mx, int my, int rowTop) {
+        Group group = group();
+        int y = rowTop + 5;
+        float cy = y + 3.5f;
+        int x = cardX + railWidth() + PAD_X;
+        Stack mainStation = group.category().stations.isEmpty() ? null : group.category().stations.get(0);
+        if (mainStation != null) {
+            renderScaled(g, mainStation, x, y, 0.4375f);
+            stations.add(new StationSpot(mainStation, x, y, 8));
+        }
+        float textX = x + (mainStation != null ? 11 : 0);
+        int right = cardX + cardW - PAD_X;
+        List<RecipeView> recipes = group.recipes();
+        Page page = pages.isEmpty() ? new Page(0, 0) : pages.get(nav.page);
+        String range = page.end - page.start > 1 ? (page.start + 1) + "–" + page.end : Integer.toString(page.start + 1);
+        String pageText = tr("ryscope.recipes.range", range, recipes.size());
+        float pageW = Draw.labelWidth(pageText, 11.5f, Weight.REGULAR);
+        int nextX = right - 6, prevX = nextX - 10;
+        int prevC = over(mx, my, prevX - 2, y - 2, 10, 11) ? t.c("accent") : t.c("button.fg");
+        int nextC = over(mx, my, nextX - 2, y - 2, 10, 11) ? t.c("accent") : t.c("button.fg");
+        Icons.draw(g, Icons.Shape.CHEVRON_LEFT, prevX, y + 0.5f, 6f, prevC);
+        Icons.draw(g, Icons.Shape.CHEVRON_RIGHT, nextX, y + 0.5f, 6f, nextC);
+        Draw.label(g, pageText, prevX - 4 - pageW, cy, 11.5f, Weight.REGULAR, t.c("text.muted"));
+        hits.add(prevX - 2, y - 2, 10, 11, b -> setPage(nav.page - 1));
+        hits.add(nextX - 2, y - 2, 10, 11, b -> setPage(nav.page + 1));
+        float titleRoom = prevX - 4 - pageW - 6 - textX;
+        String title = Draw.ellipsize(group.category().title.getString(), titleRoom, 12.5f, Weight.REGULAR);
+        Draw.label(g, title, textX, cy, 12.5f, Weight.REGULAR, t.c("text.primary"));
+        // остальные станции, на которых делается то же самое
+        float stx = textX + Draw.labelWidth(title, 12.5f, Weight.REGULAR) + 5;
+        for (int i = 1; i < group.category().stations.size() && stations.size() < 6; i++) {
+            if (stx + 8 > prevX - 4 - pageW - 5) break;
+            Stack station = group.category().stations.get(i);
+            renderScaled(g, station, stx, y, 0.4375f);
+            stations.add(new StationSpot(station, (int) stx, y, 8));
+            stx += 10;
+        }
+    }
+
+    // --- рецепты ---
+
     private void renderRecipes(GuiGraphics g, Theme t, int mx, int my, float partialTick, int top) {
-        placed.clear();
         List<RecipeView> recipes = group().recipes();
-        boolean canTransfer = parent instanceof AbstractContainerScreen<?>;
+        if (pages.isEmpty()) return;
+        Page page = pages.get(nav.page);
         works.repka.ryscope.content.NativeRecipe.missingBadges = true;
         works.repka.ryscope.runtime.Ae2Terminal.setActive(parent instanceof AbstractContainerScreen<?> host ? host.getMenu() : null);
-        int rowX = cardX + PAD_X, rowW = cardW - PAD_X * 2;
-        int by = top;
+        // блок рецепта не шире, чем нужно самому широкому рецепту раздела; на широкой карточке стоит по центру
+        int areaW = cardW - railWidth() - PAD_X * 2;
+        int blockW = Math.min(areaW, widestCard - railWidth() - PAD_X * 2);
+        int blockX = cardX + railWidth() + PAD_X + (areaW - blockW) / 2;
         // упор у края постраничного списка: рецепты чуть сдвигаются и возвращаются
         double scale = Draw.scale();
         float push = (float) (Math.round(edge.update(0) * scale) / scale);
         g.pose().pushPose();
         g.pose().translate(0, -push, 0);
-        for (int i = 0; i < perPage; i++) {
-            int idx = nav.page * perPage + i;
-            if (idx >= recipes.size()) break;
-            RecipeView r = recipes.get(idx);
+        int y = top + BLOCK_MARGIN;
+        for (int i = page.start; i < page.end; i++) {
+            RecipeView r = recipes.get(i);
+            int h = blockHeight(r);
+            Draw.roundBox(g, blockX, y, blockW, h, 5f, t.c("card.bg"), t.c("panel.border"));
             int plate = r.needsPlate() ? 3 : 0;
-            int free = rowW - BUTTONS_W - 6 - r.width() - plate * 2;
-            int rx = rowX + plate + Math.max(0, free / 2), ry = by + (rowH - r.height()) / 2;
+            int rowH = recipeRow(r);
+            int innerX = blockX + BLOCK_PAD, innerW = blockW - BLOCK_PAD * 2, rowY = y + BLOCK_PAD;
+            int free = innerW - BUTTON - 6 - r.width() - plate * 2;
+            // по центру блока, если хватает места слева от кнопок
+            int centered = (innerW - r.width() - plate * 2) / 2;
+            int rx = innerX + plate + Math.max(0, Math.min(centered, free)), ry = rowY + (rowH - r.height()) / 2;
             if (plate > 0) t.plate(g, rx - plate, ry - plate, r.width() + plate * 2, r.height() + plate * 2);
             try {
                 r.render(g, t, rx, ry, mx, my, partialTick);
             } catch (Throwable th) {
                 Draw.text(g, "?", rx, ry, t.c("state.bad"));
             }
-            Placed row = new Placed(r, rx, ry, rowX, by, rowW, rowH);
+            Placed row = new Placed(r, rx, ry, innerX, rowY, innerW, rowH);
             placed.add(row);
-            renderLock(g, t, r, rowX, by, rowW);
-            if (Minecraft.getInstance().options.advancedItemTooltips && r.id() != null) {
-                Draw.label(g, Draw.ellipsize(r.id().toString(), rowW, 9, Weight.REGULAR), rowX, by + rowH + 2, 9, Weight.REGULAR, t.c("text.dim"));
-            }
+            renderLock(g, t, r, blockX, y, blockW, h);
             renderButtons(g, t, row, mx, my);
-            by += rowH + GAP;
+            if (r.isCrafting()) renderStatus(g, t, r, innerX, innerW, rowY + rowH + STATUS_GAP, mx, my);
+            y += h + BLOCK_MARGIN * 2;
         }
         g.pose().popPose();
-        renderStatus(g, t, placed.isEmpty() ? null : placed.get(0).recipe, rowX, rowW, by);
     }
 
-    private void renderLock(GuiGraphics g, Theme t, RecipeView r, int x, int y, int w) {
+    private void renderLock(GuiGraphics g, Theme t, RecipeView r, int x, int y, int w, int h) {
         works.repka.ryscope.runtime.Stages.Stage lock = works.repka.ryscope.runtime.Stages.lockOf(r, group().category());
         if (lock == null) return;
         g.pose().pushPose();
         g.pose().translate(0, 0, 260);
-        Draw.round(g, x, y, w, rowH, t.r("card.radius"), Draw.alpha(t.c("card.bg"), 0.78f));
+        Draw.round(g, x, y, w, h, 5f, Draw.alpha(t.c("card.bg"), 0.78f));
         String text = tr("ryscope.stage.locked", lock.title());
         float textW = Draw.labelWidth(text, 13, Weight.MEDIUM);
         float cx = x + (w - textW) / 2f;
-        Draw.lock(g, (int) cx - 11, y + rowH / 2 - 8, t.c("state.warn"));
-        Draw.label(g, text, cx, y + rowH / 2f - 5, 13, Weight.MEDIUM, t.c("text.primary"));
+        Draw.lock(g, (int) cx - 11, y + h / 2 - 8, t.c("state.warn"));
+        Draw.label(g, text, cx, y + h / 2f - 5, 13, Weight.MEDIUM, t.c("text.primary"));
         String need = works.repka.ryscope.runtime.Stages.requirement(lock);
         if (!need.isEmpty()) {
             String shown = Draw.ellipsize(need, w - 12, 11, Weight.REGULAR);
-            Draw.label(g, shown, x + (w - Draw.labelWidth(shown, 11, Weight.REGULAR)) / 2f, y + rowH / 2f + 6, 11, Weight.REGULAR, t.c("text.muted"));
+            Draw.label(g, shown, x + (w - Draw.labelWidth(shown, 11, Weight.REGULAR)) / 2f, y + h / 2f + 6, 11, Weight.REGULAR, t.c("text.muted"));
         }
         g.pose().popPose();
     }
@@ -606,30 +661,38 @@ public final class RecipeScreen extends Screen {
         return tr == null || tr.status() != Transfer.Status.UNSUPPORTED;
     }
 
-    /** Верх столбца кнопок строки. */
     private int buttonsTop(Placed row) {
         boolean transfer = showsTransfer(row.recipe), goal = canGoal(row.recipe);
-        int total = (transfer ? BUTTONS_W : 0) + (transfer && goal ? BUTTONS_GAP : 0) + (goal ? BUTTONS_W : 0);
+        int total = (transfer ? BUTTON : 0) + (transfer && goal ? BUTTON_GAP : 0) + (goal ? BUTTON : 0);
         return row.rowY + (row.rowH - total) / 2;
+    }
+
+    private static Kit.State stateOf(@Nullable Transfer tr) {
+        if (tr == null || !tr.applicable()) return Kit.State.NONE;
+        return tr.status() == Transfer.Status.PARTIAL ? Kit.State.PARTIAL : Kit.State.FULL;
     }
 
     private void renderButtons(GuiGraphics g, Theme t, Placed row, int mx, int my) {
         RecipeView r = row.recipe;
-        int x = row.rowX + row.rowW - BUTTONS_W, y = buttonsTop(row);
+        int x = row.rowX + row.rowW - BUTTON, y = buttonsTop(row);
         if (showsTransfer(r)) {
             Transfer tr = transfers.get(r);
-            renderPlus(g, t, x, y, tr, over(mx, my, x, y, BUTTONS_W, BUTTONS_W));
-            hit(x, y, BUTTONS_W, BUTTONS_W, b -> {
+            boolean hot = over(mx, my, x, y, BUTTON, BUTTON);
+            smallBox(g, t, x, y, hot, 0);
+            Kit.State state = stateOf(tr);
+            Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, tr != null && state == Kit.State.FULL ? t.c("accent") : t.c("text.muted"));
+            if (tr != null && state != Kit.State.FULL) Kit.indicator(g, t, x + BUTTON - 3, y - 1.5f, 4.5f, state, -1, -1);
+            hits.add(x, y, BUTTON, BUTTON, b -> {
                 if (b == 0 && parent instanceof AbstractContainerScreen<?> acs && tr != null) doTransfer(acs, r, hasShiftDown());
             });
-            y += BUTTONS_W + BUTTONS_GAP;
+            y += BUTTON + BUTTON_GAP;
         }
         if (canGoal(r)) {
             Stack output = r.outputs().get(0);
-            boolean set = works.repka.ryscope.runtime.Board.contains(output), hot = over(mx, my, x, y, BUTTONS_W, BUTTONS_W);
+            boolean set = works.repka.ryscope.runtime.Board.contains(output), hot = over(mx, my, x, y, BUTTON, BUTTON);
             smallBox(g, t, x, y, hot, set ? Draw.alpha(t.c("accent"), 0.18f) : 0);
             Icons.drawRotated(g, Icons.Shape.PIN, x + 3, y + 3, 8, 35, set || hot ? t.c("accent") : t.c("button.fg"));
-            hit(x, y, BUTTONS_W, BUTTONS_W, b -> {
+            hits.add(x, y, BUTTON, BUTTON, b -> {
                 if (b != 0) return;
                 boolean added = works.repka.ryscope.runtime.Board.toggle(output, 1);
                 Overlay.toast(tr(added ? "ryscope.goals.added" : "ryscope.goals.removed"));
@@ -637,68 +700,41 @@ public final class RecipeScreen extends Screen {
         }
     }
 
-    /** Плюсик переноса: янтарный, если перенести можно; угловая точка говорит, чего не хватает. */
-    private void renderPlus(GuiGraphics g, Theme t, int x, int y, @Nullable Transfer tr, boolean hot) {
-        boolean ok = tr != null && tr.applicable();
-        if (t.beveled()) t.button(g, x, y, BUTTONS_W, BUTTONS_W, hot, ok);
-        else if (ok) Draw.round(g, x, y, BUTTONS_W, BUTTONS_W, 4f, hot ? Draw.mix(t.c("accent"), 0xFFFFFFFF, 0.15f) : t.c("accent"));
-        else smallBox(g, t, x, y, hot, 0);
-        Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, ok ? t.c("accent.text") : t.c("text.dim"));
-        if (tr == null) return;
-        if (!ok) Draw.dot(g, x + BUTTONS_W - 4, y + 1, 3, t.c("state.bad"));
-        else if (tr.status() == Transfer.Status.PARTIAL) Draw.dot(g, x + BUTTONS_W - 4, y + 1, 3, t.c("state.warn"));
-    }
-
     private void smallBox(GuiGraphics g, Theme t, int x, int y, boolean hot, int tint) {
         if (t.beveled()) {
-            t.button(g, x, y, BUTTONS_W, BUTTONS_W, hot, false);
+            t.button(g, x, y, BUTTON, BUTTON, hot, false);
             return;
         }
         int fill = hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg");
-        Draw.roundBox(g, x, y, BUTTONS_W, BUTTONS_W, 4f, fill, t.c("button.border"));
-        if (tint != 0) Draw.round(g, x, y, BUTTONS_W, BUTTONS_W, 4f, tint);
+        Draw.roundBox(g, x, y, BUTTON, BUTTON, 3.5f, fill, t.c("button.border"));
+        if (tint != 0) Draw.round(g, x, y, BUTTON, BUTTON, 3.5f, tint);
     }
 
-    private void renderStatus(GuiGraphics g, Theme t, @Nullable RecipeView r, int x, int w, int y) {
-        Draw.roundBox(g, x, y, w, STATUS_H, 4.5f, t.c("status.bg"), t.c("status.border"));
-        Status s = r == null ? null : statuses.get(r);
+    private void renderStatus(GuiGraphics g, Theme t, RecipeView r, int x, int width, int y, int mx, int my) {
+        Status s = statuses.get(r);
+        float cy = y + STATUS_H / 2f;
+        int w = width;
+        if (Minecraft.getInstance().options.advancedItemTooltips && r.id() != null) {
+            String id = Draw.ellipsize(r.id().toString(), w * 0.4f, 9, Weight.REGULAR);
+            Draw.label(g, id, x + w - Draw.labelWidth(id, 9, Weight.REGULAR), cy, 9, Weight.REGULAR, t.c("text.dim"));
+            w = (int) (w * 0.58f);
+        }
         if (s == null) return;
-        Draw.dot(g, x + 6, y + STATUS_H / 2 - 2, 4, t.c(s.color));
-        record Word(String text, int kind, float width) {}
-        List<Word> words = new ArrayList<>();
-        for (String part : s.head.split(" ")) words.add(new Word(part, 0, Draw.labelWidth(part, 12.5f, Weight.SEMIBOLD)));
-        if (!s.tail.isEmpty()) for (String part : s.tail.split(" ")) words.add(new Word(part, 1, Draw.labelWidth(part, 12.5f, Weight.REGULAR)));
-        if (!s.link.isEmpty()) {
-            words.add(new Word("·", 1, Draw.labelWidth("·", 12.5f, Weight.REGULAR)));
-            for (String part : s.link.split(" ")) words.add(new Word(part, 2, Draw.labelWidth(part, 12.5f, Weight.REGULAR)));
+        if (Kit.indicator(g, t, x, cy - 2.25f, 4.5f, s.state, mx, my)) {
+            pendingTip = tr(switch (s.state) {
+                case FULL -> "ryscope.status.state.full";
+                case PARTIAL -> "ryscope.status.state.partial";
+                case NONE -> "ryscope.status.state.none";
+            });
         }
-        float space = Draw.labelWidth(" ", 12.5f, Weight.REGULAR);
-        float left = x + 15, limit = w - 15 - 6;
-        List<List<Word>> lines = new ArrayList<>();
-        List<Word> line = new ArrayList<>();
-        float used = 0;
-        for (Word word : words) {
-            if (!line.isEmpty() && used + space + word.width > limit) {
-                lines.add(line);
-                line = new ArrayList<>();
-                used = 0;
-            }
-            used += (line.isEmpty() ? 0 : space) + word.width;
-            line.add(word);
-        }
-        if (!line.isEmpty()) lines.add(line);
-        if (lines.size() > 2) lines = new ArrayList<>(lines.subList(0, 2));
-        float cy = y + STATUS_H / 2f - (lines.size() - 1) * 4f;
-        for (List<Word> row : lines) {
-            float px = left;
-            for (Word word : row) {
-                int color = word.kind == 0 ? t.c("text.primary") : word.kind == 2 ? t.c("chip.mod.fg") : t.c("text.secondary");
-                Draw.label(g, word.text, px, cy, 12.5f, word.kind == 0 ? Weight.SEMIBOLD : Weight.REGULAR, color);
-                if (word.kind == 2) Draw.round(g, px, cy + 3.75f, word.width + (word == row.get(row.size() - 1) ? 0 : space), 0.5f, 0.02f, t.c("chip.mod.fg"));
-                px += word.width + space;
-            }
-            cy += 8f;
-        }
+        float tx = x + 8.5f;
+        float headW = Draw.labelWidth(s.head, 11.5f, Weight.SEMIBOLD);
+        Draw.label(g, s.head, tx, cy, 11.5f, Weight.SEMIBOLD, t.c("text.primary"));
+        if (s.tail.isEmpty()) return;
+        float room = x + w - tx - headW - 3;
+        String tail = Draw.ellipsize(s.tail, room, 11.5f, Weight.REGULAR);
+        Draw.label(g, tail, tx + headW + 3, cy, 11.5f, Weight.REGULAR, t.c("text.secondary"));
+        if (!tail.equals(s.tail) && my >= y - 1 && my < y + STATUS_H + 1 && mx >= tx && mx < x + w) pendingTip = s.head + " " + s.tail;
     }
 
     @Nullable
@@ -731,7 +767,7 @@ public final class RecipeScreen extends Screen {
         }
         if (total == 0) return null;
         String place = network ? "network" : "inventory";
-        if (missing.isEmpty()) return new Status(tr("ryscope.status.all." + place), "", "", "state.ok");
+        if (missing.isEmpty()) return new Status(tr("ryscope.status.all." + place), "", Kit.State.FULL);
         StringBuilder names = new StringBuilder();
         int shown = 0;
         for (Map.Entry<String, Integer> e : missing.entrySet()) {
@@ -741,10 +777,11 @@ public final class RecipeScreen extends Screen {
         }
         if (missing.size() > 2) names.append(' ').append(tr("ryscope.status.more", missing.size() - 2));
         String tail = tr("ryscope.status.have." + place) + " · " + tr("ryscope.status.missing", names.toString());
-        return new Status(tr("ryscope.status.head", have, total), tail, stored ? tr("ryscope.status.stored") : "", have == 0 ? "state.bad" : "state.warn");
+        if (stored) tail += " · " + tr("ryscope.status.stored");
+        return new Status(tr("ryscope.status.head", have, total), tail, have == 0 ? Kit.State.NONE : Kit.State.PARTIAL);
     }
 
-    private void renderTooltips(GuiGraphics g, Theme t, int mx, int my, @Nullable Category hoveredTab) {
+    private void renderTooltips(GuiGraphics g, Theme t, int mx, int my, @Nullable Category hoveredCategory) {
         if (Overlay.isOver(mx, my)) return;
         Font font = Minecraft.getInstance().font;
         g.pose().pushPose();
@@ -765,8 +802,10 @@ public final class RecipeScreen extends Screen {
         }
         if (hovered != null) {
             if (!Lens.held() && !byRecipe) hovered.renderTooltip(g, mx, my);
-        } else if (hoveredTab != null) {
-            works.repka.ryscore.ui.Kit.tooltip(g, t, List.of(hoveredTab.title.getString()), mx, my);
+        } else if (hoveredCategory != null) {
+            Kit.tooltip(g, t, List.of(hoveredCategory.title.getString()), mx, my);
+        } else if (pendingTip != null) {
+            Kit.tooltip(g, t, List.of(pendingTip), mx, my);
         } else {
             boolean drawn = false;
             for (Placed p : placed) {
@@ -787,22 +826,22 @@ public final class RecipeScreen extends Screen {
     }
 
     private void buttonTooltip(GuiGraphics g, Theme t, Font font, Placed p, int mx, int my) {
-        int x = p.rowX + p.rowW - BUTTONS_W, y = buttonsTop(p);
+        int x = p.rowX + p.rowW - BUTTON, y = buttonsTop(p);
         if (showsTransfer(p.recipe)) {
             Transfer tr = transfers.get(p.recipe);
-            if (tr != null && over(mx, my, x, y, BUTTONS_W, BUTTONS_W)) {
+            if (tr != null && over(mx, my, x - 2, y - 2, BUTTON + 4, BUTTON + 4)) {
                 if (!tr.lines().isEmpty()) {
                     g.renderComponentTooltip(font, tr.lines(), mx, my);
                 } else {
                     String key = tr.applicable() ? "ryscope.transfer.hint" : tr.message();
-                    works.repka.ryscore.ui.Kit.tooltip(g, t, List.of(tr(key == null ? "ryscope.transfer.missing" : key)), mx, my);
+                    Kit.tooltip(g, t, List.of(tr(key == null ? "ryscope.transfer.missing" : key)), mx, my);
                 }
             }
-            y += BUTTONS_W + BUTTONS_GAP;
+            y += BUTTON + BUTTON_GAP;
         }
-        if (canGoal(p.recipe) && over(mx, my, x, y, BUTTONS_W, BUTTONS_W)) {
+        if (canGoal(p.recipe) && over(mx, my, x, y, BUTTON, BUTTON)) {
             boolean set = works.repka.ryscope.runtime.Board.contains(p.recipe.outputs().get(0));
-            works.repka.ryscore.ui.Kit.tooltip(g, t, List.of(tr(set ? "ryscope.goals.in" : "ryscope.goals.add")), mx, my);
+            Kit.tooltip(g, t, List.of(tr(set ? "ryscope.goals.in" : "ryscope.goals.add")), mx, my);
         }
     }
 
@@ -817,11 +856,8 @@ public final class RecipeScreen extends Screen {
                 // чужой рецепт
             }
         }
-        if (strip && my >= stripY && my < stripY + 20 && mx >= cardX) {
-            int i = (mx - cardX) / TAB_W, index = tabStart() + i;
-            if (index < TABS.size() && mx - cardX - i * TAB_W < TAB_W - 2) return TABS.get(index).stack;
-        }
-        for (StationSpot s : stations) if (over(mx, my, s.x, s.y, 10, 10)) return s.stack;
+        for (StationSpot s : historySpots) if (over(mx, my, s.x, s.y, s.size, s.size)) return s.stack;
+        for (StationSpot s : stations) if (over(mx, my, s.x, s.y, s.size, s.size)) return s.stack;
         return null;
     }
 
@@ -868,12 +904,12 @@ public final class RecipeScreen extends Screen {
         int n = nav.groups.size();
         nav.group = ((index % n) + n) % n;
         nav.page = 0;
-        transfers.clear();
-        statuses.clear();
+        clearCaches();
+        revealRail();
     }
 
     private void setPage(int page) {
-        int n = pages();
+        int n = pageCount();
         nav.page = ((page % n) + n) % n;
         transfers.clear();
         statuses.clear();
@@ -882,8 +918,7 @@ public final class RecipeScreen extends Screen {
     private boolean goBack() {
         if (history.isEmpty()) return false;
         nav = history.pop();
-        transfers.clear();
-        statuses.clear();
+        clearCaches();
         return true;
     }
 
@@ -892,20 +927,15 @@ public final class RecipeScreen extends Screen {
         history.push(nav);
         nav = new Nav(nav.focus, section, nav.sections);
         remember(nav.focus, section == Section.USES ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
-        transfers.clear();
-        statuses.clear();
+        rail.reset();
+        clearCaches();
     }
 
     @Override
-    public boolean mouseClicked(double mx, double my, int button) {
+    protected boolean onClick(double mx, double my, int button) {
         if (Overlay.mouseClicked(this, mx, my, button)) return true;
-        for (int i = hits.size() - 1; i >= 0; i--) {
-            Hit h = hits.get(i);
-            if (over(mx, my, h.x, h.y, h.w, h.h)) {
-                h.action.accept(button);
-                return true;
-            }
-        }
+        if (hits.click(mx, my, button)) return true;
+        if (Overlay.cardCollapsed()) return true;
         Stack stack = recipeStackAt((int) mx, (int) my);
         if (stack != null) {
             if (button == 2) {
@@ -943,27 +973,26 @@ public final class RecipeScreen extends Screen {
     }
 
     @Override
-    public boolean mouseReleased(double mx, double my, int button) {
+    protected boolean onRelease(double mx, double my, int button) {
         if (dragging != null) {
             dragging.mouseReleased(mx, my, button);
             dragging = null;
             return true;
         }
-        return Overlay.mouseReleased(this, mx, my, button) || super.mouseReleased(mx, my, button);
+        return Overlay.mouseReleased(this, mx, my, button) || super.onRelease(mx, my, button);
     }
 
     @Override
-    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+    protected boolean onDrag(double mx, double my, int button, double dx, double dy) {
         if (dragging != null && dragging.mouseDragged(mx, my, button, dx, dy)) return true;
-        return Overlay.mouseDragged(this, mx, my, button) || super.mouseDragged(mx, my, button, dx, dy);
+        return Overlay.mouseDragged(this, mx, my, button) || super.onDrag(mx, my, button, dx, dy);
     }
 
     @Override
-    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+    protected boolean onScroll(double mx, double my, double scrollX, double scrollY) {
         if (Overlay.mouseScrolled(this, mx, my, scrollY)) return true;
-        if (categoryStrip() && over(mx, my, cardX - 25, cardY, 24, height - cardY)) {
-            int next = nav.group + (scrollY < 0 ? 1 : -1);
-            if (next >= 0 && next < nav.groups.size()) setGroup(next);
+        if (hasRail() && over(mx, my, cardX, cardY, RAIL_W, cardH)) {
+            rail.by(-(float) scrollY * (RAIL_SLOT + RAIL_GAP));
             return true;
         }
         for (Placed p : placed) {
@@ -971,7 +1000,7 @@ public final class RecipeScreen extends Screen {
         }
         if (over(mx, my, cardX, cardY, cardW, cardH)) {
             int next = nav.page + (scrollY < 0 ? 1 : -1);
-            if (next >= 0 && next < pages()) setPage(next);
+            if (next >= 0 && next < pageCount()) setPage(next);
             else edge.by(scrollY < 0 ? 1 : -1);
             return true;
         }

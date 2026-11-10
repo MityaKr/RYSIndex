@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.ScaledScreen;
 import works.repka.ryscore.ui.Draw;
 import works.repka.ryscore.ui.Kit;
 import works.repka.ryscore.ui.Loading;
@@ -27,7 +28,7 @@ import works.repka.ryscore.theme.ThemeManager;
  * Сравнение маршрутов: один предмет, несколько способов его получить, рядом и в одинаковых единицах.
  * Для каждого способа: сырьё, число шагов, время, энергия, побочные продукты и хватает ли запасов сейчас.
  */
-public final class CompareScreen extends Screen {
+public final class CompareScreen extends ScaledScreen {
     private static final int PAD = Kit.PAD;
     private static final int COL = 122;
 
@@ -158,7 +159,7 @@ public final class CompareScreen extends Screen {
     private static final int CARD_H = 158;
 
     @Override
-    public void render(GuiGraphics g, int mx, int my, float partialTick) {
+    protected void draw(GuiGraphics g, int mx, int my, float partialTick) {
         Theme theme = ThemeManager.get();
         hits.clear();
         renderBackground(g, mx, my, partialTick);
@@ -286,7 +287,7 @@ public final class CompareScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mx, double my, int button) {
+    protected boolean onClick(double mx, double my, int button) {
         if (!done) return true;
         if (hits.click(mx, my, button)) return true;
         if (!over(mx, my, px, py, pw, ph)) onClose();
@@ -294,7 +295,7 @@ public final class CompareScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+    protected boolean onScroll(double mx, double my, double scrollX, double scrollY) {
         if (!done) return true;
         first += scrollY < 0 ? 1 : -1;
         return true;

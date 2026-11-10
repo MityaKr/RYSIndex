@@ -175,9 +175,11 @@ public final class NativeRecipe implements RecipeView {
                 case TEXT -> Draw.text(g, d.text, dx, dy, theme.c("text.muted"));
                 case SHAPELESS -> shapelessIcon(g, dx, dy, theme.c("text.dim"));
                 case FLOW -> {
-                    works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.ARROW, dx + d.w / 2f - 5.5f, dy - 9.5f, 11f, theme.c("text.muted"));
-                    float cw = Draw.labelWidth(d.text, 11, works.repka.ryscore.ui.Type.Weight.REGULAR);
-                    Draw.label(g, d.text, dx + (d.w - cw) / 2f, dy + 9f, 11, works.repka.ryscore.ui.Type.Weight.REGULAR, theme.c("text.muted"));
+                    works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.ARROW, dx + d.w / 2f - 4.5f, dy - 4.5f, 9f, theme.c("text.muted"));
+                    if (!d.text.isEmpty()) {
+                        float cw = Draw.labelWidth(d.text, 10.5f, works.repka.ryscore.ui.Type.Weight.REGULAR);
+                        Draw.label(g, d.text, dx + (d.w - cw) / 2f, dy + 9f, 10.5f, works.repka.ryscore.ui.Type.Weight.REGULAR, theme.c("text.muted"));
+                    }
                 }
             }
         }
@@ -187,20 +189,32 @@ public final class NativeRecipe implements RecipeView {
             boolean hover = mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size;
             int stateBorder = 0;
             if (!s.output && missingBadges && crafting && !s.ing.isEmpty()) {
-                // рамка показывает наличие: зелёная есть, янтарная не хватает
+                // нехватка одним цветом: рамка bad; что есть, то с обычной рамкой
                 boolean terminal = works.repka.ryscope.runtime.Ae2Terminal.active();
                 boolean lacking = terminal
                     ? works.repka.ryscope.runtime.Ae2Terminal.stateOf(s.ing) != works.repka.ryscope.runtime.Ae2Terminal.State.HAVE
                     : !InventoryView.has(s.ing);
-                if (terminal || InventoryView.tracking()) stateBorder = theme.c(lacking ? "slot.miss.border" : "slot.have.border");
+                if ((terminal || InventoryView.tracking()) && lacking) stateBorder = Draw.alpha(theme.c("state.bad"), 0.7f);
             }
-            if (slotSize > SLOT) theme.slotRounded(g, sx, sy, size, s.large ? 10f : 8f, hover && !s.ing.isEmpty(), stateBorder);
+            if (slotSize != SLOT) theme.slotRounded(g, sx, sy, size, s.large ? 8f : 5f, hover && !s.ing.isEmpty(), stateBorder);
             else theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateBorder);
             Stack shown = s.ing.shown(now);
             if (shown == null) continue;
             int ix = sx + (size - 16) / 2, iy = sy + (size - 16) / 2;
-            shown.render(g, ix, iy);
-            shown.renderOverlay(g, ix, iy);
+            if (slotSize != SLOT && size < 25) {
+                // значок в ячейке макета: половина ячейки, у результата три четверти
+                float itemScale = s.large ? 0.75f : 0.5f;
+                float shift = (size - 16 * itemScale) / 2f;
+                g.pose().pushPose();
+                g.pose().translate(sx + shift, sy + shift, 0);
+                g.pose().scale(itemScale, itemScale, 1f);
+                shown.render(g, 0, 0);
+                g.pose().popPose();
+                shown.renderScaledAmount(g, sx, sy, size);
+            } else {
+                shown.render(g, ix, iy);
+                shown.renderOverlay(g, ix, iy);
+            }
             works.repka.ryscope.runtime.Ae2Terminal.State ae2 = !s.output && missingBadges && crafting
                 ? works.repka.ryscope.runtime.Ae2Terminal.stateOf(s.ing) : works.repka.ryscope.runtime.Ae2Terminal.State.HAVE;
             if (ae2 == works.repka.ryscope.runtime.Ae2Terminal.State.CRAFTABLE) {

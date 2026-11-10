@@ -11,6 +11,7 @@ import works.repka.ryscope.runtime.Board;
 import works.repka.ryscope.runtime.CraftTree;
 import works.repka.ryscope.runtime.InventoryView;
 import works.repka.ryscore.theme.Theme;
+import works.repka.ryscore.ui.Anchors;
 import works.repka.ryscore.ui.Draw;
 import works.repka.ryscore.ui.Type.Weight;
 
@@ -61,19 +62,29 @@ public final class Stickers {
         }
     }
 
-    /** Столбец стикеров поверх мира: внизу слева там чат. */
-    public static void drawColumn(GuiGraphics g, Theme t, int x, int top, int count) {
-        int y = top;
-        int shown = 0;
+    /** Столбец стикеров поверх мира в углу, заданном настройкой кора. */
+    public static void drawAnchored(GuiGraphics g, Theme t, int count) {
+        record Row(Board.Goal goal, CraftTree tree, int w) {}
+        List<Row> rows = new ArrayList<>();
+        int widest = 0;
         for (Board.Goal goal : Board.goals()) {
-            if (shown++ >= count) break;
+            if (rows.size() >= count) break;
             CraftTree tree;
             try {
                 tree = goal.tree();
             } catch (Throwable th) {
                 continue;
             }
-            draw(g, t, goal, tree, x, y, widthOf(goal, tree));
+            int w = widthOf(goal, tree);
+            widest = Math.max(widest, w);
+            rows.add(new Row(goal, tree, w));
+        }
+        if (rows.isEmpty()) return;
+        int[] at = Anchors.place(Anchors.Element.STICKERS, widest, rows.size() * H + (rows.size() - 1) * GAP, 4, 4);
+        boolean right = Anchors.corner(Anchors.Element.STICKERS) == Anchors.Corner.TOP_RIGHT || Anchors.corner(Anchors.Element.STICKERS) == Anchors.Corner.BOTTOM_RIGHT;
+        int y = at[1];
+        for (Row row : rows) {
+            draw(g, t, row.goal, row.tree, right ? at[0] + widest - row.w : at[0], y, row.w);
             y += H + GAP;
         }
     }

@@ -51,7 +51,13 @@ public final class RecipeRestyle {
     public static Supplier<ShaderInstance> shader(Supplier<ShaderInstance> original, boolean withColor) {
         if (!active) return original;
         ShaderInstance replacement = withColor ? colored : plain;
-        return replacement == null ? original : () -> replacement;
+        if (replacement == null) return original;
+        // токены темы могут быть полупрозрачными (Glass): без смешивания они становятся чистым чёрным и белым
+        return () -> {
+            com.mojang.blaze3d.systems.RenderSystem.enableBlend();
+            com.mojang.blaze3d.systems.RenderSystem.defaultBlendFunc();
+            return replacement;
+        };
     }
 
     /**

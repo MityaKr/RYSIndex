@@ -55,11 +55,7 @@ public final class Units {
     }
 
     public static String compact(double v) {
-        double a = Math.abs(v);
-        if (a >= 1_000_000_000) return trim(v / 1_000_000_000) + "G";
-        if (a >= 1_000_000) return trim(v / 1_000_000) + "M";
-        if (a >= 10_000) return trim(v / 1000) + "k";
-        return trim(v);
+        return works.repka.ryscore.ui.Numbers.compact(v);
     }
 
     public static String trim(double v) {

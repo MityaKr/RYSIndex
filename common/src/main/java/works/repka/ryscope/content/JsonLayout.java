@@ -306,7 +306,7 @@ public final class JsonLayout {
             double v = p.getAsDouble();
             if ("ticks".equals(filter)) return Component.translatable("ryscope.recipe.seconds", trim(v / 20.0)).getString();
             if ("percent".equals(filter)) return trim(v * 100.0) + "%";
-            if ("fe".equals(filter)) return trim(v) + " FE";
+            if ("fe".equals(filter)) return works.repka.ryscope.runtime.Units.energy(v);
             if ("mb".equals(filter)) return trim(v) + " mB";
             return trim(v);
         }

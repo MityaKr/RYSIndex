@@ -101,7 +101,10 @@ public final class JeiRecipeView<T> implements RecipeView {
         try {
             l.drawRecipe(g, mouseX, mouseY);
         } finally {
-            if (restyled) works.repka.ryscope.ui.RecipeRestyle.end();
+            if (restyled) {
+                works.repka.ryscope.ui.RecipeRestyle.end();
+                com.mojang.blaze3d.systems.RenderSystem.disableBlend();
+            }
         }
         if (transferError != null && works.repka.ryscope.content.NativeRecipe.missingBadges) {
             try {

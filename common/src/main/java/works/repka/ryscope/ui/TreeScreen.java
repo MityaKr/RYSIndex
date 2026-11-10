@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.ScaledScreen;
 import works.repka.ryscore.ui.Draw;
 import works.repka.ryscore.ui.Kit;
 import works.repka.ryscore.ui.Loading;
@@ -26,7 +27,7 @@ import works.repka.ryscore.theme.Theme;
 import works.repka.ryscore.theme.ThemeManager;
 
 /** Дерево крафта: раскрывающийся список «что из чего», с учётом инвентаря и итогом по сырью. */
-public final class TreeScreen extends Screen {
+public final class TreeScreen extends ScaledScreen {
     private static final int ROW = 20;
     private static final int PAD = Kit.PAD;
     private static final int HEADER = Kit.HEADER_H + Kit.TABS_H + 4;
@@ -69,7 +70,7 @@ public final class TreeScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics g, int mx, int my, float partialTick) {
+    protected void draw(GuiGraphics g, int mx, int my, float partialTick) {
         Theme theme = ThemeManager.get();
         hits.clear();
         renderBackground(g, mx, my, partialTick);
@@ -96,7 +97,7 @@ public final class TreeScreen extends Screen {
         scroll = scroller.update(max);
         rows.clear();
         hits.clip(bodyY, bodyY + bodyH);
-        g.enableScissor(px + 1, bodyY, px + pw - 1, bodyY + bodyH);
+        Draw.scissor(g, px + 1, bodyY, px + pw - 1, bodyY + bodyH);
         Node hovered = null;
         for (int i = 0; i < nodes.size(); i++) {
             int y = bodyY + i * ROW - Math.round(scroll);
@@ -282,14 +283,14 @@ public final class TreeScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mx, double my, int button) {
+    protected boolean onClick(double mx, double my, int button) {
         if (hits.click(mx, my, button)) return true;
         if (!over(mx, my, px, py, pw, ph)) onClose();
         return true;
     }
 
     @Override
-    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+    protected boolean onScroll(double mx, double my, double scrollX, double scrollY) {
         if (!tree.ready()) return true;
         int ax = px + pw - PAD - 18 - 7 - 72, ay = py + 14;
         if (over(mx, my, ax, ay, 72, 18)) {

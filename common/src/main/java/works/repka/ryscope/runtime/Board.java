@@ -114,7 +114,7 @@ public final class Board {
         Theme theme = ThemeManager.get();
         Font font = mc.font;
         // внизу слева поверх мира чат, поэтому здесь столбец; под линзой остаётся место
-        works.repka.ryscope.ui.Stickers.drawColumn(g, theme, 36, works.repka.ryscope.ui.Lens.held() ? 48 : 18, 3);
+        works.repka.ryscope.ui.Stickers.drawAnchored(g, theme, 3);
     }
 
     private static Path file() {

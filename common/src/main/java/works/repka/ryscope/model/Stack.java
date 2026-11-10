@@ -65,6 +65,20 @@ public abstract class Stack {
         renderChance(g, x, y);
     }
 
+    /** Количество в ячейке макета: текст темы в правом нижнем углу. */
+    public void renderScaledAmount(GuiGraphics g, int x, int y, int size) {
+        if (amount != 1) {
+            String text = formatAmount();
+            float px = size >= 20 ? 11f : 9f;
+            float w = works.repka.ryscore.ui.Draw.labelWidth(text, px, works.repka.ryscore.ui.Type.Weight.SEMIBOLD);
+            g.pose().pushPose();
+            g.pose().translate(0, 0, 200);
+            works.repka.ryscore.ui.Draw.label(g, text, x + size - 2 - w, y + size - 3.5f, px, works.repka.ryscore.ui.Type.Weight.SEMIBOLD, 0xFFFFFFFF);
+            g.pose().popPose();
+        }
+        renderChance(g, x, y);
+    }
+
     /** Шанс получения: процент в углу, а не только цвет или мерцание. */
     protected void renderChance(GuiGraphics g, int x, int y) {
         if (chance >= 0.999f) return;
@@ -80,9 +94,7 @@ public abstract class Stack {
     }
 
     public String formatAmount() {
-        if (amount >= 1_000_000) return (amount / 1_000_000) + "M";
-        if (amount >= 10_000) return (amount / 1000) + "k";
-        return Long.toString(amount);
+        return works.repka.ryscore.ui.Numbers.compact(amount);
     }
 
     public void renderTooltip(GuiGraphics g, int mouseX, int mouseY) {

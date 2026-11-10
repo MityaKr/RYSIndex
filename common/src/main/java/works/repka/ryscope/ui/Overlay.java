@@ -3,6 +3,7 @@ package works.repka.ryscope.ui;
 import works.repka.ryscore.ui.Draw;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -33,6 +34,8 @@ import works.repka.ryscope.runtime.SearchService;
 import works.repka.ryscore.theme.Theme;
 import works.repka.ryscore.theme.ThemeManager;
 import works.repka.ryscore.ui.Field;
+import works.repka.ryscore.ui.WindowLayout;
+import works.repka.ryscore.ui.UiScale;
 import works.repka.ryscore.ui.Type.Weight;
 
 /**
@@ -52,6 +55,16 @@ public final class Overlay {
     private static final int[][] filterRects = new int[3][2];
     private static final int[] showAllRect = new int[2];
     private static final int FOOTER_H = 10;
+
+    /** Ширина свёрнутой панели или карточки: полоска с кнопкой раскрытия. */
+    public static final int STRIP_W = 16;
+    private static final int AUTO_COLUMNS_MIN = 8, AUTO_COLUMNS_MAX = 20;
+    /** Боковая панель свёрнута, пока открыта карточка: места на обоих не хватает. */
+    private static boolean sidebarCollapsed;
+    /** Игрок раскрыл панель вместо карточки. */
+    private static boolean sidebarWanted;
+    private static boolean cardCollapsed;
+    private static final int[] stripRect = new int[4];
 
     private static final GridPanel LIST = new GridPanel();
     private static final GridPanel MARKS = new GridPanel();
@@ -157,23 +170,31 @@ public final class Overlay {
 
     /** Границы «хозяина» панелей: окно контейнера или карточка рецептов. left, top, width, height. */
     private static int[] hostBounds(Screen screen) {
-        if (screen instanceof AbstractContainerScreen<?> acs) return Platform.get().screenBounds(acs);
+        if (screen instanceof AbstractContainerScreen<?> acs) return toUi(Platform.get().screenBounds(acs));
         if (screen instanceof RecipeScreen rs) return rs.cardBounds();
-        return new int[] {0, 0, screen.width, screen.height};
+        return new int[] {0, 0, UiScale.width(), UiScale.height()};
+    }
+
+    /** Прямоугольник из единиц GUI игры в единицы интерфейса, с округлением наружу. */
+    private static int[] toUi(int[] rect) {
+        int left = (int) Math.floor(UiScale.fromGui(rect[0])), top = (int) Math.floor(UiScale.fromGui(rect[1]));
+        int right = (int) Math.ceil(UiScale.fromGui(rect[0] + rect[2])), bottom = (int) Math.ceil(UiScale.fromGui(rect[1] + rect[3]));
+        return new int[] {left, top, right - left, bottom - top};
     }
 
     private static void layout(Screen screen) {
         Minecraft mc = Minecraft.getInstance();
         Config cfg = Config.get();
-        int sw = screen.width, sh = screen.height;
+        int sw = UiScale.width(), sh = UiScale.height();
         int[] b = hostBounds(screen);
         int left = b[0], right = b[0] + b[2];
         Foreign.Source foreign = Foreign.get();
         int leftTop = MARGIN, leftBottom = sh - MARGIN, rightTop = MARGIN, rightBottom = sh - MARGIN;
         if (foreign != null && screen instanceof AbstractContainerScreen<?>) {
             try {
-                for (int[] area : foreign.exclusionAreas(screen)) {
-                    if (Dock.isFtbArea(screen, area)) continue;
+                for (int[] raw : foreign.exclusionAreas(screen)) {
+                    if (Dock.isFtbArea(screen, raw)) continue;
+                    int[] area = toUi(raw);
                     boolean beside = area[1] < b[1] + b[3] && area[1] + area[3] > b[1];
                     if (beside && area[0] + area[2] > right && area[0] <= right + 12) {
                         // боковая вкладка, прилипшая к окну справа, расширяет занятую область
@@ -195,24 +216,40 @@ public final class Overlay {
             }
         }
         if (screen instanceof EffectRenderingInventoryScreen<?> && mc.player != null && !mc.player.getActiveEffects().isEmpty()) {
-            right += 34;
+            right += (int) Math.ceil(UiScale.fromGui(34));
         }
         if (screen instanceof RecipeUpdateListener rul && rul.getRecipeBookComponent().isVisible()) {
-            left = Math.min(left, b[0] - 150);
+            left = Math.min(left, b[0] - (int) Math.ceil(UiScale.fromGui(150)));
         }
         int cell = cfg.slotSize();
         LIST.paged = cfg.listPaged;
-        int maxCols = cfg.maxColumns > 0 ? cfg.maxColumns : 99;
+        // на большом экране панель показывает больше столбцов, а не растягивает пустоту
+        int maxCols = cfg.maxColumns > 0 ? cfg.maxColumns : Math.max(AUTO_COLUMNS_MIN, Math.min(AUTO_COLUMNS_MAX, (sw / 3 - 16) / cell));
 
         // панель справа: размеры из макета, половина пикселя на единицу GUI
         boolean flush = ThemeManager.get().flushSidebar;
         int edge = flush ? 0 : MARGIN;
         // карточка рецептов сама встаёт левее панели, панель из-за неё не сжимается
-        if (screen instanceof RecipeScreen) right = Math.min(right, sw - edge - MARGIN - (maxCols == 99 ? 8 : maxCols) * cell - 16);
+        sidebarCollapsed = false;
+        cardCollapsed = false;
+        if (screen instanceof RecipeScreen rs) {
+            right = Math.min(right, sw - edge - MARGIN - maxCols * cell - 16);
+            Map<String, WindowLayout.Placement> placement = WindowLayout.arrange(sw - edge - MARGIN * 2, MARGIN,
+                new WindowLayout.Window("card", rs.preferredWidth(), STRIP_W, sidebarWanted ? 1 : 2),
+                new WindowLayout.Window("sidebar", maxCols * cell + 16, STRIP_W, sidebarWanted ? 2 : 1));
+            sidebarCollapsed = placement.get("sidebar").collapsed();
+            cardCollapsed = placement.get("card").collapsed();
+            if (sidebarCollapsed) {
+                stripRect[0] = sw - edge - STRIP_W;
+                stripRect[1] = Math.max(MARGIN, rightTop);
+                stripRect[2] = STRIP_W;
+                stripRect[3] = rightBottom - stripRect[1];
+            }
+        }
         int avail = sw - edge - (right + MARGIN);
         int cols = Math.min(maxCols, (avail - 16) / cell);
         List<Stack> marks = Bookmarks.list();
-        if (cols < 3 || rightBottom - rightTop < 80) {
+        if (sidebarCollapsed || cols < 3 || rightBottom - rightTop < 80) {
             LIST.hide();
             MARKS.hide();
         } else {
@@ -268,6 +305,11 @@ public final class Overlay {
         Dock.layout(screen, MARGIN, Math.min(availL, 8 * 20 + 14), leftTop, leftBottom);
     }
 
+    /** Отметки на слотах контейнера: они в координатах самого экрана, поэтому вне масштаба интерфейса. */
+    public static void renderContainerMarks(Screen screen, GuiGraphics g) {
+        if (active(screen) && screen instanceof AbstractContainerScreen<?> acs) renderHighlight(acs, g);
+    }
+
     /** Панели и их содержимое. Рисуется до слотов экрана, чтобы подсказки игры оставались сверху. */
     public static void renderBackground(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
         if (!active(screen)) return;
@@ -293,9 +335,14 @@ public final class Overlay {
         Theme theme = ThemeManager.get();
         boolean animate = Config.get().animations && !theme.reducedMotion;
         if (LIST.visible()) renderSidebar(g, theme, mx, my, partialTick, animate);
+        if (sidebarCollapsed) {
+            theme.panel(g, stripRect[0], stripRect[1], stripRect[2], stripRect[3]);
+            boolean hot = mx >= stripRect[0] && mx < stripRect[0] + STRIP_W && my >= stripRect[1] && my < stripRect[1] + stripRect[3];
+            works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.CHEVRON_LEFT, stripRect[0] + (STRIP_W - 8) / 2f, stripRect[1] + (stripRect[3] - 8) / 2f, 8f, hot ? theme.c("accent") : theme.c("button.fg"));
+        }
         Dock.render(g, theme, mx, my);
         if (screen instanceof AbstractContainerScreen<?>) {
-            Stickers.drawRow(g, theme, 36, screen.height - 14, LIST.visible() ? LIST.x - 6 : screen.width - 4, hostBounds(screen));
+            Stickers.drawRow(g, theme, 4, UiScale.height() - 14, LIST.visible() ? LIST.x - 6 : UiScale.width() - 4, hostBounds(screen));
         } else {
             Stickers.forget();
         }
@@ -355,8 +402,8 @@ public final class Overlay {
                 textEnd = pageArrows[0] - 4;
                 boolean prevHot = mx >= pageArrows[0] - 2 && mx < pageArrows[0] + 6 && my >= footerY - 2 && my < footerY + 12;
                 boolean nextHot = mx >= pageArrows[1] - 2 && mx < pageArrows[1] + 6 && my >= footerY - 2 && my < footerY + 12;
-                Draw.label(g, "‹", pageArrows[0], fy, 13, Weight.REGULAR, prevHot ? t.c("accent") : t.c("button.fg"));
-                Draw.label(g, "›", pageArrows[1], fy, 13, Weight.REGULAR, nextHot ? t.c("accent") : t.c("button.fg"));
+                works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.CHEVRON_LEFT, pageArrows[0], footerY + 1, 6f, prevHot ? t.c("accent") : t.c("button.fg"));
+                works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.CHEVRON_RIGHT, pageArrows[1], footerY + 1, 6f, nextHot ? t.c("accent") : t.c("button.fg"));
             }
             Draw.label(g, Draw.ellipsize(footer, textEnd - LIST.x - SIDE_PAD, 12, Weight.REGULAR), LIST.x + SIDE_PAD, fy, 12, Weight.REGULAR, t.c("text.muted"));
         }
@@ -505,11 +552,10 @@ public final class Overlay {
     public static void renderTop(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
         if (!active(screen)) return;
         Theme theme = ThemeManager.get();
-        if (screen instanceof AbstractContainerScreen<?> acs) renderHighlight(acs, g);
         Stack own = ownStackAt(mx, my);
         if (Lens.held()) {
             Stack target = own != null ? own : hovered(screen, mx, my);
-            if (target != null) Lens.renderCard(g, theme, target, mx, my, screen.width, screen.height);
+            if (target != null) Lens.renderCard(g, theme, target, mx, my, UiScale.width(), UiScale.height());
         } else if (own != null && savedRowAt(mx, my) < 0) {
             g.pose().pushPose();
             g.pose().translate(0, 0, 300);
@@ -556,13 +602,13 @@ public final class Overlay {
         if (toast == null || System.currentTimeMillis() >= toastUntil) return;
         Theme theme = ThemeManager.get();
         Font font = Minecraft.getInstance().font;
-        int maxText = Math.max(80, screen.width - 40);
+        int maxText = Math.max(80, UiScale.width() - 40);
         List<String> lines = Draw.wrap(toast, maxText);
         if (lines.size() > 3) lines = lines.subList(0, 3);
         int textW = 0;
         for (String line : lines) textW = Math.max(textW, Draw.width(line));
         int w = textW + 16, h = 6 + lines.size() * 10;
-        int x = (screen.width - w) / 2, y = screen.height - 18 - h;
+        int x = (UiScale.width() - w) / 2, y = UiScale.height() - 18 - h;
         g.pose().pushPose();
         g.pose().translate(0, 0, 400);
         theme.tooltipBox(g, x, y, w, h);
@@ -742,7 +788,7 @@ public final class Overlay {
         }
         int plusX = folderPlusX();
         boolean plusHot = overMarksHeader(mx, my) && mx >= plusX - 1;
-        Draw.textScaled(g, "+", plusX + 3, top + 3, 0.75f, plusHot ? theme.c("accent") : theme.c("text.dim"));
+        works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.PLUS, plusX + 2, top + 2, 8f, plusHot ? theme.c("accent") : theme.c("text.dim"));
     }
 
     private static boolean marksHeaderClicked(double mx, double my, int button) {
@@ -877,7 +923,7 @@ public final class Overlay {
             // в терминале AE2 слоты сети показывают обёртки: предмет или жидкость точнее назовёт JEI
             if (works.repka.ryscope.runtime.Ae2Terminal.isTerminal(acs.getMenu()) && Foreign.get() != null) {
                 try {
-                    Stack typed = Foreign.get().stackUnderMouse(screen, mx, my);
+                    Stack typed = Foreign.get().stackUnderMouse(screen, UiScale.toGui(mx), UiScale.toGui(my));
                     if (typed != null) return typed;
                 } catch (Throwable ignored) {
                     // чужой обработчик
@@ -889,7 +935,7 @@ public final class Overlay {
         Foreign.Source foreign = Foreign.get();
         if (foreign != null) {
             try {
-                return foreign.stackUnderMouse(screen, mx, my);
+                return foreign.stackUnderMouse(screen, UiScale.toGui(mx), UiScale.toGui(my));
             } catch (Throwable ignored) {
                 return null;
             }
@@ -909,7 +955,7 @@ public final class Overlay {
         Foreign.Source foreign = Foreign.get();
         if (foreign == null || mc.level == null || mc.player == null) return null;
         try {
-            return foreign.stackUnderMouse(screen, mouseX(), mouseY());
+            return foreign.stackUnderMouse(screen, UiScale.toGui(mouseX()), UiScale.toGui(mouseY()));
         } catch (Throwable t) {
             return null;
         }
@@ -934,7 +980,7 @@ public final class Overlay {
     public static void renderForeign(Screen screen, GuiGraphics g, int mx, int my) {
         if (Lens.held()) {
             Stack target = foreignStack(screen);
-            if (target != null) Lens.renderCard(g, ThemeManager.get(), target, mx, my, screen.width, screen.height);
+            if (target != null) Lens.renderCard(g, ThemeManager.get(), target, mx, my, UiScale.width(), UiScale.height());
         }
         renderToast(screen, g);
     }
@@ -959,7 +1005,18 @@ public final class Overlay {
     /** Левый край правой панели: карточка рецептов встаёт перед ним. */
     public static int sidebarLeft(Screen screen) {
         layout(screen);
-        return LIST.visible() ? LIST.x : screen.width;
+        if (sidebarCollapsed) return stripRect[0];
+        return LIST.visible() ? LIST.x : UiScale.width();
+    }
+
+    /** Карточка уступила место панели по желанию игрока. */
+    public static boolean cardCollapsed() {
+        return cardCollapsed;
+    }
+
+    /** Вернуть приоритет карточке: панель снова свернётся, если места на обе не хватает. */
+    public static void showCard() {
+        sidebarWanted = false;
     }
 
     /** Показать в списке элемент с этим номером. */
@@ -967,12 +1024,20 @@ public final class Overlay {
         LIST.reveal(index);
     }
 
+    private static boolean overStrip(double mx, double my) {
+        return sidebarCollapsed && mx >= stripRect[0] && mx < stripRect[0] + STRIP_W && my >= stripRect[1] && my < stripRect[1] + stripRect[3];
+    }
+
     public static boolean isOver(double mx, double my) {
-        return LIST.contains(mx, my) || MARKS.contains(mx, my) || Stickers.goalAt(mx, my) != null || Dock.contains(mx, my);
+        return overStrip(mx, my) || LIST.contains(mx, my) || MARKS.contains(mx, my) || Stickers.goalAt(mx, my) != null || Dock.contains(mx, my);
     }
 
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
         if (!active(screen)) return false;
+        if (overStrip(mx, my)) {
+            sidebarWanted = true;
+            return true;
+        }
         EditBox box = search();
         if (!overMarksHeader(mx, my)) commitFolderName();
         int savedRow = savedRowAt(mx, my);
@@ -1314,12 +1379,10 @@ public final class Overlay {
     }
 
     static double mouseX() {
-        Minecraft mc = Minecraft.getInstance();
-        return mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth() / mc.getWindow().getScreenWidth();
+        return UiScale.mouseX();
     }
 
     static double mouseY() {
-        Minecraft mc = Minecraft.getInstance();
-        return mc.mouseHandler.ypos() * mc.getWindow().getGuiScaledHeight() / mc.getWindow().getScreenHeight();
+        return UiScale.mouseY();
     }
 }

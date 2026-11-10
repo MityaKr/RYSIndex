@@ -167,6 +167,10 @@ final class AutoTest {
             buildDesign();
             return;
         }
+        if ("matrix".equals(System.getProperty("ryscope.autotest"))) {
+            buildMatrix();
+            return;
+        }
         if ("jeiscroll".equals(System.getProperty("ryscope.autotest"))) {
             buildJeiScroll();
             return;
@@ -1185,6 +1189,75 @@ final class AutoTest {
         step("quit", () -> mc().stop(), 0);
     }
 
+    // --- сценарий matrix: окна на двух разрешениях, четырёх GUI Scale и в двух темах ---
+
+    private static void buildMatrix() {
+        record Size(int w, int h) {}
+        step("matrix: setup", () -> {
+            Config.get().listPaged = true;
+            Overlay.setSearch("");
+            works.repka.ryscope.runtime.Board.goals().clear();
+            works.repka.ryscope.runtime.Board.toggle(new ItemRes(new ItemStack(Items.PISTON)), 12);
+        }, 10);
+        for (Size size : List.of(new Size(2560, 1440), new Size(1920, 1080))) {
+            for (int scale : List.of(2, 3, 4, 0)) {
+                for (String theme : List.of("glass", "slate")) {
+                    String tag = size.w + "_s" + scale + "_" + theme;
+                    step("matrix: window " + tag, () -> {
+                        mc().setScreen(null);
+                        works.repka.ryscore.theme.ThemeManager.select("ryscore:" + theme);
+                        mc().getWindow().setWindowed(size.w, size.h);
+                        mc().options.guiScale().set(scale);
+                        mc().resizeDisplay();
+                        RYScope.LOG.info("[autotest] {}: окно {}×{}, GUI {}, пикселей на единицу {}, холст {}×{}", tag, mc().getWindow().getWidth(), mc().getWindow().getHeight(),
+                            mc().getWindow().getGuiScale(), works.repka.ryscore.ui.UiScale.pixels(), works.repka.ryscore.ui.UiScale.width(), works.repka.ryscore.ui.UiScale.height());
+                    }, 8);
+                    step("matrix: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 10);
+                    shot("m_" + tag + "_inv");
+                    step("matrix: card", () -> {
+                        RecipeScreen.clearTabs();
+                        RecipeScreen.open(new ItemRes(new ItemStack(Items.OAK_LOG)), Lookup.Mode.USES);
+                        RecipeScreen.open(new ItemRes(new ItemStack(Items.PAPER)), Lookup.Mode.RECIPES);
+                        RecipeScreen.open(new ItemRes(new ItemStack(Items.STICK)), Lookup.Mode.RECIPES);
+                    }, 12);
+                    shot("m_" + tag + "_card");
+                }
+            }
+        }
+        step("matrix: scale 5", () -> {
+            mc().setScreen(null);
+            works.repka.ryscore.theme.ThemeManager.select("ryscore:glass");
+            mc().getWindow().setWindowed(2560, 1440);
+            mc().options.guiScale().set(5);
+            mc().resizeDisplay();
+        }, 8);
+        step("matrix: scale 5 card", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES);
+        }, 12);
+        shot("m_2560_s5_glass_card");
+        step("matrix: collapse", () -> RecipeScreen.testExtraWidth = 420, 8);
+        shot("m_collapsed_sidebar");
+        step("matrix: expand sidebar", () -> {
+            if (mc().screen instanceof RecipeScreen rs) {
+                double k = works.repka.ryscore.ui.UiScale.factor();
+                rs.mouseClicked((works.repka.ryscore.ui.UiScale.width() - 8) * k, 200 * k, 0);
+            }
+        }, 8);
+        shot("m_expanded_sidebar");
+        step("matrix: restore card", () -> {
+            RecipeScreen.testExtraWidth = 0;
+            Overlay.showCard();
+            mc().setScreen(null);
+        }, 10);
+        shot("m_world");
+        step("matrix: restore", () -> {
+            works.repka.ryscore.theme.ThemeManager.select("ryscore:slate");
+            mc().options.guiScale().set(3);
+        }, 2);
+        step("quit", () -> mc().stop(), 0);
+    }
+
     // --- сценарий jeiscroll: колесо и ползунок внутри рецепта JEI, вкладки, упор у края ---
 
     private static boolean scrollFound;
@@ -1221,10 +1294,11 @@ final class AutoTest {
             RecipeScreen.Placed p = rs.placed().get(0);
             // ползунок после одного щелчка колеса стоит у верха полосы
             double x = p.x() + p.recipe().width() - 10, y = p.y() + 30;
-            boolean click = rs.mouseClicked(x, y, 0);
-            boolean drag = rs.mouseDragged(x, y + 20, 0, 0, 20);
-            drag |= rs.mouseDragged(x, y + 40, 0, 0, 20);
-            rs.mouseReleased(x, y + 40, 0);
+            double k = works.repka.ryscore.ui.UiScale.factor();
+            boolean click = rs.mouseClicked(x * k, y * k, 0);
+            boolean drag = rs.mouseDragged(x * k, (y + 20) * k, 0, 0, 20 * k);
+            drag |= rs.mouseDragged(x * k, (y + 40) * k, 0, 0, 20 * k);
+            rs.mouseReleased(x * k, (y + 40) * k, 0);
             RYScope.LOG.info("[autotest] ползунок: нажатие {}, перетаскивание {}", click, drag);
         }, 6);
         shot("jeiscroll_after_drag");

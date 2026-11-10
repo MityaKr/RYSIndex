@@ -14,6 +14,7 @@ import works.repka.ryscope.ui.Lens;
 import works.repka.ryscope.ui.Overlay;
 import works.repka.ryscope.ui.RecipeScreen;
 import works.repka.ryscore.theme.ThemeManager;
+import works.repka.ryscore.ui.UiScale;
 
 /** Точка входа клиента. Модуль загрузчика переводит свои события в вызовы этих методов. */
 public final class RyscopeClient {
@@ -100,12 +101,20 @@ public final class RyscopeClient {
 
     // --- экран ---
 
+    private static int uiMouseX() {
+        return (int) Math.floor(UiScale.mouseX());
+    }
+
+    private static int uiMouseY() {
+        return (int) Math.floor(UiScale.mouseY());
+    }
+
     private static boolean container(Screen screen) {
         return screen instanceof AbstractContainerScreen<?>;
     }
 
     public static void renderContainerBackground(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
-        if (container(screen)) Overlay.renderBackground(screen, g, mx, my, partialTick);
+        if (container(screen)) UiScale.render(g, scaled -> Overlay.renderBackground(screen, scaled, uiMouseX(), uiMouseY(), partialTick));
     }
 
     /** Экран чужого мода: не инвентарь и не наш собственный (квесты, справочники). */
@@ -114,24 +123,28 @@ public final class RyscopeClient {
     }
 
     public static void renderScreenPost(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
-        if (container(screen)) Overlay.renderTop(screen, g, mx, my, partialTick);
-        else if (foreign(screen)) Overlay.renderForeign(screen, g, mx, my);
+        if (container(screen)) {
+            Overlay.renderContainerMarks(screen, g);
+            UiScale.render(g, scaled -> Overlay.renderTop(screen, scaled, uiMouseX(), uiMouseY(), partialTick));
+        } else if (foreign(screen)) {
+            UiScale.render(g, scaled -> Overlay.renderForeign(screen, scaled, uiMouseX(), uiMouseY()));
+        }
     }
 
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
-        return container(screen) && Overlay.mouseClicked(screen, mx, my, button);
+        return container(screen) && Overlay.mouseClicked(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button);
     }
 
     public static boolean mouseReleased(Screen screen, double mx, double my, int button) {
-        return container(screen) && Overlay.mouseReleased(screen, mx, my, button);
+        return container(screen) && Overlay.mouseReleased(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button);
     }
 
     public static boolean mouseDragged(Screen screen, double mx, double my, int button) {
-        return container(screen) && Overlay.mouseDragged(screen, mx, my, button);
+        return container(screen) && Overlay.mouseDragged(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button);
     }
 
     public static boolean mouseScrolled(Screen screen, double mx, double my, double delta) {
-        return container(screen) && Overlay.mouseScrolled(screen, mx, my, delta);
+        return container(screen) && Overlay.mouseScrolled(screen, UiScale.fromGui(mx), UiScale.fromGui(my), delta);
     }
 
     public static boolean keyPressed(Screen screen, int key, int scan, int mods) {
@@ -159,8 +172,10 @@ public final class RyscopeClient {
     // --- мир ---
 
     public static void renderHud(GuiGraphics g, float partialTick) {
-        works.repka.ryscope.runtime.Board.renderHud(g);
-        Lens.renderHud(g, partialTick);
+        UiScale.render(g, scaled -> {
+            works.repka.ryscope.runtime.Board.renderHud(scaled);
+            Lens.renderHud(scaled, partialTick);
+        });
     }
 
     public static boolean onWorldKey(int key, int scan) {

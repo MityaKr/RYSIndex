@@ -40,7 +40,7 @@ public final class Dock {
 
     /** Порядок на панели: сначала прогресс и карта, потом частые действия, настройки последними. */
     private static final List<String> ORDER = List.of(
-        "ftbquests_quests", "ftbteams_my_team", "ftbteams_team_lives", "ftbchunks_chunks", "ftbchunks_claim_chunks",
+        "rysquests_book", "rysteams_team", "ftbquests_quests", "ftbteams_my_team", "ftbteams_team_lives", "ftbchunks_chunks", "ftbchunks_claim_chunks",
         "ftbessentials_trash_can", "ftblibrary_toggle_day", "ftblibrary_toggle_night", "ftblibrary_toggle_rain",
         "ftblibrary_toggle_gamemode", "ftbultimine_config", "ftbbackups3_config", "ftblibrary_config");
     /** Кнопки, для которых нарисованы свои значки; у остальных остаётся значок автора. */
@@ -48,6 +48,7 @@ public final class Dock {
 
     /** Цвет плитки у каждой кнопки свой: так кнопки различаются с первого взгляда. */
     private static final Map<String, Integer> TILES = Map.ofEntries(
+        Map.entry("rysquests_book", 0xFFE9A83A), Map.entry("rysteams_team", 0xFF4C8DF5),
         Map.entry("ftbquests_quests", 0xFFE9A83A), Map.entry("ftbteams_my_team", 0xFF4C8DF5), Map.entry("ftbteams_team_lives", 0xFFE5484D),
         Map.entry("ftbchunks_chunks", 0xFF3FB56B), Map.entry("ftbchunks_claim_chunks", 0xFF159E94), Map.entry("ftbessentials_trash_can", 0xFF8A93A6),
         Map.entry("ftblibrary_toggle_day", 0xFFF5C542), Map.entry("ftblibrary_toggle_night", 0xFF5B5BD6), Map.entry("ftblibrary_toggle_rain", 0xFF38A3E0),
@@ -163,6 +164,7 @@ public final class Dock {
                 Object button = Ftb.sidebarButton.invoke(guiButton);
                 ResourceLocation id = (ResourceLocation) Ftb.id.invoke(button);
                 String key = id.getNamespace() + "_" + id.getPath().replace('/', '_');
+                if (replacedByOurs(key)) continue;
                 ResourceLocation texture = OWN_ICONS.contains(key)
                     ? ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "textures/gui/dock/" + key + ".png") : null;
                 out.add(new Entry(button, key, texture, Ftb.icon.invoke(Ftb.data.invoke(button))));
@@ -173,6 +175,12 @@ public final class Dock {
         } catch (Throwable t) {
             fail(t);
         }
+    }
+
+    /** Кнопки FTB, которые заменены нашими модами: при установленном моде семьи кнопка FTB не показывается. */
+    private static boolean replacedByOurs(String key) {
+        return (key.equals("ftbquests_quests") && Platform.get().isModLoaded("rysquests"))
+            || (key.equals("ftbteams_my_team") && Platform.get().isModLoaded("rysteams"));
     }
 
     private static int rank(String key) {

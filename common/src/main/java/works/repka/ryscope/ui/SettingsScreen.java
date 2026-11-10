@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.ui.ScaledScreen;
 import works.repka.ryscore.ui.Draw;
 import works.repka.ryscore.ui.Icons;
 import works.repka.ryscore.ui.Kit;
@@ -20,7 +21,7 @@ import works.repka.ryscore.theme.Theme;
 import works.repka.ryscore.theme.ThemeManager;
 
 /** Настройки мода. Выглядят в текущей теме и применяются сразу. */
-public final class SettingsScreen extends Screen {
+public final class SettingsScreen extends ScaledScreen {
     private static final int ROW = 20;
     private static final int PAD = Kit.PAD;
 
@@ -38,6 +39,8 @@ public final class SettingsScreen extends Screen {
         this.parent = parent;
         Config c = Config.get();
         options.add(new Option("ryscope.settings.theme", () -> ThemeManager.get().name, ThemeManager::cycle, null));
+        options.add(new Option("ryscope.settings.ui_scale", () -> works.repka.ryscore.ui.UiScale.setting() == works.repka.ryscore.ui.UiScale.AUTO
+            ? tr("ryscope.settings.ui_scale.auto") : works.repka.ryscore.ui.UiScale.setting() + " %", works.repka.ryscore.ui.UiScale::cycle, "ryscope.settings.ui_scale.note"));
         options.add(new Option("ryscope.settings.density", () -> tr("ryscope.settings.density." + c.density), c::cycleDensity, null));
         options.add(new Option("ryscope.settings.columns", () -> c.maxColumns <= 0 ? tr("ryscope.settings.columns.auto") : Integer.toString(c.maxColumns), () -> {
             c.maxColumns = c.maxColumns <= 0 ? 5 : c.maxColumns >= 12 ? 0 : c.maxColumns + 1;
@@ -115,7 +118,7 @@ public final class SettingsScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics g, int mx, int my, float partialTick) {
+    protected void draw(GuiGraphics g, int mx, int my, float partialTick) {
         Theme t = ThemeManager.get();
         hits.clear();
         renderBackground(g, mx, my, partialTick);
@@ -184,14 +187,14 @@ public final class SettingsScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mx, double my, int button) {
+    protected boolean onClick(double mx, double my, int button) {
         if (hits.click(mx, my, button)) return true;
         if (mx < px || mx >= px + pw || my < py || my >= py + ph) onClose();
         return true;
     }
 
     @Override
-    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+    protected boolean onScroll(double mx, double my, double scrollX, double scrollY) {
         scroll += scrollY < 0 ? 1 : -1;
         return true;
     }
