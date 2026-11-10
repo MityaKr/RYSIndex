@@ -61,6 +61,9 @@ public final class Dock {
     private static long refreshedAt;
     private static boolean visible;
     private static boolean broken;
+    /** Панель рисуется мельче остального интерфейса: при 125 % кнопки выглядят как при 100 %. */
+    private static final float SCALE = 0.8f;
+    /** Все размеры ниже в единицах панели, то есть до умножения на {@link #SCALE}. */
     private static int x, y, w, h, cols, gridX, gridY;
 
     private Dock() {}
@@ -195,24 +198,28 @@ public final class Dock {
      *
      * @return верхняя граница, оставшаяся для других панелей
      */
-    public static int layout(Screen screen, int left, int width, int top, int bottom) {
+    public static int layout(Screen screen, int outerLeft, int outerWidth, int outerTop, int outerBottom) {
         visible = false;
-        if (!replaces(screen)) return top;
+        if (!replaces(screen)) return outerTop;
         refresh();
-        if (!available() || entries.isEmpty()) return top;
+        if (!available() || entries.isEmpty()) return outerTop;
+        int left = (int) Math.floor(outerLeft / SCALE), top = (int) Math.ceil(outerTop / SCALE);
+        int bottom = (int) Math.floor(outerBottom / SCALE);
+        // столбцов столько же, сколько было без уменьшения: восемь
+        int width = Math.min((int) Math.floor(outerWidth / SCALE), 8 * (BUTTON + GAP) - GAP + PAD * 2);
         int min = BUTTON + PAD * 2;
-        if (width < min) return top;
+        if (width < min) return outerTop;
         cols = Math.max(1, (width - PAD * 2 + GAP) / (BUTTON + GAP));
         int rows = (entries.size() + cols - 1) / cols;
         h = rows * BUTTON + (rows - 1) * GAP + PAD * 2;
-        if (h > bottom - top) return top;
+        if (h > bottom - top) return outerTop;
         x = left;
         w = width;
         y = top;
         gridX = x + (w - (cols * BUTTON + (cols - 1) * GAP)) / 2;
         gridY = y + PAD;
         visible = true;
-        return y + h + 4;
+        return (int) Math.ceil((y + h) * SCALE) + 4;
     }
 
     private static int buttonX(int index) {
@@ -224,11 +231,15 @@ public final class Dock {
     }
 
     public static boolean contains(double mx, double my) {
+        mx /= SCALE;
+        my /= SCALE;
         return visible && mx >= x && mx < x + w && my >= y && my < y + h;
     }
 
     private static int indexAt(double mx, double my) {
         if (!contains(mx, my)) return -1;
+        mx /= SCALE;
+        my /= SCALE;
         for (int i = 0; i < entries.size(); i++) {
             int bx = buttonX(i), by = buttonY(i);
             if (mx >= bx && mx < bx + BUTTON && my >= by && my < by + BUTTON) return i;
@@ -238,8 +249,18 @@ public final class Dock {
 
     public static void render(GuiGraphics g, Theme theme, int mx, int my) {
         if (!visible) return;
-        theme.panel(g, x, y, w, h);
         int hover = indexAt(mx, my);
+        g.pose().pushPose();
+        g.pose().scale(SCALE, SCALE, 1f);
+        try {
+            renderButtons(g, theme, hover);
+        } finally {
+            g.pose().popPose();
+        }
+    }
+
+    private static void renderButtons(GuiGraphics g, Theme theme, int hover) {
+        theme.panel(g, x, y, w, h);
         Minecraft mc = Minecraft.getInstance();
         for (int i = 0; i < entries.size(); i++) {
             Entry entry = entries.get(i);
@@ -328,7 +349,9 @@ public final class Dock {
     /** Центр кнопки или null, если её нет на панели. */
     public static int[] center(String key) {
         for (int i = 0; i < entries.size(); i++) {
-            if (entries.get(i).key().equals(key)) return new int[] {buttonX(i) + BUTTON / 2, buttonY(i) + BUTTON / 2};
+            if (entries.get(i).key().equals(key)) {
+                return new int[] {Math.round((buttonX(i) + BUTTON / 2f) * SCALE), Math.round((buttonY(i) + BUTTON / 2f) * SCALE)};
+            }
         }
         return null;
     }

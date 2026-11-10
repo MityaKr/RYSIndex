@@ -329,7 +329,10 @@ public final class Overlay {
             marksTop = -1;
             return;
         }
-        int px = MARGIN, pw = cols * cell + 16, py = top, ph = bottom - top;
+        // высота по содержимому: колонка растёт с закладками до свободного края, дальше прокрутка
+        int rows = marks.isEmpty() ? 2 : (marks.size() + cols - 1) / cols;
+        int px = MARGIN, pw = cols * cell + 16, py = top;
+        int ph = Math.min(bottom - top, 4 + 18 + rows * cell + SIDE_BOTTOM);
         marksPanel[0] = px;
         marksPanel[1] = py;
         marksPanel[2] = pw;
