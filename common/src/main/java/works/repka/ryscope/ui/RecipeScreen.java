@@ -338,6 +338,12 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     @Override
+    public void removed() {
+        super.removed();
+        works.repka.ryscope.jei.StructureRecipeView.releaseAll();
+    }
+
+    @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         g.fill(0, 0, width, height, ThemeManager.get().c("overlay"));
     }

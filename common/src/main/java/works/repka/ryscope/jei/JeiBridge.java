@@ -258,7 +258,8 @@ public final class JeiBridge implements Foreign.Source {
                 }
                 if (id != null && ownIds.contains(id)) return;
             }
-            views.add(new JeiRecipeView<>(this, c, recipe, group));
+            RecipeView structure = StructureRecipeView.of(recipe);
+            views.add(structure != null ? structure : new JeiRecipeView<>(this, c, recipe, group));
         });
         return views;
     }

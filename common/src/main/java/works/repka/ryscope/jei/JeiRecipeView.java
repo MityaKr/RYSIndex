@@ -99,7 +99,7 @@ public final class JeiRecipeView<T> implements RecipeView {
         l.setPosition(x + border, y + border);
         boolean restyled = works.repka.ryscope.ui.RecipeRestyle.begin(theme);
         try {
-            l.drawRecipe(g, mouseX, mouseY);
+            works.repka.ryscore.ui.Draw.isolated(g, () -> l.drawRecipe(g, mouseX, mouseY));
         } finally {
             if (restyled) {
                 works.repka.ryscope.ui.RecipeRestyle.end();
@@ -129,7 +129,7 @@ public final class JeiRecipeView<T> implements RecipeView {
     public boolean renderTooltip(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return false;
-        l.drawOverlays(g, mouseX, mouseY);
+        works.repka.ryscore.ui.Draw.isolated(g, () -> l.drawOverlays(g, mouseX, mouseY));
         return true;
     }
 

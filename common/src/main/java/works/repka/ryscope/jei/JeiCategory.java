@@ -18,7 +18,8 @@ public final class JeiCategory extends Category {
     public void renderIcon(GuiGraphics g, int x, int y) {
         IDrawable icon = category.getIcon();
         if (icon != null) {
-            icon.draw(g, x + (16 - icon.getWidth()) / 2, y + (16 - icon.getHeight()) / 2);
+            // значок Modular Machinery делает два push и один pop: без защиты съезжает всё окно
+            works.repka.ryscore.ui.Draw.isolated(g, () -> icon.draw(g, x + (16 - icon.getWidth()) / 2, y + (16 - icon.getHeight()) / 2));
         } else {
             super.renderIcon(g, x, y);
         }

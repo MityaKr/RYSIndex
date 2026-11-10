@@ -114,6 +114,60 @@ final class AutoTest {
         if (mc().player != null) mc().player.connection.sendCommand(cmd);
     }
 
+    /** Вкладки «Использования» у контроллера Modular Machinery: категории с превью структур и квестами. */
+    private static void buildStructures() {
+        step("controller", () -> {
+            Stack found = null;
+            try {
+                Object item = Class.forName("es.degrassi.mmreborn.common.item.ControllerItem")
+                    .getMethod("makeMachineItem", net.minecraft.resources.ResourceLocation.class)
+                    .invoke(null, net.minecraft.resources.ResourceLocation.parse("repys:kinetic_foundry"));
+                found = new ItemRes((ItemStack) item);
+            } catch (ReflectiveOperationException e) {
+                RYScope.LOG.error("[autotest] controller", e);
+            }
+            if (found != null) RecipeScreen.open(found, Lookup.Mode.USES);
+        }, 60);
+        shot("structures_0");
+        for (int i = 1; i <= 3; i++) {
+            step("next tab", () -> mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0), 40);
+            shot("structures_" + i);
+        }
+        step("rotate and zoom", () -> {
+            RecipeScreen.Placed p = ((RecipeScreen) mc().screen).placed().get(0);
+            p.recipe().mouseClicked(p.x() + 100, p.y() + 60, 0);
+            p.recipe().mouseDragged(p.x() + 100, p.y() + 60, 0, 60, 20);
+            p.recipe().mouseReleased(p.x() + 100, p.y() + 60, 0);
+            p.recipe().mouseScrolled(p.x() + 100, p.y() + 60, 0, 3);
+        }, 10);
+        shot("structures_rotated");
+        step("layer", () -> {
+            RecipeScreen.Placed p = ((RecipeScreen) mc().screen).placed().get(0);
+            for (int i = 0; i < 3; i++) {
+                p.recipe().mouseClicked(p.x() + 43, p.y() + 9, 0);
+                p.recipe().mouseReleased(p.x() + 43, p.y() + 9, 0);
+            }
+        }, 30);
+        shot("structures_layer3");
+        step("glass", () -> {
+            ThemeManager.select("ryscore:glass");
+            command("time set midnight");
+        }, 30);
+        shot("structures_glass_night");
+        step("gui scale 4", () -> {
+            ThemeManager.select("ryscore:slate");
+            mc().options.guiScale().set(4);
+            mc().resizeDisplay();
+        }, 30);
+        shot("structures_gui4");
+        step("restore", () -> {
+            mc().options.guiScale().set(0);
+            mc().resizeDisplay();
+            command("time set noon");
+        }, 5);
+        step("done", () -> mc().stop(), 1);
+    }
+
     private static void build() {
         // на свежей папке вместо главного меню открывается экран специальных возможностей: годится любой экран
         step("title", () -> mc().screen != null && mc().level == null && mc().getOverlay() == null && total > 40, () -> {
@@ -169,6 +223,10 @@ final class AutoTest {
         }
         if ("matrix".equals(System.getProperty("ryscope.autotest"))) {
             buildMatrix();
+            return;
+        }
+        if ("structures".equals(System.getProperty("ryscope.autotest"))) {
+            buildStructures();
             return;
         }
         if ("jeiscroll".equals(System.getProperty("ryscope.autotest"))) {
