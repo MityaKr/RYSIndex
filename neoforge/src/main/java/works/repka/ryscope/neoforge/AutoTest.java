@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("shapes".equals(System.getProperty("ryscope.autotest"))) {
+            buildShapes();
+            return;
+        }
 
         step("inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 20);
         shot("inventory");
@@ -958,6 +962,134 @@ final class AutoTest {
                 + "кратчайший путь {} шагов, глубина {}, поиск {} мс, просмотрено {}",
                 id, usualSteps, usualDepth, usualMs, usualItems, tree.steps, tree.maxDepth, shortMs, tree.examined());
         }
+    }
+
+    /** Стенд скруглений: тень под окном и сетка карточек с рамками, как в книге квестов. */
+    private static final class ShapeBench extends net.minecraft.client.gui.screens.Screen {
+        static long nanos, cpu, count;
+
+        static String report() {
+            return count == 0 ? "нет кадров" : String.format(java.util.Locale.ROOT, "процессор %.0f мкс, вместе с видеокартой %.0f мкс на кадр, кадров %d",
+                cpu / 1000.0 / count, nanos / 1000.0 / count, count);
+        }
+
+        static void reset() {
+            nanos = 0;
+            cpu = 0;
+            count = 0;
+        }
+
+        ShapeBench() {
+            super(net.minecraft.network.chat.Component.literal("shapes"));
+        }
+
+        @Override
+        public boolean isPauseScreen() {
+            return false;
+        }
+
+        @Override
+        public void render(net.minecraft.client.gui.GuiGraphics parent, int mouseX, int mouseY, float partialTick) {
+            parent.flush();
+            org.lwjgl.opengl.GL11.glFinish();
+            long t0 = System.nanoTime();
+            body(parent);
+            parent.flush();
+            cpu += System.nanoTime() - t0;
+            org.lwjgl.opengl.GL11.glFinish();
+            nanos += System.nanoTime() - t0;
+            count++;
+        }
+
+        private void body(net.minecraft.client.gui.GuiGraphics parent) {
+            works.repka.ryscore.ui.UiScale.render(parent, g -> {
+                works.repka.ryscore.theme.Theme t = ThemeManager.get();
+                int w = Math.min(600, g.guiWidth() - 40), h = Math.min(360, g.guiHeight() - 40);
+                int x = (g.guiWidth() - w) / 2, y = (g.guiHeight() - h) / 2;
+                works.repka.ryscore.ui.Draw.shadow(g, x, y, w, h, 7f, 1f);
+                works.repka.ryscore.ui.Draw.roundBox(g, x, y, w, h, 7f, t.c("panel.bg"), t.c("panel.border"));
+                for (int row = 0; row < 8; row++) {
+                    for (int col = 0; col < 6; col++) {
+                        float cx = x + 10 + col * (w - 20) / 6f, cy = y + 10 + row * (h - 20) / 8f;
+                        float cw = (w - 20) / 6f - 6, ch = (h - 20) / 8f - 6;
+                        works.repka.ryscore.ui.Draw.roundBox(g, cx, cy, cw, ch, 4f, t.c("card.bg"), t.c("card.border"));
+                        works.repka.ryscore.ui.Draw.roundBox(g, cx + 4, cy + 4, 16, 16, 3f, t.c("slot.bg"), t.c("slot.border"));
+                        works.repka.ryscore.ui.Draw.dot(g, (int) (cx + cw - 10), (int) (cy + 6), 5, t.c("accent"));
+                        works.repka.ryscore.ui.Draw.round(g, cx + 24, cy + ch - 10, cw - 30, 4, 2f, t.c("accent"));
+                    }
+                }
+            });
+        }
+    }
+
+    /** Текст и скругления под уменьшающей матрицей, как на карте квестов с зумом. */
+    private static final class ZoomBench extends net.minecraft.client.gui.screens.Screen {
+        ZoomBench() {
+            super(net.minecraft.network.chat.Component.literal("zoom"));
+        }
+
+        @Override
+        public boolean isPauseScreen() {
+            return false;
+        }
+
+        @Override
+        public void render(net.minecraft.client.gui.GuiGraphics parent, int mouseX, int mouseY, float partialTick) {
+            works.repka.ryscore.ui.UiScale.render(parent, g -> {
+                works.repka.ryscore.theme.Theme t = ThemeManager.get();
+                works.repka.ryscore.ui.Draw.rect(g, 0, 0, g.guiWidth(), g.guiHeight(), t.c("panel.bg"));
+                float[] zooms = {1f, 0.6f, 0.35f};
+                float y = 10;
+                for (float zoom : zooms) {
+                    g.pose().pushPose();
+                    g.pose().translate(10, y, 0);
+                    g.pose().scale(zoom, zoom, 1f);
+                    for (int i = 0; i < 3; i++) {
+                        float x = i * 190;
+                        works.repka.ryscore.ui.Draw.roundBox(g, x, 0, 180, 60, 8f, t.c("card.bg"), t.c("card.border"));
+                        works.repka.ryscore.ui.Draw.roundBorder(g, x + 8, 8, 24, 24, 12f, t.c("accent"), 1.5f);
+                        works.repka.ryscore.ui.Draw.label(g, "Кинетическая литейня", x + 40, 16, 15f, works.repka.ryscore.ui.Type.Weight.SEMIBOLD, t.c("text.body"));
+                        works.repka.ryscore.ui.Draw.label(g, "Quest 12 · 3/5 done", x + 40, 34, 12f, works.repka.ryscore.ui.Type.Weight.REGULAR, t.c("text.muted"));
+                        works.repka.ryscore.ui.Draw.label(g, "Zoom " + zoom, x + 8, 50, 11f, works.repka.ryscore.ui.Type.Weight.REGULAR, t.c("text.body"));
+                    }
+                    g.pose().popPose();
+                    y += 70 * zoom + 8;
+                }
+            });
+        }
+    }
+
+    private static void buildShapes() {
+        step("shapes: setup", () -> {
+            mc().options.enableVsync().set(false);
+            mc().options.framerateLimit().set(260);
+            mc().getWindow().updateVsync(false);
+            org.lwjgl.glfw.GLFW.glfwSetWindowSize(mc().getWindow().getWindow(), 1920, 1080);
+            mc().setScreen(new ShapeBench());
+        }, 80);
+        for (String theme : new String[] {"ryscore:slate", "ryscore:glass"}) {
+            step("shapes: " + theme, () -> {
+                ThemeManager.select(theme);
+                ShapeBench.reset();
+                framesReset();
+            }, 200);
+            step("shapes: report", () -> RYScope.LOG.info("[perf] стенд скруглений, {}: {}; {}", theme, ShapeBench.report(), framesReport()), 2);
+            shot("shapes_" + theme.substring(8));
+        }
+        step("shapes: zoom", () -> mc().setScreen(new ZoomBench()), 20);
+        shot("shapes_zoom");
+        step("shapes: recipes", () -> {
+            ThemeManager.select("ryscore:slate");
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES);
+        }, 40);
+        step("shapes: recipes reset", AutoTest::framesReset, 200);
+        step("shapes: recipes report", () -> RYScope.LOG.info("[perf] окно рецептов: {}", framesReport()), 2);
+        shot("shapes_recipes");
+        step("shapes: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 40);
+        step("shapes: inventory reset", AutoTest::framesReset, 200);
+        step("shapes: inventory report", () -> RYScope.LOG.info("[perf] инвентарь с панелями: {}", framesReport()), 2);
+        shot("shapes_inventory");
+        step("quit", () -> mc().stop(), 0);
     }
 
     private static void buildPerf() {
