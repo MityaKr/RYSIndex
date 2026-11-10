@@ -184,18 +184,26 @@ public final class NativeRecipe implements RecipeView {
             }
         }
         float missingAlpha = theme.m("missing.alpha", 0.45f);
+        // наличие с учётом количества: предметы делятся между ячейками, как в JEI
+        java.util.Map<SlotW, works.repka.ryscope.runtime.Ae2Terminal.State> supply = new java.util.IdentityHashMap<>();
+        if (missingBadges && crafting && works.repka.ryscope.runtime.Supply.tracking()) {
+            List<SlotW> inputSlots = new java.util.ArrayList<>();
+            List<Ing> inputIngs = new java.util.ArrayList<>();
+            for (SlotW s : slots) {
+                if (s.output || s.ing.isEmpty()) continue;
+                inputSlots.add(s);
+                inputIngs.add(s.ing);
+            }
+            works.repka.ryscope.runtime.Ae2Terminal.State[] states = works.repka.ryscope.runtime.Supply.states(inputIngs);
+            for (int i = 0; i < states.length; i++) supply.put(inputSlots.get(i), states[i]);
+        }
         for (SlotW s : slots) {
+            works.repka.ryscope.runtime.Ae2Terminal.State state = supply.getOrDefault(s, works.repka.ryscope.runtime.Ae2Terminal.State.HAVE);
             int sx = x + s.x, sy = y + s.y, size = sizeOf(s);
             boolean hover = mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size;
             int stateBorder = 0;
-            if (!s.output && missingBadges && crafting && !s.ing.isEmpty()) {
-                // нехватка одним цветом: рамка bad; что есть, то с обычной рамкой
-                boolean terminal = works.repka.ryscope.runtime.Ae2Terminal.active();
-                boolean lacking = terminal
-                    ? works.repka.ryscope.runtime.Ae2Terminal.stateOf(s.ing) != works.repka.ryscope.runtime.Ae2Terminal.State.HAVE
-                    : !InventoryView.has(s.ing);
-                if ((terminal || InventoryView.tracking()) && lacking) stateBorder = Draw.alpha(theme.c("state.bad"), 0.7f);
-            }
+            // нехватка одним цветом: рамка bad; что есть, то с обычной рамкой
+            if (state != works.repka.ryscope.runtime.Ae2Terminal.State.HAVE) stateBorder = Draw.alpha(theme.c("state.bad"), 0.7f);
             if (slotSize != SLOT) theme.slotRounded(g, sx, sy, size, s.large ? 8f : 5f, hover && !s.ing.isEmpty(), stateBorder);
             else theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateBorder);
             Stack shown = s.ing.shown(now);
@@ -215,18 +223,14 @@ public final class NativeRecipe implements RecipeView {
                 shown.render(g, ix, iy);
                 shown.renderOverlay(g, ix, iy);
             }
-            works.repka.ryscope.runtime.Ae2Terminal.State ae2 = !s.output && missingBadges && crafting
-                ? works.repka.ryscope.runtime.Ae2Terminal.stateOf(s.ing) : works.repka.ryscope.runtime.Ae2Terminal.State.HAVE;
-            if (ae2 == works.repka.ryscope.runtime.Ae2Terminal.State.CRAFTABLE) {
+            if (state == works.repka.ryscope.runtime.Ae2Terminal.State.CRAFTABLE) {
                 // ингредиента нет, но сеть AE2 умеет его сделать: Ctrl при переносе закажет
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 250);
                 Draw.rect(g, sx + size - 5, sy + 1, 4, 4, theme.c("accent"));
                 g.pose().popPose();
             }
-            boolean ae2Terminal = works.repka.ryscope.runtime.Ae2Terminal.active();
-            if (!s.output && missingBadges && crafting
-                && (ae2Terminal ? ae2 == works.repka.ryscope.runtime.Ae2Terminal.State.MISSING : InventoryView.tracking() && !InventoryView.has(s.ing))) {
+            if (state == works.repka.ryscope.runtime.Ae2Terminal.State.MISSING) {
                 // недостающий ингредиент: приглушаем слот и помечаем уголок, не только цветом
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 250);

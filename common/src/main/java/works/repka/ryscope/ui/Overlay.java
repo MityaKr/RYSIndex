@@ -73,6 +73,8 @@ public final class Overlay {
         MARKS.accentTiles = true;
     }
     private static Field search;
+    /** Последняя стрелка листала историю запросов: тогда и стрелка вниз идёт по истории, а не в сохранённые. */
+    private static boolean browsingHistory;
     private static final int[] searchRect = new int[4];
     private static boolean draggingScroll;
     private static String toast;
@@ -1066,6 +1068,7 @@ public final class Overlay {
                 toast(Component.translatable(highlight ? "ryscope.search.highlight_on" : "ryscope.search.highlight_off").getString());
             }
             lastSearchClick = now;
+            if (!box.isFocused()) SearchHistory.add(box.getValue());
             if (button == 1) box.setValue("");
             box.setFocused(true);
             if (button == 0) box.mouseClicked(Math.max(mx, box.getX()), box.getY() + 2, 0);
@@ -1229,6 +1232,24 @@ public final class Overlay {
                 toggleSaved(box.getValue().trim());
                 return true;
             }
+            if (key == GLFW.GLFW_KEY_UP && savedIndex < 0) {
+                String previous = SearchHistory.previous(box.getValue());
+                if (previous != null) {
+                    box.setValue(previous);
+                    box.moveCursorToEnd(false);
+                }
+                browsingHistory = true;
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_DOWN && savedIndex < 0 && (browsingHistory || savedShown.isEmpty())) {
+                String next = SearchHistory.next(box.getValue());
+                if (next != null) {
+                    box.setValue(next);
+                    box.moveCursorToEnd(false);
+                }
+                browsingHistory = next != null && !next.isEmpty();
+                return true;
+            }
             if (key == GLFW.GLFW_KEY_DOWN && !savedShown.isEmpty()) {
                 savedIndex = Math.min(savedShown.size() - 1, savedIndex + 1);
                 return true;
@@ -1246,6 +1267,7 @@ public final class Overlay {
                 saveSearch();
                 return true;
             }
+            browsingHistory = false;
             if (key == GLFW.GLFW_KEY_TAB) autocomplete(box);
             else if (key == GLFW.GLFW_KEY_PAGE_DOWN) LIST.pageBy(1);
             else if (key == GLFW.GLFW_KEY_PAGE_UP) LIST.pageBy(-1);
@@ -1254,6 +1276,7 @@ public final class Overlay {
             return true;
         }
         if (Keys.matches(Keys.SEARCH, key, scan) && LIST.visible()) {
+            SearchHistory.add(box.getValue());
             box.setFocused(true);
             box.moveCursorToEnd(false);
             box.setHighlightPos(0);
@@ -1343,6 +1366,8 @@ public final class Overlay {
 
     private static void saveSearch() {
         String value = search == null ? "" : search.getValue();
+        SearchHistory.add(value);
+        browsingHistory = false;
         if (!value.equals(lastQuery)) {
             lastQuery = value;
             Config.get().lastSearch = value;

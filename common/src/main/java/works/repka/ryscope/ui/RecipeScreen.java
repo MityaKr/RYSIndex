@@ -751,16 +751,16 @@ public final class RecipeScreen extends ScaledScreen {
         int total = 0, have = 0;
         boolean stored = false;
         Map<String, Integer> missing = new LinkedHashMap<>();
-        for (Ing in : recipe.inputs()) {
+        List<Ing> inputs = recipe.inputs();
+        works.repka.ryscope.runtime.Ae2Terminal.State[] states = works.repka.ryscope.runtime.Supply.states(inputs);
+        for (int i = 0; i < inputs.size(); i++) {
+            Ing in = inputs.get(i);
             if (in.isEmpty()) continue;
             boolean items = false;
             for (Stack option : in.options) items |= option.key() instanceof net.minecraft.world.item.Item;
             if (!items) continue;
             total++;
-            boolean ok = network
-                ? works.repka.ryscope.runtime.Ae2Terminal.stateOf(in) != works.repka.ryscope.runtime.Ae2Terminal.State.MISSING
-                : works.repka.ryscope.runtime.InventoryView.has(in);
-            if (ok) {
+            if (states[i] != works.repka.ryscope.runtime.Ae2Terminal.State.MISSING) {
                 have++;
                 continue;
             }

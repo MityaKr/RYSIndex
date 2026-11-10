@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("supply".equals(System.getProperty("ryscope.autotest"))) {
+            buildSupply();
+            return;
+        }
         if ("shapes".equals(System.getProperty("ryscope.autotest"))) {
             buildShapes();
             return;
@@ -1057,6 +1061,80 @@ final class AutoTest {
                 }
             });
         }
+    }
+
+    /** Строки статуса открытых рецептов. */
+    private static String statusLines() {
+        try {
+            java.lang.reflect.Field f = RecipeScreen.class.getDeclaredField("statuses");
+            f.setAccessible(true);
+            StringBuilder out = new StringBuilder();
+            for (Object status : ((java.util.Map<?, ?>) f.get(mc().screen)).values()) {
+                if (status == null) continue;
+                java.lang.reflect.Field head = status.getClass().getDeclaredField("head");
+                java.lang.reflect.Field tail = status.getClass().getDeclaredField("tail");
+                head.setAccessible(true);
+                tail.setAccessible(true);
+                out.append(" [").append(head.get(status)).append(' ').append(tail.get(status)).append(']');
+            }
+            return out.toString();
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            return "не прочитано: " + e;
+        }
+    }
+
+    private static net.minecraft.client.gui.components.EditBox searchBox() {
+        try {
+            java.lang.reflect.Method m = Overlay.class.getDeclaredMethod("search");
+            m.setAccessible(true);
+            return (net.minecraft.client.gui.components.EditBox) m.invoke(null);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void searchKey(int key) {
+        Overlay.keyPressed(mc().screen, key, 0, 0);
+    }
+
+    private static void buildSupply() {
+        step("supply: survival", () -> command("gamemode survival"), 10);
+        step("supply: clear", () -> command("clear @s"), 10);
+        step("supply: 3 ingots", () -> command("give @s minecraft:iron_ingot 3"), 20);
+        step("supply: open", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.IRON_BLOCK)), Lookup.Mode.RECIPES);
+        }, 40);
+        step("supply: report 3", () -> RYScope.LOG.info("[supply] 3 слитка:{}", statusLines()), 2);
+        shot("supply_3");
+        step("supply: 6 more", () -> command("give @s minecraft:iron_ingot 6"), 30);
+        step("supply: report 9", () -> RYScope.LOG.info("[supply] 9 слитков:{}", statusLines()), 2);
+        shot("supply_9");
+        step("supply: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 20);
+        String[] queries = {"iron", "gold", "@create"};
+        for (String q : queries) {
+            step("history: type " + q, () -> {
+                net.minecraft.client.gui.components.EditBox box = searchBox();
+                box.setFocused(true);
+                box.setValue(q);
+            }, 3);
+            step("history: leave", () -> searchKey(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER), 3);
+        }
+        step("history: focus", () -> {
+            searchBox().setFocused(true);
+            searchBox().setValue("");
+        }, 3);
+        StringBuilder seen = new StringBuilder();
+        int[] keys = {org.lwjgl.glfw.GLFW.GLFW_KEY_UP, org.lwjgl.glfw.GLFW.GLFW_KEY_UP, org.lwjgl.glfw.GLFW.GLFW_KEY_UP, org.lwjgl.glfw.GLFW.GLFW_KEY_UP, org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN};
+        for (int key : keys) {
+            step("history: key", () -> {
+                searchKey(key);
+                seen.append(key == org.lwjgl.glfw.GLFW.GLFW_KEY_UP ? " ↑" : " ↓").append('«').append(searchBox().getValue()).append('»');
+            }, 2);
+        }
+        step("history: report", () -> RYScope.LOG.info("[supply] история поиска:{}", seen), 2);
+        step("history: done", () -> searchKey(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE), 2);
+        step("quit", () -> mc().stop(), 0);
     }
 
     private static void buildShapes() {

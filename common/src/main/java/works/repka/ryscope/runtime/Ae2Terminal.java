@@ -41,7 +41,7 @@ public final class Ae2Terminal {
     private static AbstractContainerMenu active;
     private static AbstractContainerMenu cachedFor;
     private static long cachedAt;
-    private static Map<Item, Boolean> network = Map.of();
+    private static Map<Item, Long> network = Map.of();
     private static Set<Item> craftable = Set.of();
 
     private Ae2Terminal() {}
@@ -117,7 +117,7 @@ public final class Ae2Terminal {
         if (active == cachedFor && now - cachedAt < REFRESH_MS) return;
         cachedFor = active;
         cachedAt = now;
-        Map<Item, Boolean> have = new HashMap<>();
+        Map<Item, Long> have = new HashMap<>();
         Set<Item> craft = new java.util.HashSet<>();
         try {
             Object repo = Api.repo.invoke(active);
@@ -126,7 +126,8 @@ public final class Ae2Terminal {
                     Object what = Api.what.invoke(entry);
                     if (!Api.itemKey.isInstance(what)) continue;
                     Item item = (Item) Api.itemOf.invoke(what);
-                    if ((long) Api.stored.invoke(entry) > 0) have.put(item, true);
+                    long amount = (long) Api.stored.invoke(entry);
+                    if (amount > 0) have.merge(item, amount, Long::sum);
                     if ((boolean) Api.entryCraftable.invoke(entry)) craft.add(item);
                 }
             }
@@ -137,7 +138,30 @@ public final class Ae2Terminal {
         craftable = craft;
     }
 
-    /** Есть ли ингредиент в сети или инвентаре, можно ли его заказать. В шаблоне важно только «можно заказать». */
+    /** Окно открыто над терминалом шаблонов: там важно только «можно заказать». */
+    public static boolean isPattern() {
+        return active != null && Api.patternMenu.isInstance(active);
+    }
+
+    /** Сколько каждого предмета лежит в сети. */
+    public static Map<Item, Long> amounts() {
+        if (active == null) return Map.of();
+        refresh();
+        return network;
+    }
+
+    /** Умеет ли сеть сделать хоть один из вариантов ингредиента. */
+    public static boolean craftable(Ing ing) {
+        if (active == null) return false;
+        refresh();
+        for (Stack option : ing.options) if (option.key() instanceof Item item && craftable.contains(item)) return true;
+        return false;
+    }
+
+    /**
+     * Есть ли ингредиент в сети или инвентаре, можно ли его заказать, без учёта количества.
+     * Для отметок в рецепте брать {@link Supply#states}: там предметы делятся между ячейками.
+     */
     public static State stateOf(Ing ing) {
         if (active == null || ing.isEmpty()) return State.HAVE;
         refresh();
