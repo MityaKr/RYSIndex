@@ -175,8 +175,13 @@ public final class VanillaContent {
     /** Рецепт с размерами слотов из макета. */
     private static NativeRecipe sized(NativeRecipe.Kind kind, RecipeHolder<?> holder, int width, int height) {
         NativeRecipe r = new NativeRecipe(kind, holder, width, height);
-        r.slotSize = 14;
-        r.largeSize = 22;
+        // макет задан под слоты 14 и 22 с шагом 16; на экране слот 20 и предмет 16 без уменьшения,
+        // как значок в заголовке карточки, шаг 22
+        r.designSlot = 14;
+        r.designLarge = 22;
+        r.layoutScale = 22f / DESIGN_PITCH;
+        r.slotSize = 20;
+        r.largeSize = 20;
         return r;
     }
 

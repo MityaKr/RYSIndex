@@ -66,11 +66,32 @@ public final class NativeRecipe implements RecipeView {
     public long energy;
     /** false для обмена и других способов получения, которые не являются рецептом (торговля). */
     public boolean crafting = true;
-    /** Размеры слотов: у рецептов игры они как в макете, 24 и 32. */
+    /** Размеры слотов на экране. */
     public int slotSize = SLOT, largeSize = LARGE;
+    /**
+     * Раскладка задана в координатах макета со своими размерами слотов: центры слотов и декор умножаются
+     * на {@code layoutScale}, а сами слоты рисуются размером {@link #slotSize} вокруг своего центра.
+     */
+    public float layoutScale = 1f;
+    public int designSlot = SLOT, designLarge = LARGE;
 
     private int sizeOf(SlotW s) {
         return s.large ? largeSize : slotSize;
+    }
+
+    /** Левый верхний угол слота относительно рецепта. */
+    private int slotX(SlotW s) {
+        float design = s.large ? designLarge : designSlot;
+        return Math.round((s.x + design / 2f) * layoutScale - sizeOf(s) / 2f);
+    }
+
+    private int slotY(SlotW s) {
+        float design = s.large ? designLarge : designSlot;
+        return Math.round((s.y + design / 2f) * layoutScale - sizeOf(s) / 2f);
+    }
+
+    private int scaled(int design) {
+        return Math.round(design * layoutScale);
     }
 
     /** Стрелка с подписью под ней, как в макете. {@code w} ширина колонки, {@code y} её середина. */
@@ -152,21 +173,21 @@ public final class NativeRecipe implements RecipeView {
 
     @Override
     public int width() {
-        return width;
+        return (int) Math.ceil(width * layoutScale);
     }
 
     @Override
     public int height() {
-        return height;
+        return (int) Math.ceil(height * layoutScale);
     }
 
     @Override
     public void render(GuiGraphics g, Theme theme, int x, int y, int mouseX, int mouseY, float partialTick) {
         long now = System.currentTimeMillis();
         for (Deco d : decos) {
-            int dx = x + d.x, dy = y + d.y;
+            int dx = x + scaled(d.x), dy = y + scaled(d.y), dw = scaled(d.w);
             switch (d.type) {
-                case ARROW -> Draw.arrow(g, dx, dy, d.w, theme.c("text.dim"));
+                case ARROW -> Draw.arrow(g, dx, dy, dw, theme.c("text.dim"));
                 case FLAME -> flame(g, dx, dy, theme.c("accent"), now);
                 case PLUS -> {
                     Draw.rect(g, dx + 3, dy, 2, 8, theme.c("text.dim"));
@@ -175,10 +196,10 @@ public final class NativeRecipe implements RecipeView {
                 case TEXT -> Draw.text(g, d.text, dx, dy, theme.c("text.muted"));
                 case SHAPELESS -> shapelessIcon(g, dx, dy, theme.c("text.dim"));
                 case FLOW -> {
-                    works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.ARROW, dx + d.w / 2f - 4.5f, dy - 4.5f, 9f, theme.c("text.muted"));
+                    works.repka.ryscore.ui.Icons.draw(g, works.repka.ryscore.ui.Icons.Shape.ARROW, dx + dw / 2f - 4.5f, dy - 4.5f, 9f, theme.c("text.muted"));
                     if (!d.text.isEmpty()) {
                         float cw = Draw.labelWidth(d.text, 10.5f, works.repka.ryscore.ui.Type.Weight.REGULAR);
-                        Draw.label(g, d.text, dx + (d.w - cw) / 2f, dy + 9f, 10.5f, works.repka.ryscore.ui.Type.Weight.REGULAR, theme.c("text.muted"));
+                        Draw.label(g, d.text, dx + (dw - cw) / 2f, dy + 9f, 10.5f, works.repka.ryscore.ui.Type.Weight.REGULAR, theme.c("text.muted"));
                     }
                 }
             }
@@ -199,17 +220,17 @@ public final class NativeRecipe implements RecipeView {
         }
         for (SlotW s : slots) {
             works.repka.ryscope.runtime.Ae2Terminal.State state = supply.getOrDefault(s, works.repka.ryscope.runtime.Ae2Terminal.State.HAVE);
-            int sx = x + s.x, sy = y + s.y, size = sizeOf(s);
+            int sx = x + slotX(s), sy = y + slotY(s), size = sizeOf(s);
             boolean hover = mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size;
             int stateBorder = 0;
             // нехватка одним цветом: рамка bad; что есть, то с обычной рамкой
             if (state != works.repka.ryscope.runtime.Ae2Terminal.State.HAVE) stateBorder = Draw.alpha(theme.c("state.bad"), 0.7f);
-            if (slotSize != SLOT) theme.slotRounded(g, sx, sy, size, s.large ? 8f : 5f, hover && !s.ing.isEmpty(), stateBorder);
+            if (slotSize != SLOT) theme.slotRounded(g, sx, sy, size, size >= 24 ? 8f : 5f, hover && !s.ing.isEmpty(), stateBorder);
             else theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateBorder);
             Stack shown = s.ing.shown(now);
             if (shown == null) continue;
             int ix = sx + (size - 16) / 2, iy = sy + (size - 16) / 2;
-            if (slotSize != SLOT && size < 25) {
+            if (size < 18) {
                 // значок в ячейке макета: половина ячейки, у результата три четверти
                 float itemScale = s.large ? 0.75f : 0.5f;
                 float shift = (size - 16 * itemScale) / 2f;
@@ -272,7 +293,7 @@ public final class NativeRecipe implements RecipeView {
     @Override
     public Stack stackAt(int x, int y, int mouseX, int mouseY) {
         for (SlotW s : slots) {
-            int sx = x + s.x, sy = y + s.y, size = sizeOf(s);
+            int sx = x + slotX(s), sy = y + slotY(s), size = sizeOf(s);
             if (mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size) {
                 return s.ing.shown(System.currentTimeMillis());
             }
