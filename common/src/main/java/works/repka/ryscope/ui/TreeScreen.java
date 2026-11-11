@@ -58,6 +58,12 @@ public final class TreeScreen extends ScaledScreen {
         mc.setScreen(new TreeScreen(parent, stack));
     }
 
+    /** Куда вернуться: экран, из которого открыто дерево. */
+    @Nullable
+    Screen backTarget() {
+        return parent;
+    }
+
     private void flatten(Node node, List<Node> out) {
         out.add(node);
         if (node.collapsed) return;

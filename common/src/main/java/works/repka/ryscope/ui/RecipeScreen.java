@@ -111,6 +111,9 @@ public final class RecipeScreen extends ScaledScreen {
 
     @Nullable
     private final Screen parent;
+    /** Станция под всеми окнами: из дерева, плана или сравнения перенос и заказ AE2 идут в неё. */
+    @Nullable
+    private final AbstractContainerScreen<?> host;
     private final Deque<Nav> history = new ArrayDeque<>();
     private Nav nav;
     private int cardX, cardY, cardW, cardH;
@@ -138,7 +141,22 @@ public final class RecipeScreen extends ScaledScreen {
     private RecipeScreen(@Nullable Screen parent, Nav nav) {
         super(Component.translatable("ryscope.recipes.title"));
         this.parent = parent;
+        this.host = hostOf(parent);
         this.nav = nav;
+    }
+
+    /** Первый экран контейнера в цепочке родителей: карточка, дерево, план и сравнение ведут к нему. */
+    @Nullable
+    static AbstractContainerScreen<?> hostOf(@Nullable Screen screen) {
+        for (int depth = 0; screen != null && depth < 32; depth++) {
+            if (screen instanceof AbstractContainerScreen<?> acs) return acs;
+            if (screen instanceof RecipeScreen rs) screen = rs.parent;
+            else if (screen instanceof TreeScreen ts) screen = ts.backTarget();
+            else if (screen instanceof PlannerScreen ps) screen = ps.backTarget();
+            else if (screen instanceof CompareScreen cs) screen = cs.backTarget();
+            else return null;
+        }
+        return null;
     }
 
     private static String tr(String key, Object... args) {
@@ -621,7 +639,7 @@ public final class RecipeScreen extends ScaledScreen {
         for (int i = page.start; i < page.end; i++) pageContent += blockHeight(recipes.get(i)) + BLOCK_MARGIN * 2;
         pageScroll = Math.max(0, Math.min(pageScroll, maxScroll()));
         works.repka.ryscope.content.NativeRecipe.missingBadges = true;
-        works.repka.ryscope.runtime.Ae2Terminal.setActive(parent instanceof AbstractContainerScreen<?> host ? host.getMenu() : null);
+        works.repka.ryscope.runtime.Ae2Terminal.setActive(host != null ? host.getMenu() : null);
         // блок рецепта не шире, чем нужно самому широкому рецепту раздела; на широкой карточке стоит по центру
         int areaW = cardW - railWidth() - PAD_X * 2;
         int blockW = Math.min(areaW, widestCard - railWidth() - PAD_X * 2);
@@ -718,7 +736,7 @@ public final class RecipeScreen extends ScaledScreen {
 
     /** Перенос можно нажать: окно над станцией, проверка готова и рецепт туда раскладывается. */
     private boolean transferEnabled(RecipeView r) {
-        if (!(parent instanceof AbstractContainerScreen<?>)) return false;
+        if (host == null) return false;
         Transfer tr = transfers.get(r);
         return tr != null && tr.status() != Transfer.Status.UNSUPPORTED;
     }
@@ -782,7 +800,7 @@ public final class RecipeScreen extends ScaledScreen {
                 Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, color);
                 Kit.indicator(g, t, x - 7f, y + (BUTTON - 4.5f) / 2f, 4.5f, state, -1, -1);
                 hits.add(x, y, BUTTON, BUTTON, b -> {
-                    if (b == 0 && parent instanceof AbstractContainerScreen<?> acs) doTransfer(acs, r, hasShiftDown());
+                    if (b == 0 && host != null) doTransfer(host, r, hasShiftDown());
                 });
             } else {
                 smallBox(g, t, x, y, false, 0);
@@ -957,7 +975,7 @@ public final class RecipeScreen extends ScaledScreen {
         if (showsTransfer(p.recipe)) {
             Transfer tr = transfers.get(p.recipe);
             boolean overPlus = over(mx, my, x - 9, y - 2, BUTTON + 11, BUTTON + 4);
-            if (overPlus && !(parent instanceof AbstractContainerScreen<?>)) {
+            if (overPlus && host == null) {
                 Kit.tooltip(g, t, List.of(tr("ryscope.transfer.unsupported")), mx, my);
             } else if (overPlus && tr == null) {
                 Kit.tooltip(g, t, List.of(tr("ryscope.transfer.checking")), mx, my);
@@ -1023,7 +1041,8 @@ public final class RecipeScreen extends ScaledScreen {
             } catch (Throwable t) {
                 statuses.remove(p.recipe);
             }
-            if (parent instanceof AbstractContainerScreen<?> acs) {
+            if (host != null) {
+                AbstractContainerScreen<?> acs = host;
                 Transfer tr;
                 try {
                     tr = p.recipe.transfer(acs, false, true);
