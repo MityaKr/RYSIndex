@@ -306,6 +306,21 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("lensyield".equals(System.getProperty("ryscope.autotest"))) {
+            step("lens: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 20);
+            step("lens: check", () -> {
+                works.repka.ryscope.client.Keys.forceLens = true;
+                mc().options.advancedItemTooltips = false;
+                boolean plain = works.repka.ryscope.ui.Lens.held();
+                mc().options.advancedItemTooltips = true;
+                boolean advanced = works.repka.ryscope.ui.Lens.held();
+                mc().options.advancedItemTooltips = false;
+                works.repka.ryscope.client.Keys.forceLens = false;
+                RYScope.LOG.info("[lens] без F3+H линза {}, с F3+H линза {}", plain, advanced);
+            }, 2);
+            step("quit", () -> mc().stop(), 0);
+            return;
+        }
         if ("states".equals(System.getProperty("ryscope.autotest"))) {
             buildStates();
             return;

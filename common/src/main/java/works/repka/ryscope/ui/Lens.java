@@ -53,7 +53,17 @@ public final class Lens {
     private Lens() {}
 
     public static boolean held() {
-        return Keys.isHeld(Keys.LENS);
+        return Keys.isHeld(Keys.LENS) && !yieldsToAdvancedTooltips();
+    }
+
+    /**
+     * С F3+H Alt занят подробной подсказкой (Better Advanced Tooltips показывает по нему данные предмета):
+     * линза на Alt тогда не открывается и подсказку не прячет. На другой клавише линза работает как обычно.
+     */
+    private static boolean yieldsToAdvancedTooltips() {
+        if (Keys.LENS == null || !Minecraft.getInstance().options.advancedItemTooltips) return false;
+        int key = Keys.LENS.getKey().getValue();
+        return key == org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_ALT || key == org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_ALT;
     }
 
     /** Нужно ли прятать обычную подсказку игры: линза её заменяет. */
