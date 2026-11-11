@@ -53,6 +53,21 @@ public final class Foreign {
         /** Конец перетаскивания: обработчики модов узнают, что подсветку можно убрать. */
         default void ghostEnd() {}
 
+        /**
+         * Признак подтипа предмета, как его считают моды (машина контроллера Modular Machinery, книга Patchouli,
+         * чары книги), или {@code null}, если у предмета подтипов нет. Два предмета с одним id различаются им.
+         */
+        @Nullable
+        default Object subtypeUid(Stack stack) {
+            return null;
+        }
+
+        /** Мод, к которому источник относит предмет при поиске по моду (книги Patchouli относятся к своему моду). */
+        @Nullable
+        default String displayModId(Stack stack) {
+            return null;
+        }
+
         /** Все рецепты категории источника с этим id, без сверки с нашими: для просмотра категории целиком. */
         default List<Lookup.Group> categoryById(net.minecraft.resources.ResourceLocation id) {
             return List.of();

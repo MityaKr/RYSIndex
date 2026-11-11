@@ -306,6 +306,89 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("subtype".equals(System.getProperty("ryscope.autotest"))) {
+            // JEI подключается позже входа в мир: без него нет подтипов, мода книг и превью структур
+            step("subtype: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
+                && works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY
+                && works.repka.ryscope.runtime.Indexer.snapshot().stacks.size() > 5000, () -> {}, 40);
+            step("subtype: recipes", () -> {
+                try {
+                    Object item = Class.forName("es.degrassi.mmreborn.common.item.ControllerItem")
+                        .getMethod("makeMachineItem", net.minecraft.resources.ResourceLocation.class)
+                        .invoke(null, net.minecraft.resources.ResourceLocation.parse("repys:kinetic_foundry"));
+                    int typed = 0, plain = 0;
+                    for (Lookup.Group g : Lookup.find(new ItemRes((ItemStack) item), Lookup.Mode.RECIPES)) typed += g.recipes().size();
+                    for (Lookup.Group g : Lookup.find(new ItemRes(new ItemStack(((ItemStack) item).getItem())), Lookup.Mode.RECIPES)) plain += g.recipes().size();
+                    RYScope.LOG.info("[subtype] рецептов у литейни {}, у контроллера без машины {}", typed, plain);
+                    var foreign = works.repka.ryscope.runtime.Foreign.get();
+                    RYScope.LOG.info("[subtype] источник {}, подтип литейни {}", foreign == null ? "нет" : foreign.name(),
+                        foreign == null ? null : foreign.subtypeUid(new ItemRes((ItemStack) item)));
+                    for (var st : works.repka.ryscope.runtime.Indexer.snapshot().stacks) {
+                        if (!st.id().toString().equals("patchouli:guide_book")) continue;
+                        RYScope.LOG.info("[subtype] книга {}: мод {}, подтип {}", st.name().getString(),
+                            foreign == null ? null : foreign.displayModId(st), foreign == null ? null : foreign.subtypeUid(st));
+                    }
+                } catch (ReflectiveOperationException e) {
+                    RYScope.LOG.error("[subtype]", e);
+                }
+                mc().setScreen(new InventoryScreen(mc().player));
+            }, 20);
+            for (String q : new String[] {"@naturesaura", "острота", "sharpness"}) {
+                step("subtype: search " + q, () -> Overlay.setSearch(q), 40);
+                step("subtype: result " + q, () -> {
+                    var results = works.repka.ryscope.runtime.SearchService.results();
+                    long books = results.stacks.stream().filter(st -> st.id().toString().equals("patchouli:guide_book")).count();
+                    long enchanted = results.stacks.stream().filter(st -> st.id().toString().equals("minecraft:enchanted_book")).count();
+                    RYScope.LOG.info("[subtype] «{}»: найдено {}, книг Patchouli {}, зачарованных книг {}", q, results.stacks.size(), books, enchanted);
+                }, 2);
+            }
+            step("subtype: clear", () -> Overlay.setSearch(""), 5);
+            step("variants: open", () -> {
+                parkMouse();
+                try {
+                    Object item = Class.forName("es.degrassi.mmreborn.common.item.ControllerItem")
+                        .getMethod("makeMachineItem", net.minecraft.resources.ResourceLocation.class)
+                        .invoke(null, net.minecraft.resources.ResourceLocation.parse("repys:kinetic_foundry"));
+                    RecipeScreen.open(new ItemRes((ItemStack) item), Lookup.Mode.USES);
+                } catch (ReflectiveOperationException e) {
+                    RYScope.LOG.error("[variants]", e);
+                }
+            }, 40);
+            for (int tab = 0; tab < 4; tab++) {
+                step("variants: find structure", () -> {
+                    if (structureOnScreen() != null) return;
+                    mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+                }, 40);
+            }
+            step("variants: click", () -> {
+                var view = structureOnScreen();
+                if (view == null) {
+                    RYScope.LOG.info("[variants] превью структуры не найдено");
+                    return;
+                }
+                try {
+                    java.lang.reflect.Field inputsF = view.getClass().getDeclaredField("inputs");
+                    java.lang.reflect.Field lx = view.getClass().getDeclaredField("lastX");
+                    java.lang.reflect.Field ly = view.getClass().getDeclaredField("lastY");
+                    for (var f : new java.lang.reflect.Field[] {inputsF, lx, ly}) f.setAccessible(true);
+                    List<?> inputs = (List<?>) inputsF.get(view);
+                    for (int i = 0; i < inputs.size(); i++) {
+                        int n = ((works.repka.ryscope.model.Ing) inputs.get(i)).options.size();
+                        if (n < 2) continue;
+                        int x = lx.getInt(view) + i % 10 * 20 + 9, y = ly.getInt(view) + 132 + 4 + i / 10 * 20 + 9;
+                        boolean taken = view.clickBeforeStack(x, y, 0);
+                        RYScope.LOG.info("[variants] ячейка {}: вариантов {}, клик принят {}", i, n, taken);
+                        return;
+                    }
+                    RYScope.LOG.info("[variants] ячеек с вариантами нет");
+                } catch (ReflectiveOperationException e) {
+                    RYScope.LOG.error("[variants]", e);
+                }
+            }, 10);
+            shot("variants_popup");
+            step("quit", () -> mc().stop(), 0);
+            return;
+        }
         if ("lensyield".equals(System.getProperty("ryscope.autotest"))) {
             step("lens: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 20);
             step("lens: check", () -> {
@@ -1567,6 +1650,13 @@ final class AutoTest {
             logAreas();
             quickMoveAll(Items.OAK_PLANKS);
         }, 30);
+    }
+
+    @org.jetbrains.annotations.Nullable
+    private static works.repka.ryscope.jei.StructureRecipeView structureOnScreen() {
+        if (!(mc().screen instanceof RecipeScreen rs)) return null;
+        for (var p : rs.placed()) if (p.recipe() instanceof works.repka.ryscope.jei.StructureRecipeView v) return v;
+        return null;
     }
 
     /** Курсор в левый верхний угол: подсказки не закрывают кнопки на снимках. */

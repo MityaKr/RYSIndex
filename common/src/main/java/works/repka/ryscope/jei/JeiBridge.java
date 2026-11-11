@@ -369,6 +369,27 @@ public final class JeiBridge implements Foreign.Source {
     }
 
     @Override
+    public Object subtypeUid(Stack stack) {
+        if (!(stack instanceof ItemRes item)) return null;
+        try {
+            var helper = runtime.getIngredientManager().getIngredientHelper(VanillaTypes.ITEM_STACK);
+            return helper.hasSubtypes(item.stack) ? helper.getUid(item.stack, mezz.jei.api.ingredients.subtypes.UidContext.Recipe) : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @Override
+    public String displayModId(Stack stack) {
+        if (!(stack instanceof ItemRes item)) return null;
+        try {
+            return runtime.getIngredientManager().getIngredientHelper(VanillaTypes.ITEM_STACK).getDisplayModId(item.stack);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @Override
     public List<Lookup.Group> categoryById(ResourceLocation id) {
         IFocusGroup empty = runtime.getJeiHelpers().getFocusFactory().getEmptyFocusGroup();
         List<Lookup.Group> out = new ArrayList<>();

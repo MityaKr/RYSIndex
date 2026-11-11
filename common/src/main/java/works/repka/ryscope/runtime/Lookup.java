@@ -142,13 +142,41 @@ public final class Lookup {
         return out;
     }
 
+    /**
+     * Рецепт подходит к ресурсу с учётом подтипа: контроллер «Улья-матки» не путается с остальными контроллерами,
+     * книга Patchouli с другими книгами. Ингредиент без данных («любой контроллер») подходит всем подтипам.
+     */
     private static boolean matches(RecipeView recipe, Stack stack, Mode mode) {
+        Foreign.Source foreign = Foreign.get();
+        Object want = foreign == null ? null : foreign.subtypeUid(stack);
+        // JEI не знает подтипа (мод его не зарегистрировал), но у предмета свои данные: сверяем данные целиком
+        boolean byData = want == null && stack instanceof works.repka.ryscope.model.ItemRes focus && !focus.stack.getComponentsPatch().isEmpty();
         if (mode == Mode.RECIPES) {
-            for (Stack o : recipe.outputs()) if (o.key().equals(stack.key())) return true;
+            for (Stack o : recipe.outputs()) {
+                if (o.key().equals(stack.key()) && sameKind(o, stack, want, byData, foreign)) return true;
+            }
             return false;
         }
-        for (Ing in : recipe.inputs()) if (in.accepts(stack)) return true;
+        for (Ing in : recipe.inputs()) {
+            if (!in.accepts(stack)) continue;
+            if (want == null && !byData) return true;
+            for (Stack o : in.options) {
+                if (!o.key().equals(stack.key())) continue;
+                if (generic(o) || sameKind(o, stack, want, byData, foreign)) return true;
+            }
+        }
         return false;
+    }
+
+    private static boolean sameKind(Stack candidate, Stack focus, Object want, boolean byData, Foreign.Source foreign) {
+        if (want != null) return want.equals(foreign.subtypeUid(candidate));
+        if (byData) return candidate.same(focus);
+        return true;
+    }
+
+    /** Ингредиент без своих данных: подходит любому подтипу предмета. */
+    private static boolean generic(Stack option) {
+        return option instanceof works.repka.ryscope.model.ItemRes item && item.stack.getComponentsPatch().isEmpty();
     }
 
     /** Число рецептов без построения полного списка: для линзы и подсказок. */

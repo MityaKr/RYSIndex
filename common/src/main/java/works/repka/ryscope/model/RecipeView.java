@@ -100,4 +100,12 @@ public interface RecipeView {
             return status == Status.OK || status == Status.PARTIAL;
         }
     }
+
+    /**
+     * Клик, который рецепт забирает раньше, чем окно откроет рецепты предмета под курсором
+     * (например, раскрыть все варианты ячейки). @return true, если клик обработан
+     */
+    default boolean clickBeforeStack(double mouseX, double mouseY, int button) {
+        return false;
+    }
 }

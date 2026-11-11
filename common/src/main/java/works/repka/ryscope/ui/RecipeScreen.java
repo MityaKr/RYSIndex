@@ -1072,6 +1072,9 @@ public final class RecipeScreen extends ScaledScreen {
         if (Overlay.mouseClicked(this, mx, my, button)) return true;
         if (hits.click(mx, my, button)) return true;
         if (Overlay.cardCollapsed()) return true;
+        for (Placed p : placed) {
+            if (inRecipes(my) && p.recipe.clickBeforeStack(mx, my, button)) return true;
+        }
         Stack stack = recipeStackAt((int) mx, (int) my);
         if (stack != null) {
             if (button == 2) {

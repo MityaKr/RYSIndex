@@ -228,9 +228,26 @@ public final class Indexer {
                 }
             }
         }
+        // чары зачарованной книги ищутся обычным поиском, не только по подсказке
+        if (!item.isEmpty()) {
+            var stored = item.get(net.minecraft.core.component.DataComponents.STORED_ENCHANTMENTS);
+            if (stored != null) {
+                for (var entry : stored.entrySet()) {
+                    String full = net.minecraft.world.item.enchantment.Enchantment.getFullname(entry.getKey(), entry.getIntValue()).getString().toLowerCase(Locale.ROOT);
+                    if (!alt.contains(full)) alt.add(full);
+                }
+            }
+        }
+        // мод для поиска через @: и по id, и тот, к которому предмет относит JEI (книги Patchouli — к своему моду)
+        String namespace = id.getNamespace(), modName = platform.modName(namespace).toLowerCase(Locale.ROOT);
+        Foreign.Source foreign = Foreign.get();
+        String shownMod = foreign == null ? null : foreign.displayModId(s);
+        if (shownMod != null && !shownMod.equals(namespace)) {
+            namespace += " " + shownMod;
+            modName += " " + platform.modName(shownMod).toLowerCase(Locale.ROOT);
+        }
         List<String> tags = s.tags();
-        return new SearchEntry(index, name, alt.toArray(new String[0]), id.getPath(), id.getNamespace(),
-            platform.modName(id.getNamespace()).toLowerCase(Locale.ROOT), tags.toArray(new String[0]));
+        return new SearchEntry(index, name, alt.toArray(new String[0]), id.getPath(), namespace, modName, tags.toArray(new String[0]));
     }
 
     /** Языки для поиска помимо текущего. Читаются один раз, пока не сменится список или ресурсы. */

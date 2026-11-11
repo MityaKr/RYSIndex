@@ -51,6 +51,9 @@ public final class StructureRecipeView implements RecipeView {
     private long drawnAt;
     private int lastX, lastY;
     private boolean rotating;
+    /** Ячейка, у которой раскрыты все варианты блока, или -1. */
+    private int openIndex = -1;
+    private static final int POPUP_COLUMNS = 8, POPUP_PAD = 4;
 
     private StructureRecipeView(ResourceLocation id, BlockScene scene, List<Ing> inputs) {
         this.id = id;
@@ -161,6 +164,81 @@ public final class StructureRecipeView implements RecipeView {
         view.render(g, x, y, WIDTH, SCENE_H);
         renderControls(g, t, x, y, mouseX, mouseY);
         renderSlots(g, t, x, y + SCENE_H + GAP * 2, mouseX, mouseY, now);
+        renderPopup(g, t, mouseX, mouseY);
+    }
+
+    /** Левый верхний угол ячейки с этим номером. */
+    private int[] slotPos(int index) {
+        int top = lastY + SCENE_H + GAP * 2;
+        return new int[] {lastX + index % COLUMNS * (SLOT + GAP), top + index / COLUMNS * (SLOT + GAP)};
+    }
+
+    /** Панель вариантов над раскрытой ячейкой: x, y, w, h, столбцов. */
+    private int[] popupRect() {
+        int n = inputs.get(openIndex).options.size();
+        int cols = Math.min(POPUP_COLUMNS, n), rows = (n + cols - 1) / cols;
+        int w = cols * (SLOT + GAP) - GAP + POPUP_PAD * 2, h = rows * (SLOT + GAP) - GAP + POPUP_PAD * 2;
+        int[] slot = slotPos(openIndex);
+        int px = Math.max(lastX, Math.min(lastX + WIDTH - w, slot[0] + SLOT / 2 - w / 2));
+        int py = Math.max(lastY, slot[1] - h - 3);
+        return new int[] {px, py, w, h, cols};
+    }
+
+    @Nullable
+    private Stack popupStackAt(double mx, double my) {
+        if (openIndex < 0) return null;
+        int[] r = popupRect();
+        List<Stack> options = inputs.get(openIndex).options;
+        for (int i = 0; i < options.size(); i++) {
+            int sx = r[0] + POPUP_PAD + i % r[4] * (SLOT + GAP), sy = r[1] + POPUP_PAD + i / r[4] * (SLOT + GAP);
+            if (mx >= sx && mx < sx + SLOT && my >= sy && my < sy + SLOT) return options.get(i);
+        }
+        return null;
+    }
+
+    private void renderPopup(GuiGraphics g, Theme t, int mx, int my) {
+        if (openIndex < 0 || openIndex >= inputs.size()) return;
+        int[] r = popupRect();
+        List<Stack> options = inputs.get(openIndex).options;
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 300);
+        t.tooltipBox(g, r[0], r[1], r[2], r[3]);
+        for (int i = 0; i < options.size(); i++) {
+            int sx = r[0] + POPUP_PAD + i % r[4] * (SLOT + GAP), sy = r[1] + POPUP_PAD + i / r[4] * (SLOT + GAP);
+            t.slot(g, sx, sy, SLOT, mx >= sx && mx < sx + SLOT && my >= sy && my < sy + SLOT);
+            options.get(i).render(g, sx + 1, sy + 1);
+        }
+        g.pose().popPose();
+    }
+
+    @Override
+    public boolean clickBeforeStack(double mx, double my, int button) {
+        if (button != 0) return false;
+        if (openIndex >= 0) {
+            int[] r = popupRect();
+            boolean inside = mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3];
+            // вариант в панели открывает свои рецепты обычным кликом окна
+            if (inside) return popupStackAt(mx, my) == null;
+        }
+        int index = slotIndexAt(mx, my);
+        if (index >= 0 && inputs.get(index).options.size() > 1) {
+            openIndex = openIndex == index ? -1 : index;
+            return true;
+        }
+        if (openIndex >= 0) {
+            openIndex = -1;
+            return true;
+        }
+        return false;
+    }
+
+    private int slotIndexAt(double mouseX, double mouseY) {
+        int top = lastY + SCENE_H + GAP * 2;
+        int dx = (int) mouseX - lastX, dy = (int) mouseY - top;
+        if (dx < 0 || dy < 0 || dx % (SLOT + GAP) >= SLOT || dy % (SLOT + GAP) >= SLOT) return -1;
+        int column = dx / (SLOT + GAP), index = dy / (SLOT + GAP) * COLUMNS + column;
+        if (column >= COLUMNS || index >= Math.min(inputs.size(), COLUMNS * MAX_ROWS)) return -1;
+        return index;
     }
 
     private void renderControls(GuiGraphics g, Theme t, int x, int y, int mx, int my) {
@@ -186,12 +264,25 @@ public final class StructureRecipeView implements RecipeView {
             if (shown == null) continue;
             shown.render(g, sx + 1, sy + 1);
             shown.renderScaledAmount(g, sx, sy, SLOT);
+            if (inputs.get(i).options.size() > 1) {
+                // несколько вариантов блока: клик раскрывает их все
+                g.pose().pushPose();
+                g.pose().translate(0, 0, 250);
+                Draw.rect(g, sx + 1, sy + SLOT - 3, 2, 2, t.c("accent"));
+                g.pose().popPose();
+            }
         }
     }
 
     @Nullable
     @Override
     public Stack stackAt(int x, int y, int mouseX, int mouseY) {
+        Stack variant = popupStackAt(mouseX, mouseY);
+        if (variant != null) return variant;
+        if (openIndex >= 0) {
+            int[] r = popupRect();
+            if (mouseX >= r[0] && mouseX < r[0] + r[2] && mouseY >= r[1] && mouseY < r[1] + r[3]) return null;
+        }
         int top = y + SCENE_H + GAP * 2;
         int dx = mouseX - x, dy = mouseY - top;
         if (dx < 0 || dy < 0 || dx % (SLOT + GAP) >= SLOT || dy % (SLOT + GAP) >= SLOT) return null;
