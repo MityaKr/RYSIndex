@@ -705,10 +705,19 @@ public final class RecipeScreen extends ScaledScreen {
         return nav.focus != null && r.isCrafting() && !r.outputs().isEmpty();
     }
 
+    /**
+     * Место под «+» у рецепта крафта есть всегда: кнопки стоят на своих местах и не прыгают, пока перенос
+     * проверяется или когда окно открыто не над станцией. Активна она только когда перенос возможен.
+     */
     private boolean showsTransfer(RecipeView r) {
+        return r.isCrafting();
+    }
+
+    /** Перенос можно нажать: окно над станцией, проверка готова и рецепт туда раскладывается. */
+    private boolean transferEnabled(RecipeView r) {
         if (!(parent instanceof AbstractContainerScreen<?>)) return false;
         Transfer tr = transfers.get(r);
-        return tr == null || tr.status() != Transfer.Status.UNSUPPORTED;
+        return tr != null && tr.status() != Transfer.Status.UNSUPPORTED;
     }
 
     private int buttonsTop(Placed row) {
@@ -727,14 +736,18 @@ public final class RecipeScreen extends ScaledScreen {
         int x = row.rowX + row.rowW - BUTTON, y = buttonsTop(row);
         if (showsTransfer(r)) {
             Transfer tr = transfers.get(r);
-            boolean hot = over(mx, my, x, y, BUTTON, BUTTON);
+            boolean enabled = transferEnabled(r);
+            boolean hot = enabled && over(mx, my, x, y, BUTTON, BUTTON);
             smallBox(g, t, x, y, hot, 0);
             Kit.State state = stateOf(tr);
-            Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, tr != null && state == Kit.State.FULL ? t.c("accent") : t.c("text.muted"));
-            if (tr != null && state != Kit.State.FULL) Kit.indicator(g, t, x + BUTTON - 3, y - 1.5f, 4.5f, state, -1, -1);
-            hits.add(x, y, BUTTON, BUTTON, b -> {
-                if (b == 0 && parent instanceof AbstractContainerScreen<?> acs && tr != null) doTransfer(acs, r, hasShiftDown());
-            });
+            int color = !enabled ? Draw.alpha(t.c("text.dim"), 0.6f) : state == Kit.State.FULL ? t.c("accent") : t.c("text.muted");
+            Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, color);
+            if (enabled && state != Kit.State.FULL) Kit.indicator(g, t, x + BUTTON - 3, y - 1.5f, 4.5f, state, -1, -1);
+            if (enabled) {
+                hits.add(x, y, BUTTON, BUTTON, b -> {
+                    if (b == 0 && parent instanceof AbstractContainerScreen<?> acs) doTransfer(acs, r, hasShiftDown());
+                });
+            }
             y += BUTTON + BUTTON_GAP;
         }
         if (canGoal(r)) {
@@ -879,7 +892,14 @@ public final class RecipeScreen extends ScaledScreen {
         int x = p.rowX + p.rowW - BUTTON, y = buttonsTop(p);
         if (showsTransfer(p.recipe)) {
             Transfer tr = transfers.get(p.recipe);
-            if (tr != null && over(mx, my, x - 2, y - 2, BUTTON + 4, BUTTON + 4)) {
+            boolean overPlus = over(mx, my, x - 2, y - 2, BUTTON + 4, BUTTON + 4);
+            if (overPlus && !(parent instanceof AbstractContainerScreen<?>)) {
+                Kit.tooltip(g, t, List.of(tr("ryscope.transfer.no_host")), mx, my);
+            } else if (overPlus && tr == null) {
+                Kit.tooltip(g, t, List.of(tr("ryscope.transfer.checking")), mx, my);
+            } else if (overPlus && tr.status() == Transfer.Status.UNSUPPORTED) {
+                Kit.tooltip(g, t, List.of(tr("ryscope.transfer.unsupported")), mx, my);
+            } else if (tr != null && overPlus) {
                 if (!tr.lines().isEmpty()) {
                     g.renderComponentTooltip(font, tr.lines(), mx, my);
                 } else {
