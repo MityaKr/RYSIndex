@@ -89,6 +89,7 @@ public final class RyscopeClient {
         works.repka.ryscope.runtime.Storages.tick();
         works.repka.ryscope.runtime.Board.tick();
         works.repka.ryscope.runtime.Stages.tick();
+        works.repka.ryscope.runtime.SearchService.warmTooltips();
         if (indexDelay >= 0 && --indexDelay < 0) {
             recipesSeen = tagsSeen = false;
             Indexer.request("обновление данных");

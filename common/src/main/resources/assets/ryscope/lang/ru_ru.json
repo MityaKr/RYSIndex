@@ -255,6 +255,7 @@
   "ryscope.settings.list_paged": "Список страницами",
   "ryscope.settings.restyle": "Рецепты модов в стиле темы",
   "ryscope.settings.restyle.note": "Перекрашивает серые окна рецептов, цветные элементы не меняются",
+  "ryscope.search.loading": "Ищу предметы",
   "ryscope.planner.loading": "Считаю план",
   "ryscope.compare.loading": "Сравниваю маршруты",
   "ryscope.tree.shortest": "Кратчайший",

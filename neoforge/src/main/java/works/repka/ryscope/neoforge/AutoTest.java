@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("searchload".equals(System.getProperty("ryscope.autotest"))) {
+            buildSearchLoad();
+            return;
+        }
         if ("focus".equals(System.getProperty("ryscope.autotest"))) {
             buildFocus();
             return;
@@ -1651,6 +1655,59 @@ final class AutoTest {
      * когда в сети нет ни того ни другого, в шаблон попадает обычный песок; потом в сеть кладётся только
      * красный песок, и автокрафт должен отправить в сундук у провайдера именно его.
      */
+    private static long searchStart, lastFrameNs, enteredAt;
+
+    /** Сколько ждёт ответ на запрос: по имени, сразу после смены инвентаря и по подсказкам; снимок загрузки. */
+    private static void buildSearchLoad() {
+        step("searchload: wait index", () -> works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY
+            && works.repka.ryscope.runtime.Indexer.snapshot().stacks.size() > 5000, () -> {
+                enteredAt = System.currentTimeMillis();
+                mc().setScreen(new InventoryScreen(mc().player));
+            }, 40);
+        for (String q : new String[] {"iron", "железн", "меч", "@create", "golden apple"}) searchTimed(q, false);
+        searchTimed("gold", true);
+        step("searchload: craftable", () -> RYScope.LOG.info("[searchload] «Доступно» посчитано за {} мс",
+            works.repka.ryscope.runtime.SearchService.craftableMillis()), 60);
+        step("searchload: craftable again", () -> RYScope.LOG.info("[searchload] «Доступно» посчитано за {} мс",
+            works.repka.ryscope.runtime.SearchService.craftableMillis()), 0);
+        step("searchload: warm", () -> works.repka.ryscope.runtime.SearchService.tooltipsWarmed() >= 1f || stuck > 12000, () -> RYScope.LOG.info(
+            "[searchload] подсказки собраны заранее: {}% через {} с после входа", Math.round(works.repka.ryscope.runtime.SearchService.tooltipsWarmed() * 100), (System.currentTimeMillis() - enteredAt) / 1000), 5);
+        step("searchload: tooltips", () -> {
+            searchStart = System.currentTimeMillis();
+            Overlay.setSearch("$острота");
+        }, 8);
+        step("searchload: busy", () -> RYScope.LOG.info("[searchload] через 8 кадров: идёт {} мс, просмотрено {}",
+            works.repka.ryscope.runtime.SearchService.busyMillis(), works.repka.ryscope.runtime.SearchService.examined()), 0);
+        shot("search_loading");
+        step("searchload: tooltips done", () -> !works.repka.ryscope.runtime.SearchService.busy(), () -> RYScope.LOG.info("[searchload] «$острота»: {} мс, найдено {}",
+            System.currentTimeMillis() - searchStart, works.repka.ryscope.runtime.SearchService.results().stacks.size()), 5);
+        shot("search_done");
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    private static void searchTimed(String q, boolean afterInventory) {
+        step("searchload: " + q, () -> {
+            if (afterInventory) {
+                // смена инвентаря запускает пересчёт «Доступно»: запрос не должен ждать его
+                mc().player.getInventory().add(new ItemStack(Items.IRON_INGOT, 3));
+                works.repka.ryscope.runtime.SearchService.updateCraftable();
+            }
+            searchStart = System.currentTimeMillis();
+            Overlay.setSearch(q);
+        }, 0);
+        step("searchload: " + q + " done", () -> {
+            long frame = System.nanoTime();
+            if (lastFrameNs != 0 && frame - lastFrameNs > 200_000_000L) RYScope.LOG.info("[searchload] долгий кадр {} мс", (frame - lastFrameNs) / 1_000_000);
+            lastFrameNs = frame;
+            return !works.repka.ryscope.runtime.SearchService.busy();
+        }, () -> {
+            lastFrameNs = 0;
+            var r = works.repka.ryscope.runtime.SearchService.results();
+            RYScope.LOG.info("[searchload] «{}»{}: увидели через {} мс, готов через {} мс, сам поиск {} мс, найдено {}", q, afterInventory ? " после смены инвентаря" : "",
+                System.currentTimeMillis() - searchStart, r.readyAt - searchStart, r.micros / 1000, r.stacks.size());
+        }, 10);
+    }
+
     /** Поиск терминала AE2 в фокусе, затем клик в наш поиск: печатать должно только наше поле. */
     private static void buildFocus() {
         ae2Setup();

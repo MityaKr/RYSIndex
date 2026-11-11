@@ -255,6 +255,7 @@
   "ryscope.settings.list_paged": "Paged list",
   "ryscope.settings.restyle": "Theme mod recipe windows",
   "ryscope.settings.restyle.note": "Recolors gray recipe windows, colored elements stay as they are",
+  "ryscope.search.loading": "Searching items",
   "ryscope.planner.loading": "Calculating the plan",
   "ryscope.compare.loading": "Comparing routes",
   "ryscope.tree.shortest": "Shortest",

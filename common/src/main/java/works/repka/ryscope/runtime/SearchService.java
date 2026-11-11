@@ -23,6 +23,8 @@ public final class SearchService {
         public final int exactCount;
         public final Snapshot snapshot;
         public final long micros;
+        /** Когда результат готов, мс по часам системы. */
+        public final long readyAt = System.currentTimeMillis();
 
         Results(String text, Query query, List<Stack> stacks, int exactCount, Snapshot snapshot, long micros) {
             this.text = text;
@@ -39,7 +41,18 @@ public final class SearchService {
         t.setDaemon(true);
         return t;
     });
+    /** «Доступно» считается отдельно: долгий пересчёт не должен задерживать ответ на запрос. */
+    private static final ExecutorService CRAFTABLE_EXEC = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "RYScope-Craftable");
+        t.setDaemon(true);
+        return t;
+    });
     private static final AtomicInteger GENERATION = new AtomicInteger();
+    /** Сколько главного потока за тик отдаётся заранее собираемым подсказкам. */
+    private static final long WARM_NANOS_PER_TICK = 2_000_000L;
+    private static volatile long submittedAt;
+    private static volatile long craftableMillis;
+    private static volatile int examined;
 
     private static volatile Results results = new Results("", Query.parse(""), List.of(), 0, Snapshot.EMPTY, 0);
     private static volatile String text = "";
@@ -64,6 +77,16 @@ public final class SearchService {
         return busy;
     }
 
+    /** Сколько идёт текущий поиск, мс; 0, если результат готов. */
+    public static long busyMillis() {
+        return busy ? System.currentTimeMillis() - submittedAt : 0;
+    }
+
+    /** Сколько предметов текущий поиск уже просмотрел. */
+    public static int examined() {
+        return examined;
+    }
+
     public static void onSnapshot() {
         submit(text);
     }
@@ -77,6 +100,11 @@ public final class SearchService {
         return craftable;
     }
 
+    /** Сколько занял последний пересчёт «Доступно», мс. */
+    public static long craftableMillis() {
+        return craftableMillis;
+    }
+
     /** Считает «Доступно» в фоне, не чаще раза в две секунды и только при изменении инвентаря. */
     public static void updateCraftable() {
         long now = System.currentTimeMillis();
@@ -86,13 +114,15 @@ public final class SearchService {
         int hash = inventory.hashCode() * 31 + Indexer.snapshot().hashCode();
         if (hash == craftableHash) return;
         craftableHash = hash;
-        EXEC.execute(() -> {
+        CRAFTABLE_EXEC.execute(() -> {
+            long start = System.nanoTime();
             try {
                 Snapshot snap = Indexer.snapshot();
                 IntPredicate test = Operators.filter(Query.parse("craftable"), snap);
                 int n = 0;
                 if (test != null) for (int i = 0; i < snap.index.size(); i++) if (test.test(i)) n++;
                 craftable = n;
+                craftableMillis = (System.nanoTime() - start) / 1_000_000;
             } catch (Throwable t) {
                 RYScope.LOG.warn("Не посчитано «Доступно»", t);
             }
@@ -102,6 +132,8 @@ public final class SearchService {
     public static void submit(String newText) {
         text = newText;
         int gen = GENERATION.incrementAndGet();
+        if (!busy) submittedAt = System.currentTimeMillis();
+        examined = 0;
         busy = true;
         EXEC.execute(() -> {
             if (GENERATION.get() != gen) return;
@@ -122,7 +154,13 @@ public final class SearchService {
         Query query = Query.parse(text);
         if (query.needsTooltip()) fillTooltips(snap, gen);
         IntPredicate filter = Operators.filter(query, snap);
-        SearchIndex.Result r = index.search(query, () -> GENERATION.get() != gen, filter, Config.get().fuzzySearch);
+        int total = index.size();
+        examined = 0;
+        SearchIndex.Result r = index.search(query, () -> {
+            // опрос идёт каждые 512 записей; нечёткий проход идёт вторым кругом, счёт не переваливает за всё
+            examined = Math.min(total, examined + 512);
+            return GENERATION.get() != gen;
+        }, filter, Config.get().fuzzySearch);
         if (r == null || GENERATION.get() != gen) return;
         List<Stack> out = new ArrayList<>(r.indices.length);
         Foreign.Source foreign = Foreign.get();
@@ -167,17 +205,52 @@ public final class SearchService {
     private static void fillTooltips(Snapshot snap, int gen) {
         SearchIndex index = snap.index;
         for (int i = 0; i < index.size(); i++) {
-            if ((i & 127) == 0 && GENERATION.get() != gen) return;
-            SearchEntry e = index.entry(i);
-            if (e.tooltip != null) continue;
-            StringBuilder sb = new StringBuilder();
-            try {
-                List<Component> lines = snap.stacks.get(i).tooltipLines();
-                for (int l = 1; l < lines.size(); l++) sb.append(lines.get(l).getString()).append('\n');
-            } catch (Throwable ignored) {
-                // подсказка чужого мода может не работать вне главного потока: оставляем пустой
+            if ((i & 127) == 0) {
+                if (GENERATION.get() != gen) return;
+                examined = i;
             }
-            e.tooltip = sb.toString().toLowerCase(Locale.ROOT);
+            SearchEntry e = index.entry(i);
+            if (e.tooltip == null) e.tooltip = tooltipText(snap.stacks.get(i));
         }
+    }
+
+    private static String tooltipText(Stack stack) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            List<Component> lines = stack.tooltipLines();
+            for (int l = 1; l < lines.size(); l++) sb.append(lines.get(l).getString()).append('\n');
+        } catch (Throwable ignored) {
+            // подсказка чужого мода может не работать вне главного потока: оставляем пустой
+        }
+        return sb.toString().toLowerCase(Locale.ROOT);
+    }
+
+    private static Snapshot warmFor;
+    private static int warmNext;
+
+    /**
+     * Тексты подсказок собираются заранее, понемногу каждый тик в главном потоке: первый поиск с {@code $}
+     * не ждёт сборки по всем предметам, а подсказки модов считаются там, где им положено.
+     */
+    public static void warmTooltips() {
+        if (Indexer.state() != Indexer.State.READY) return;
+        Snapshot snap = Indexer.snapshot();
+        if (snap != warmFor) {
+            warmFor = snap;
+            warmNext = 0;
+        }
+        SearchIndex index = snap.index;
+        long deadline = System.nanoTime() + WARM_NANOS_PER_TICK;
+        while (warmNext < index.size() && System.nanoTime() < deadline) {
+            SearchEntry e = index.entry(warmNext);
+            if (e.tooltip == null) e.tooltip = tooltipText(snap.stacks.get(warmNext));
+            warmNext++;
+        }
+    }
+
+    /** Доля предметов, чьи подсказки уже собраны заранее. */
+    public static float tooltipsWarmed() {
+        Snapshot snap = warmFor;
+        return snap == null || snap.index.size() == 0 ? 0f : warmNext / (float) snap.index.size();
     }
 }

@@ -69,6 +69,8 @@ public final class Overlay {
     private static final int[] stripRect = new int[4];
 
     private static final GridPanel LIST = new GridPanel();
+    /** Через сколько мс ожидания поиска вместо списка показывается загрузка. */
+    private static final long SEARCH_LOADING_MS = 200;
     private static final GridPanel MARKS = new GridPanel();
 
     static {
@@ -455,12 +457,21 @@ public final class Overlay {
         }
 
         renderFilters(g, t, mx, my);
-        LIST.render(g, t, mx, my, animate);
+        // быстрый ответ показывается сразу; долгий — загрузкой вместо прежнего списка, чтобы было видно, что поиск идёт
+        boolean searching = SearchService.busyMillis() > SEARCH_LOADING_MS && Indexer.state() != Indexer.State.BUILDING;
+        if (searching) {
+            works.repka.ryscore.ui.Loading.render(g, t, LIST.gridX, LIST.gridY, LIST.gridW, LIST.gridH, "ryscope.search.loading", SearchService.examined());
+        } else {
+            LIST.render(g, t, mx, my, animate);
+        }
 
         // подвал: счётчик и страницы
         float fy = footerY + 4f;
         int right = LIST.x + LIST.w - SIDE_PAD;
-        if (Indexer.state() == Indexer.State.BUILDING) {
+        if (searching) {
+            // счётчик прежнего запроса сбивал бы с толку
+            listCount = "";
+        } else if (Indexer.state() == Indexer.State.BUILDING) {
             int bw = LIST.w - SIDE_PAD * 2;
             Draw.round(g, LIST.x + SIDE_PAD, footerY + 7, bw, 2, 1f, t.c("slot.bg"));
             Draw.round(g, LIST.x + SIDE_PAD, footerY + 7, Math.max(2, bw * Indexer.progress()), 2, 1f, t.c("accent"));
