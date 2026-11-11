@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("focus".equals(System.getProperty("ryscope.autotest"))) {
+            buildFocus();
+            return;
+        }
         if ("subst".equals(System.getProperty("ryscope.autotest"))) {
             buildSubstitution();
             return;
@@ -1647,6 +1651,83 @@ final class AutoTest {
      * когда в сети нет ни того ни другого, в шаблон попадает обычный песок; потом в сеть кладётся только
      * красный песок, и автокрафт должен отправить в сундук у провайдера именно его.
      */
+    /** Поиск терминала AE2 в фокусе, затем клик в наш поиск: печатать должно только наше поле. */
+    private static void buildFocus() {
+        ae2Setup();
+        step("focus: ae2 field", () -> {
+            var field = ae2Search();
+            if (field == null) {
+                RYScope.LOG.info("[focus] поле поиска AE2 не найдено, экран {}", mc().screen);
+                return;
+            }
+            mc().screen.setFocused(field);
+            field.setFocused(true);
+            for (char c : "iron".toCharArray()) mc().screen.charTyped(c, 0);
+            RYScope.LOG.info("[focus] AE2: «{}», фокус {}", field.getValue(), field.isFocused());
+        }, 10);
+        step("focus: click ours", () -> {
+            int[] r = searchRect();
+            Screen screen = mc().screen;
+            // как в игре: клик по нашему полю отменяет событие, экран его не видит
+            Overlay.mouseClicked(screen, r[0] + 20, r[1] + r[3] / 2.0, 1);
+            for (char c : "gold".toCharArray()) {
+                if (!works.repka.ryscope.client.RyscopeClient.charTyped(screen, c, 0)) screen.charTyped(c, 0);
+            }
+        }, 20);
+        step("focus: check ours", () -> {
+            var field = ae2Search();
+            RYScope.LOG.info("[focus] после клика в наш поиск: наш «{}» фокус {}, AE2 «{}» фокус {}",
+                works.repka.ryscope.runtime.SearchService.text(), Overlay.searchFocused(),
+                field == null ? null : field.getValue(), field != null && field.isFocused());
+        }, 2);
+        shot("focus_ours");
+        step("focus: click ae2", () -> {
+            var field = ae2Search();
+            if (field == null) return;
+            Screen screen = mc().screen;
+            double x = field.getX() + 5, y = field.getY() + field.getHeight() / 2.0;
+            if (!works.repka.ryscope.client.RyscopeClient.mouseClicked(screen, x, y, 0)) screen.mouseClicked(x, y, 0);
+            field.setValue("");
+            for (char c : "coal".toCharArray()) {
+                if (!works.repka.ryscope.client.RyscopeClient.charTyped(screen, c, 0)) screen.charTyped(c, 0);
+            }
+        }, 20);
+        step("focus: check ae2", () -> {
+            var field = ae2Search();
+            RYScope.LOG.info("[focus] после клика в поиск AE2: наш «{}» фокус {}, AE2 «{}» фокус {}",
+                works.repka.ryscope.runtime.SearchService.text(), Overlay.searchFocused(),
+                field == null ? null : field.getValue(), field != null && field.isFocused());
+        }, 2);
+        shot("focus_ae2");
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    @org.jetbrains.annotations.Nullable
+    private static net.minecraft.client.gui.components.EditBox ae2Search() {
+        if (mc().screen == null) return null;
+        for (Class<?> c = mc().screen.getClass(); c != null; c = c.getSuperclass()) {
+            try {
+                java.lang.reflect.Field f = c.getDeclaredField("searchField");
+                f.setAccessible(true);
+                return (net.minecraft.client.gui.components.EditBox) f.get(mc().screen);
+            } catch (NoSuchFieldException ignored) {
+            } catch (ReflectiveOperationException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static int[] searchRect() {
+        try {
+            java.lang.reflect.Field f = Overlay.class.getDeclaredField("searchRect");
+            f.setAccessible(true);
+            return (int[]) f.get(null);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static void buildSubstitution() {
         // предметы берутся из реестра внутри шагов: при сборке сценария моды ещё не зарегистрировали их
         java.util.function.Supplier<net.minecraft.world.item.Item> processing = () -> net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("ae2:processing_pattern"));

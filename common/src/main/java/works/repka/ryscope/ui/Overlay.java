@@ -976,6 +976,7 @@ public final class Overlay {
         folderEdit = new Field(40, 10);
         folderEdit.setMaxLength(24);
         folderEdit.setValue(Bookmarks.current().name);
+        takeFocus(Minecraft.getInstance().screen);
         folderEdit.setFocused(true);
     }
 
@@ -1197,6 +1198,7 @@ public final class Overlay {
             && my >= searchRect[1] && my < searchRect[1] + searchRect[3];
         if (inSearch && button == 0 && !box.getValue().isEmpty() && mx >= searchRect[0] + searchRect[2] - 13) {
             box.setValue("");
+            takeFocus(screen);
             box.setFocused(true);
             return true;
         }
@@ -1209,6 +1211,7 @@ public final class Overlay {
             lastSearchClick = now;
             if (!box.isFocused()) SearchHistory.add(box.getValue());
             if (button == 1) box.setValue("");
+            takeFocus(screen);
             box.setFocused(true);
             if (button == 0) box.mouseClicked(Math.max(mx, box.getX()), box.getY() + 2, 0);
             return true;
@@ -1455,6 +1458,7 @@ public final class Overlay {
         }
         if (Keys.matches(Keys.SEARCH, key, scan) && LIST.visible()) {
             SearchHistory.add(box.getValue());
+            takeFocus(screen);
             box.setFocused(true);
             box.moveCursorToEnd(false);
             box.setHighlightPos(0);
@@ -1511,6 +1515,18 @@ public final class Overlay {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Наше поле берёт фокус: поле самого экрана его отпускает. Иначе печатают оба, а поиск терминала AE2
+     * с синхронизацией каждый кадр переписывает наш запрос своим текстом.
+     */
+    private static void takeFocus(@Nullable Screen screen) {
+        if (screen == null) return;
+        if (screen.getFocused() instanceof EditBox e) {
+            e.setFocused(false);
+            screen.setFocused(null);
+        }
     }
 
     /** Игрок печатает в поле самого экрана (наковальня, поиск творческого режима): горячие клавиши молчат. */
