@@ -1597,6 +1597,29 @@ final class AutoTest {
             shot("state_" + c[1]);
             step("states: back", () -> mc().screen.onClose(), 15);
         }
+        step("states: hover open", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 40);
+        step("states: hover plus", () -> {
+            // курсор на «+» первого рецепта: подсветка ячеек появляется только так
+            var row = ((RecipeScreen) mc().screen).placed().get(0);
+            int bx = row.rowX() + row.rowW() - 14, by = Math.max(row.rowY() + (row.rowH() - 14) / 2, row.rowY() + 17);
+            double px = works.repka.ryscore.ui.UiScale.pixels();
+            var window = mc().getWindow();
+            try {
+                java.lang.reflect.Field fx = net.minecraft.client.MouseHandler.class.getDeclaredField("xpos");
+                java.lang.reflect.Field fy = net.minecraft.client.MouseHandler.class.getDeclaredField("ypos");
+                fx.setAccessible(true);
+                fy.setAccessible(true);
+                fx.setDouble(mc().mouseHandler, (bx + 7) * px * window.getScreenWidth() / window.getWidth());
+                fy.setDouble(mc().mouseHandler, (by + 7) * px * window.getScreenHeight() / window.getHeight());
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }, 5);
+        shot("state_partial_hover");
+        step("states: hover back", () -> {
+            parkMouse();
+            mc().screen.onClose();
+        }, 15);
         step("states: order open", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 40);
         step("states: order", () -> {
             // сеть «умеет сделать» все ингредиенты открытого рецепта: в тестовом мире нет шаблонов автокрафта

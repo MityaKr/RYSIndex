@@ -650,12 +650,15 @@ public final class RecipeScreen extends ScaledScreen {
             int centered = (innerW - r.width() - plate * 2) / 2;
             int rx = innerX + plate + Math.max(0, Math.min(centered, free)), ry = rowY + (rowH - r.height()) / 2;
             if (plate > 0) t.plate(g, rx - plate, ry - plate, r.width() + plate * 2, r.height() + plate * 2);
+            Placed row = new Placed(r, rx, ry, innerX, rowY, innerW, rowH);
+            // подсветка нехватки в ячейках только пока курсор над «+» этого рецепта, как в JEI
+            works.repka.ryscope.content.NativeRecipe.missingBadges = overPlus(row, mx, my);
             try {
                 r.render(g, t, rx, ry, mx, my, partialTick);
             } catch (Throwable th) {
                 Draw.text(g, "?", rx, ry, t.c("state.bad"));
             }
-            Placed row = new Placed(r, rx, ry, innerX, rowY, innerW, rowH);
+            works.repka.ryscope.content.NativeRecipe.missingBadges = true;
             placed.add(row);
             renderLock(g, t, r, blockX, y, blockW, h);
             // кнопки только целиком видимые: срезанные краем не должны нажиматься сквозь шапку
@@ -718,6 +721,13 @@ public final class RecipeScreen extends ScaledScreen {
         if (!(parent instanceof AbstractContainerScreen<?>)) return false;
         Transfer tr = transfers.get(r);
         return tr != null && tr.status() != Transfer.Status.UNSUPPORTED;
+    }
+
+    /** Курсор над «+» рецепта или над значком состояния слева от него. */
+    private boolean overPlus(Placed row, double mx, double my) {
+        if (!showsTransfer(row.recipe) || !inRecipes(my)) return false;
+        int x = row.rowX + row.rowW - BUTTON, y = plusY(row);
+        return over(mx, my, x - 9, y - 2, BUTTON + 11, BUTTON + 4);
     }
 
     /** Булавка цели: правый верхний угол блока рецепта. */
