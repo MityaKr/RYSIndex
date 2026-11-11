@@ -25,6 +25,7 @@ public final class RyscopeNeoForge {
     public RyscopeNeoForge(IEventBus modBus) {
         RYScope.LOG.info("{} loading", RYScope.NAME);
         modBus.addListener(this::registerPayloads);
+        works.repka.ryscope.neoforge.ae2.ProcessingSubstitution.COMPONENTS.register(modBus);
         // событие приходит и при входе игрока, и после /reload
         NeoForge.EVENT_BUS.addListener(this::onDatapackSync);
         ServerStages.register(NeoForge.EVENT_BUS);
@@ -39,6 +40,11 @@ public final class RyscopeNeoForge {
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onStageNotice(payload)));
         registrar.playToClient(works.repka.ryscope.neoforge.net.StagePayload.TYPE, works.repka.ryscope.neoforge.net.StagePayload.CODEC,
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onStages(payload)));
+        // варианты рецепта для замещения в шаблонах обработки AE2
+        registrar.playToServer(works.repka.ryscope.neoforge.net.ProcessingAlternativesPayload.TYPE, works.repka.ryscope.neoforge.net.ProcessingAlternativesPayload.CODEC,
+            (payload, context) -> context.enqueueWork(() -> {
+                if (context.player() instanceof ServerPlayer player) works.repka.ryscope.neoforge.ae2.ProcessingSubstitution.remember(player, payload.groups());
+            }));
     }
 
     private void onDatapackSync(OnDatapackSyncEvent event) {

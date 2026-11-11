@@ -93,6 +93,10 @@ public final class RyscopeNeoForgeClient {
             }
         });
 
+        if (net.neoforged.fml.ModList.get().isLoaded("ae2")) {
+            works.repka.ryscope.neoforge.ae2.Ae2ClientHooks.register(bus);
+        }
+
         if (System.getProperty("ryscope.autotest") != null) {
             AutoTest.install(bus);
         }

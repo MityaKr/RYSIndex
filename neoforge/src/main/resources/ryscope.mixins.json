@@ -12,7 +12,10 @@
     "CampfireBlockEntityMixin",
     "CrafterBlockMixin",
     "BrewingStandBlockEntityMixin",
-    "SlotMixin"
+    "SlotMixin",
+    "PatternEncodingTermMenuMixin",
+    "AEProcessingPatternMixin",
+    "ProcessingPatternInputMixin"
   ],
   "client": [
     "StartEventObserverMixin",

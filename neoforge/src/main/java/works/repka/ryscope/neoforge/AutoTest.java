@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("subst".equals(System.getProperty("ryscope.autotest"))) {
+            buildSubstitution();
+            return;
+        }
         if ("subtype".equals(System.getProperty("ryscope.autotest"))) {
             // JEI подключается позже входа в мир: без него нет подтипов, мода книг и превью структур
             step("subtype: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
@@ -1616,6 +1620,198 @@ final class AutoTest {
         works.repka.ryscope.runtime.Foreign.Source foreign = works.repka.ryscope.runtime.Foreign.get();
         if (foreign != null) for (int[] area : foreign.exclusionAreas(acs)) out.append(' ').append(java.util.Arrays.toString(area));
         RYScope.LOG.info("[areas] окно {} и области:{}, экран {}x{}", acs.getClass().getSimpleName(), out, acs.width, acs.height);
+    }
+
+    private static final BlockPos SUB_PROVIDER = new BlockPos(2, -60, 2), SUB_CHEST = new BlockPos(3, -60, 2), SUB_CPU = new BlockPos(-1, -60, 2);
+    private static java.util.concurrent.Future<appeng.api.networking.crafting.ICraftingPlan> subPlan;
+
+    @org.jetbrains.annotations.Nullable
+    private static appeng.api.networking.IGrid subGrid(net.minecraft.server.level.ServerLevel level) {
+        if (!(level.getBlockEntity(SUB_PROVIDER) instanceof appeng.api.networking.IInWorldGridNodeHost host)) return null;
+        for (Direction d : Direction.values()) {
+            var node = host.getGridNode(d);
+            if (node != null && node.getGrid() != null) return node.getGrid();
+        }
+        return null;
+    }
+
+    private static int slotOf(net.minecraft.world.item.Item item, boolean playerInventory) {
+        for (var slot : mc().player.containerMenu.slots) {
+            if ((slot.container == mc().player.getInventory()) == playerInventory && slot.getItem().is(item)) return slot.index;
+        }
+        return -1;
+    }
+
+    /**
+     * Замещение в шаблоне обработки: стекло из песка (рецепт печи с песком и красным песком) кодируется,
+     * когда в сети нет ни того ни другого, в шаблон попадает обычный песок; потом в сеть кладётся только
+     * красный песок, и автокрафт должен отправить в сундук у провайдера именно его.
+     */
+    private static void buildSubstitution() {
+        // предметы берутся из реестра внутри шагов: при сборке сценария моды ещё не зарегистрировали их
+        java.util.function.Supplier<net.minecraft.world.item.Item> processing = () -> net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("ae2:processing_pattern"));
+        ae2Setup();
+        step("subst: close", () -> mc().player.closeContainer(), 10);
+        step("subst: blocks", () -> {
+            command("setblock 2 -60 2 ae2:pattern_provider");
+            command("setblock 3 -60 2 minecraft:chest");
+            command("setblock -1 -60 2 ae2:1k_crafting_storage");
+        }, 60);
+        step("subst: open pattern", () -> use(AE_CABLE, Direction.WEST, new Vec3(0.1, -58.5, 2.5)), 30);
+        step("subst: substitute on", () -> {
+            RYScope.LOG.info("[subst] экран {}", mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName());
+            ((appeng.menu.me.items.PatternEncodingTermMenu) mc().player.containerMenu).setSubstitute(true);
+        }, 10);
+        step("subst: transfer glass", () -> doTransfer(Items.GLASS, "smelting"), 25);
+        shot("subst_terminal");
+        step("subst: blank", () -> quickMoveAll(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("ae2:blank_pattern"))), 10);
+        step("subst: encode", () -> {
+            var term = (appeng.menu.me.items.PatternEncodingTermMenu) mc().player.containerMenu;
+            List<String> in = new ArrayList<>();
+            for (var slot : term.getProcessingInputSlots()) if (!slot.getItem().isEmpty()) in.add(slot.getItem().getHoverName().getString());
+            RYScope.LOG.info("[subst] входы шаблона перед записью: {}, замещение {}", in, term.isSubstitute());
+            ((appeng.menu.me.items.PatternEncodingTermMenu) mc().player.containerMenu).encode();
+        }, 15);
+        step("subst: take pattern", () -> {
+            int slot = slotOf(processing.get(), false);
+            if (slot >= 0) mc().gameMode.handleInventoryMouseClick(mc().player.containerMenu.containerId, slot, 0, net.minecraft.world.inventory.ClickType.QUICK_MOVE, mc().player);
+            else RYScope.LOG.info("[subst] записанного шаблона нет");
+        }, 10);
+        step("subst: pattern info", () -> {
+            for (ItemStack stack : mc().player.getInventory().items) {
+                if (stack.isEmpty() || !stack.is(processing.get())) continue;
+                var alternatives = stack.get(works.repka.ryscope.neoforge.ae2.ProcessingSubstitution.ALTERNATIVES.get());
+                List<String> tip = new ArrayList<>();
+                for (var line : stack.getTooltipLines(net.minecraft.world.item.Item.TooltipContext.EMPTY, mc().player, net.minecraft.world.item.TooltipFlag.NORMAL)) tip.add(line.getString());
+                RYScope.LOG.info("[subst] шаблон: варианты {}, подсказка {}", alternatives, tip);
+            }
+            mc().player.closeContainer();
+        }, 10);
+        step("subst: open provider", () -> use(SUB_PROVIDER, Direction.UP, new Vec3(2.5, -59, 2.5)), 30);
+        step("subst: put pattern", () -> {
+            RYScope.LOG.info("[subst] экран провайдера {}", mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName());
+            quickMoveAll(processing.get());
+        }, 10);
+        step("subst: close provider", () -> mc().player.closeContainer(), 10);
+        step("subst: red sand", () -> command("give @s minecraft:red_sand 8"), 10);
+        step("subst: open terminal", () -> use(AE_CABLE, Direction.NORTH, new Vec3(0.5, -58.5, 2.1)), 30);
+        step("subst: red sand in", () -> {
+            RYScope.LOG.info("[subst] экран для песка {}, красного песка в инвентаре {}", mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName(),
+                mc().player.getInventory().countItem(Items.RED_SAND));
+            quickMoveAll(Items.RED_SAND);
+        }, 20);
+        step("subst: close terminal", () -> mc().player.closeContainer(), 10);
+        step("subst: plan", () -> {
+            var server = mc().getSingleplayerServer();
+            server.execute(() -> {
+                var grid = subGrid(server.overworld());
+                if (grid == null) {
+                    RYScope.LOG.info("[subst] сеть у провайдера не найдена");
+                    return;
+                }
+                RYScope.LOG.info("[subst] процессоров крафта {}", grid.getCraftingService().getCpus().size());
+                var stock = grid.getStorageService().getInventory().getAvailableStacks();
+                RYScope.LOG.info("[subst] в сети: песок {}, красный песок {}, доски {}", stock.get(appeng.api.stacks.AEItemKey.of(Items.SAND)),
+                    stock.get(appeng.api.stacks.AEItemKey.of(Items.RED_SAND)), stock.get(appeng.api.stacks.AEItemKey.of(Items.OAK_PLANKS)));
+                // расчёт ищет шаблоны через узел сети того, кто просит: без узла AE2 не видит ни одного шаблона
+                appeng.api.networking.IGridNode node = null;
+                if (server.overworld().getBlockEntity(SUB_PROVIDER) instanceof appeng.api.networking.IInWorldGridNodeHost host) {
+                    for (Direction d : Direction.values()) if (node == null) node = host.getGridNode(d);
+                }
+                appeng.api.networking.IGridNode requesterNode = node;
+                appeng.api.networking.crafting.ICraftingSimulationRequester requester = new appeng.api.networking.crafting.ICraftingSimulationRequester() {
+                    @Override
+                    public appeng.api.networking.security.IActionSource getActionSource() {
+                        return appeng.api.networking.security.IActionSource.empty();
+                    }
+
+                    @Override
+                    public appeng.api.networking.IGridNode getGridNode() {
+                        return requesterNode;
+                    }
+                };
+                subPlan = grid.getCraftingService().beginCraftingCalculation(server.overworld(), requester,
+                    appeng.api.stacks.AEItemKey.of(Items.GLASS), 1, appeng.api.networking.crafting.CalculationStrategy.REPORT_MISSING_ITEMS);
+            });
+        }, 60);
+        step("subst: submit", () -> {
+            var server = mc().getSingleplayerServer();
+            server.execute(() -> {
+                try {
+                    if (subPlan == null || !subPlan.isDone()) {
+                        RYScope.LOG.info("[subst] план не посчитан");
+                        return;
+                    }
+                    var plan = subPlan.get();
+                    java.util.function.Function<appeng.api.stacks.KeyCounter, String> show = counter -> {
+                        List<String> out = new ArrayList<>();
+                        for (var e : counter) out.add(e.getKey() + " x" + e.getLongValue());
+                        return out.toString();
+                    };
+                    RYScope.LOG.info("[subst] план: берёт {}, не хватает {}", show.apply(plan.usedItems()), show.apply(plan.missingItems()));
+                    var patterns = subGrid(server.overworld()).getCraftingService().getCraftingFor(appeng.api.stacks.AEItemKey.of(Items.GLASS));
+                    for (var pattern : patterns) {
+                        List<String> inputs = new ArrayList<>();
+                        for (var input : pattern.getInputs()) inputs.add(java.util.Arrays.toString(input.getPossibleInputs()));
+                        RYScope.LOG.info("[subst] шаблон стекла в сети: {} входы {}", pattern.getClass().getSimpleName(), inputs);
+                    }
+                    var result = subGrid(server.overworld()).getCraftingService().submitJob(plan, null, null, false, appeng.api.networking.security.IActionSource.empty());
+                    RYScope.LOG.info("[subst] задание: {}", result.successful() ? "принято" : "отклонено " + result.errorCode());
+                } catch (Exception e) {
+                    RYScope.LOG.error("[subst]", e);
+                }
+            });
+        }, 80);
+        step("subst: chest", () -> {
+            var server = mc().getSingleplayerServer();
+            server.execute(() -> {
+                List<String> items = new ArrayList<>();
+                if (server.overworld().getBlockEntity(SUB_CHEST) instanceof net.minecraft.world.Container chest) {
+                    for (int i = 0; i < chest.getContainerSize(); i++) if (!chest.getItem(i).isEmpty()) items.add(chest.getItem(i).getItem() + " x" + chest.getItem(i).getCount());
+                }
+                RYScope.LOG.info("[subst] в сундуке у провайдера: {}", items);
+            });
+        }, 10);
+        step("cycle: open", () -> {
+            parkMouse();
+            try {
+                Object item = Class.forName("es.degrassi.mmreborn.common.item.ControllerItem")
+                    .getMethod("makeMachineItem", net.minecraft.resources.ResourceLocation.class)
+                    .invoke(null, net.minecraft.resources.ResourceLocation.parse("repys:kinetic_foundry"));
+                RecipeScreen.open(new ItemRes((ItemStack) item), Lookup.Mode.USES);
+            } catch (ReflectiveOperationException e) {
+                RYScope.LOG.error("[cycle]", e);
+            }
+        }, 40);
+        for (int tab = 0; tab < 4; tab++) {
+            step("cycle: find structure", () -> {
+                if (structureOnScreen() != null) return;
+                mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+            }, 40);
+        }
+        step("cycle: state", () -> {
+            var view = structureOnScreen();
+            if (view == null) {
+                RYScope.LOG.info("[cycle] превью не найдено");
+                return;
+            }
+            try {
+                java.lang.reflect.Field variants = view.getClass().getDeclaredField("variants");
+                java.lang.reflect.Field step = view.getClass().getDeclaredField("shownStep");
+                variants.setAccessible(true);
+                step.setAccessible(true);
+                var map = (java.util.Map<?, ?>) variants.get(view);
+                int most = 0;
+                for (Object list : map.values()) most = Math.max(most, ((List<?>) list).size());
+                RYScope.LOG.info("[cycle] позиций с вариантами {}, больше всего вариантов {}, шаг {}", map.size(), most, step.getLong(view));
+            } catch (ReflectiveOperationException e) {
+                RYScope.LOG.error("[cycle]", e);
+            }
+        }, 2);
+        shot("cycle_a");
+        step("cycle: wait", () -> {}, 40);
+        shot("cycle_b");
+        step("quit", () -> mc().stop(), 0);
     }
 
     /** Сеть AE2 с дисками и досками, открыт терминал крафта. */

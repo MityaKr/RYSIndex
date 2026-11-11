@@ -22,6 +22,14 @@ subprojects {
             }
         }
         maven {
+            name = 'ModMaven (AE2, только для компиляции интеграции)'
+            url = 'https://modmaven.dev/'
+            content {
+                includeGroup 'org.appliedenergistics'
+                includeGroup 'appeng'
+            }
+        }
+        maven {
             name = 'BlameJared (JEI)'
             url = 'https://maven.blamejared.com'
             content {

@@ -99,6 +99,10 @@ public final class Ae2Terminal {
         }
     }
 
+    /** Куда отдать группы взаимозаменяемых предметов разложенного рецепта (замещение в шаблонах обработки). */
+    @Nullable
+    public static java.util.function.Consumer<List<List<Item>>> alternativesSink;
+
     public static boolean isTerminal(@Nullable AbstractContainerMenu menu) {
         return menu != null && Api.OK && Api.storageMenu.isInstance(menu);
     }
@@ -245,6 +249,16 @@ public final class Ae2Terminal {
         }
         if (in.isEmpty() || out.isEmpty()) return Transfer.UNSUPPORTED;
         Api.encodeProcessing.invoke(null, menu, in, out);
+        if (alternativesSink != null) {
+            // какие предметы взаимозаменяемы в каждом входе: сервер запишет их в шаблон, если включено замещение
+            List<List<Item>> groups = new ArrayList<>();
+            for (Ing ing : inputs) {
+                List<Item> items = new ArrayList<>();
+                for (Stack option : ing.options) if (option.key() instanceof Item item && !items.contains(item)) items.add(item);
+                if (items.size() > 1) groups.add(items);
+            }
+            if (!groups.isEmpty()) alternativesSink.accept(groups);
+        }
         return Transfer.OK;
     }
 

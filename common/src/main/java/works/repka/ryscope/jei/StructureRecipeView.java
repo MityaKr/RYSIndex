@@ -42,8 +42,13 @@ public final class StructureRecipeView implements RecipeView {
     private static final long IDLE_MS = 5000L;
     private static final Set<StructureRecipeView> LIVE = Collections.newSetFromMap(new IdentityHashMap<>());
 
+    private static final long CYCLE_MS = 1500L;
+
     private final ResourceLocation id;
     private final BlockScene scene;
+    /** Все подходящие блоки по позициям: где их несколько, модель перебирает варианты, как в JEI. */
+    private final Map<BlockPos, List<BlockState>> variants;
+    private long shownStep;
     private final List<Ing> inputs;
     private final int layers;
     @Nullable
@@ -55,9 +60,10 @@ public final class StructureRecipeView implements RecipeView {
     private int openIndex = -1;
     private static final int POPUP_COLUMNS = 8, POPUP_PAD = 4;
 
-    private StructureRecipeView(ResourceLocation id, BlockScene scene, List<Ing> inputs) {
+    private StructureRecipeView(ResourceLocation id, BlockScene scene, Map<BlockPos, List<BlockState>> variants, List<Ing> inputs) {
         this.id = id;
         this.scene = scene;
+        this.variants = variants;
         this.inputs = inputs;
         this.layers = scene.size().getY();
     }
@@ -82,12 +88,17 @@ public final class StructureRecipeView implements RecipeView {
         Object pattern = machine.getClass().getMethod("getPattern").invoke(machine);
         Map<BlockPos, ?> blocks = (Map<BlockPos, ?>) pattern.getClass().getMethod("getBlocksFiltered", Direction.class).invoke(pattern, Direction.NORTH);
         Map<BlockPos, BlockState> states = new HashMap<>();
+        Map<BlockPos, List<BlockState>> variants = new HashMap<>();
         for (Map.Entry<BlockPos, ?> e : blocks.entrySet()) {
             List<?> options = (List<?>) e.getValue().getClass().getMethod("getAll").invoke(e.getValue());
-            if (options.isEmpty()) continue;
-            Object first = options.get(0);
-            BlockState state = (BlockState) first.getClass().getMethod("getBlockState").invoke(first);
-            if (state != null) states.put(e.getKey(), state);
+            List<BlockState> found = new ArrayList<>();
+            for (Object option : options) {
+                BlockState state = (BlockState) option.getClass().getMethod("getBlockState").invoke(option);
+                if (state != null && !found.contains(state)) found.add(state);
+            }
+            if (found.isEmpty()) continue;
+            states.put(e.getKey(), found.get(0));
+            if (found.size() > 1) variants.put(e.getKey(), found);
         }
         Block controller = BuiltInRegistries.BLOCK.get(ResourceLocation.fromNamespaceAndPath("modular_machinery_reborn", "controller"));
         if (controller != Blocks.AIR) states.put(BlockPos.ZERO, controller.defaultBlockState());
@@ -99,7 +110,20 @@ public final class StructureRecipeView implements RecipeView {
             if (!options.isEmpty()) inputs.add(new Ing(options, null));
         }
         ResourceLocation name = (ResourceLocation) machine.getClass().getMethod("getRegistryName").invoke(machine);
-        return new StructureRecipeView(name.withPrefix("multiblock_preview/"), BlockScene.of(states), inputs);
+        // BlockScene сдвигает структуру к нулю по непустым блокам: так же сдвигаются позиции вариантов
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+        for (Map.Entry<BlockPos, BlockState> e : states.entrySet()) {
+            if (e.getValue().isAir()) continue;
+            minX = Math.min(minX, e.getKey().getX());
+            minY = Math.min(minY, e.getKey().getY());
+            minZ = Math.min(minZ, e.getKey().getZ());
+        }
+        Map<BlockPos, List<BlockState>> shifted = new HashMap<>();
+        if (minX != Integer.MAX_VALUE) {
+            BlockPos min = new BlockPos(minX, minY, minZ);
+            for (Map.Entry<BlockPos, List<BlockState>> e : variants.entrySet()) shifted.put(e.getKey().subtract(min), e.getValue());
+        }
+        return new StructureRecipeView(name.withPrefix("multiblock_preview/"), BlockScene.of(states), Map.copyOf(shifted), inputs);
     }
 
     /** Освобождает буферы всех превью: окно рецептов закрыто. */
@@ -157,8 +181,10 @@ public final class StructureRecipeView implements RecipeView {
         releaseIdle(now);
         if (view == null) {
             view = new SceneView(scene);
+            shownStep = 0;
             LIVE.add(this);
         }
+        cycleVariants(now);
         if (t.beveled()) t.plate(g, x, y, WIDTH, SCENE_H);
         else Draw.roundBox(g, x, y, WIDTH, SCENE_H, 4f, t.c("slot.bg"), t.c("panel.border"));
         view.render(g, x, y, WIDTH, SCENE_H);
@@ -239,6 +265,20 @@ public final class StructureRecipeView implements RecipeView {
         int column = dx / (SLOT + GAP), index = dy / (SLOT + GAP) * COLUMNS + column;
         if (column >= COLUMNS || index >= Math.min(inputs.size(), COLUMNS * MAX_ROWS)) return -1;
         return index;
+    }
+
+    /** Следующий вариант блоков там, где подходят несколько: модель сменяется без мигания. */
+    private void cycleVariants(long now) {
+        if (variants.isEmpty() || view == null) return;
+        long step = now / CYCLE_MS;
+        if (step == shownStep) return;
+        shownStep = step;
+        Map<BlockPos, BlockState> states = new HashMap<>(scene.blocks());
+        for (Map.Entry<BlockPos, List<BlockState>> e : variants.entrySet()) {
+            List<BlockState> options = e.getValue();
+            states.put(e.getKey(), options.get((int) (step % options.size())));
+        }
+        view.setScene(BlockScene.of(states));
     }
 
     private void renderControls(GuiGraphics g, Theme t, int x, int y, int mx, int my) {
