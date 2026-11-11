@@ -720,10 +720,15 @@ public final class RecipeScreen extends ScaledScreen {
         return tr != null && tr.status() != Transfer.Status.UNSUPPORTED;
     }
 
-    private int buttonsTop(Placed row) {
-        boolean transfer = showsTransfer(row.recipe), goal = canGoal(row.recipe);
-        int total = (transfer ? BUTTON : 0) + (transfer && goal ? BUTTON_GAP : 0) + (goal ? BUTTON : 0);
-        return row.rowY + (row.rowH - total) / 2;
+    /** Булавка цели: правый верхний угол блока рецепта. */
+    private int pinY(Placed row) {
+        return row.rowY;
+    }
+
+    /** «+» по вертикальному центру у той же стенки; под булавкой, если строка низкая. */
+    private int plusY(Placed row) {
+        int centered = row.rowY + (row.rowH - BUTTON) / 2;
+        return canGoal(row.recipe) ? Math.max(centered, row.rowY + BUTTON + BUTTON_GAP) : centered;
     }
 
     private static Kit.State stateOf(@Nullable Transfer tr) {
@@ -731,26 +736,51 @@ public final class RecipeScreen extends ScaledScreen {
         return tr.status() == Transfer.Status.PARTIAL ? Kit.State.PARTIAL : Kit.State.FULL;
     }
 
+    /** Состояние «+»: как перенос, но если не хватает только того, что сеть AE2 умеет сделать, то «можно заказать». */
+    private Kit.State buttonState(RecipeView r, Transfer tr) {
+        Kit.State state = stateOf(tr);
+        if (state == Kit.State.FULL || !works.repka.ryscope.runtime.Ae2Terminal.active()) return state;
+        boolean order = false;
+        for (works.repka.ryscope.runtime.Ae2Terminal.State s : works.repka.ryscope.runtime.Supply.states(r.inputs())) {
+            if (s == works.repka.ryscope.runtime.Ae2Terminal.State.MISSING) return state;
+            order |= s == works.repka.ryscope.runtime.Ae2Terminal.State.CRAFTABLE;
+        }
+        return order ? Kit.State.ORDER : state;
+    }
+
+    private static String stateToken(Kit.State state) {
+        return switch (state) {
+            case FULL -> "state.ok";
+            case PARTIAL -> "state.warn";
+            case NONE -> "state.bad";
+            case ORDER -> "state.order";
+        };
+    }
+
     private void renderButtons(GuiGraphics g, Theme t, Placed row, int mx, int my) {
         RecipeView r = row.recipe;
-        int x = row.rowX + row.rowW - BUTTON, y = buttonsTop(row);
+        int x = row.rowX + row.rowW - BUTTON;
         if (showsTransfer(r)) {
+            int y = plusY(row);
             Transfer tr = transfers.get(r);
-            boolean enabled = transferEnabled(r);
-            boolean hot = enabled && over(mx, my, x, y, BUTTON, BUTTON);
-            smallBox(g, t, x, y, hot, 0);
-            Kit.State state = stateOf(tr);
-            int color = !enabled ? Draw.alpha(t.c("text.dim"), 0.6f) : state == Kit.State.FULL ? t.c("accent") : t.c("text.muted");
-            Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, color);
-            if (enabled && state != Kit.State.FULL) Kit.indicator(g, t, x + BUTTON - 3, y - 1.5f, 4.5f, state, -1, -1);
-            if (enabled) {
+            if (transferEnabled(r)) {
+                // заливка и рамка цветом состояния, значок состояния слева от кнопки
+                Kit.State state = buttonState(r, tr);
+                int color = t.c(stateToken(state));
+                boolean hot = over(mx, my, x, y, BUTTON, BUTTON);
+                Draw.roundBox(g, x, y, BUTTON, BUTTON, 3.5f, Draw.alpha(color, hot ? 0.32f : 0.2f), color);
+                Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, color);
+                Kit.indicator(g, t, x - 7f, y + (BUTTON - 4.5f) / 2f, 4.5f, state, -1, -1);
                 hits.add(x, y, BUTTON, BUTTON, b -> {
                     if (b == 0 && parent instanceof AbstractContainerScreen<?> acs) doTransfer(acs, r, hasShiftDown());
                 });
+            } else {
+                smallBox(g, t, x, y, false, 0);
+                Icons.draw(g, Icons.Shape.PLUS, x + 3, y + 3, 8, Draw.alpha(t.c("text.dim"), 0.6f));
             }
-            y += BUTTON + BUTTON_GAP;
         }
         if (canGoal(r)) {
+            int y = pinY(row);
             Stack output = r.outputs().get(0);
             boolean set = works.repka.ryscope.runtime.Board.contains(output), hot = over(mx, my, x, y, BUTTON, BUTTON);
             smallBox(g, t, x, y, hot, set ? Draw.alpha(t.c("accent"), 0.18f) : 0);
@@ -788,6 +818,7 @@ public final class RecipeScreen extends ScaledScreen {
                 case FULL -> "ryscope.status.state.full";
                 case PARTIAL -> "ryscope.status.state.partial";
                 case NONE -> "ryscope.status.state.none";
+                case ORDER -> "ryscope.status.state.order";
             });
         }
         float tx = x + 8.5f;
@@ -808,6 +839,7 @@ public final class RecipeScreen extends ScaledScreen {
         int total = 0, have = 0;
         boolean stored = false;
         Map<String, Integer> missing = new LinkedHashMap<>();
+        Map<String, Integer> orderable = new LinkedHashMap<>();
         List<Ing> inputs = recipe.inputs();
         works.repka.ryscope.runtime.Ae2Terminal.State[] states = works.repka.ryscope.runtime.Supply.states(inputs);
         for (int i = 0; i < inputs.size(); i++) {
@@ -817,6 +849,10 @@ public final class RecipeScreen extends ScaledScreen {
             for (Stack option : in.options) items |= option.key() instanceof net.minecraft.world.item.Item;
             if (!items) continue;
             total++;
+            if (states[i] == works.repka.ryscope.runtime.Ae2Terminal.State.CRAFTABLE) {
+                orderable.merge(in.options.get(0).name().getString(), 1, Integer::sum);
+                continue;
+            }
             if (states[i] != works.repka.ryscope.runtime.Ae2Terminal.State.MISSING) {
                 have++;
                 continue;
@@ -830,7 +866,12 @@ public final class RecipeScreen extends ScaledScreen {
         }
         if (total == 0) return null;
         String place = network ? "network" : "inventory";
-        if (missing.isEmpty()) return new Status(tr("ryscope.status.all." + place), "", Kit.State.FULL);
+        if (missing.isEmpty() && orderable.isEmpty()) return new Status(tr("ryscope.status.all." + place), "", Kit.State.FULL);
+        if (missing.isEmpty()) {
+            // своего не хватает, но всё недостающее сеть AE2 умеет сделать
+            return new Status(tr("ryscope.status.head", have, total), tr("ryscope.status.have." + place) + " · "
+                + tr("ryscope.status.order", names(orderable)), Kit.State.ORDER);
+        }
         StringBuilder names = new StringBuilder();
         int shown = 0;
         for (Map.Entry<String, Integer> e : missing.entrySet()) {
@@ -842,6 +883,19 @@ public final class RecipeScreen extends ScaledScreen {
         String tail = tr("ryscope.status.have." + place) + " · " + tr("ryscope.status.missing", names.toString());
         if (stored) tail += " · " + tr("ryscope.status.stored");
         return new Status(tr("ryscope.status.head", have, total), tail, have == 0 ? Kit.State.NONE : Kit.State.PARTIAL);
+    }
+
+    /** «Имя ×2, Имя ×1 и ещё 3» для строки статуса. */
+    private static String names(Map<String, Integer> counts) {
+        StringBuilder names = new StringBuilder();
+        int shown = 0;
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
+            if (shown == 2) break;
+            if (shown++ > 0) names.append(", ");
+            names.append(e.getKey()).append(" ×").append(e.getValue());
+        }
+        if (counts.size() > 2) names.append(' ').append(tr("ryscope.status.more", counts.size() - 2));
+        return names.toString();
     }
 
     private void renderTooltips(GuiGraphics g, Theme t, int mx, int my, @Nullable Category hoveredCategory) {
@@ -889,12 +943,12 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     private void buttonTooltip(GuiGraphics g, Theme t, Font font, Placed p, int mx, int my) {
-        int x = p.rowX + p.rowW - BUTTON, y = buttonsTop(p);
+        int x = p.rowX + p.rowW - BUTTON, y = plusY(p);
         if (showsTransfer(p.recipe)) {
             Transfer tr = transfers.get(p.recipe);
-            boolean overPlus = over(mx, my, x - 2, y - 2, BUTTON + 4, BUTTON + 4);
+            boolean overPlus = over(mx, my, x - 9, y - 2, BUTTON + 11, BUTTON + 4);
             if (overPlus && !(parent instanceof AbstractContainerScreen<?>)) {
-                Kit.tooltip(g, t, List.of(tr("ryscope.transfer.no_host")), mx, my);
+                Kit.tooltip(g, t, List.of(tr("ryscope.transfer.unsupported")), mx, my);
             } else if (overPlus && tr == null) {
                 Kit.tooltip(g, t, List.of(tr("ryscope.transfer.checking")), mx, my);
             } else if (overPlus && tr.status() == Transfer.Status.UNSUPPORTED) {
@@ -907,8 +961,8 @@ public final class RecipeScreen extends ScaledScreen {
                     Kit.tooltip(g, t, List.of(tr(key == null ? "ryscope.transfer.missing" : key)), mx, my);
                 }
             }
-            y += BUTTON + BUTTON_GAP;
         }
+        y = pinY(p);
         if (canGoal(p.recipe) && over(mx, my, x, y, BUTTON, BUTTON)) {
             boolean set = works.repka.ryscope.runtime.Board.contains(p.recipe.outputs().get(0));
             Kit.tooltip(g, t, List.of(tr(set ? "ryscope.goals.in" : "ryscope.goals.add")), mx, my);

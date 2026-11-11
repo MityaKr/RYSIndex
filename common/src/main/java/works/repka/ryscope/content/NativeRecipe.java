@@ -227,11 +227,13 @@ public final class NativeRecipe implements RecipeView {
             works.repka.ryscope.runtime.Ae2Terminal.State state = supply.getOrDefault(s, works.repka.ryscope.runtime.Ae2Terminal.State.HAVE);
             int sx = x + slotX(s), sy = y + slotY(s), size = sizeOf(s);
             boolean hover = mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size;
-            int stateBorder = 0;
-            // нехватка одним цветом: рамка bad; что есть, то с обычной рамкой
-            if (state != works.repka.ryscope.runtime.Ae2Terminal.State.HAVE) stateBorder = Draw.alpha(theme.c("state.bad"), 0.7f);
-            if (slotSize != SLOT) theme.slotRounded(g, sx, sy, size, size >= 24 ? 8f : 5f, hover && !s.ing.isEmpty(), stateBorder);
-            else theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateBorder);
+            // нет совсем: красные заливка и рамка; нет, но сеть AE2 сделает: синие; что есть, то обычное
+            int stateColor = state == works.repka.ryscope.runtime.Ae2Terminal.State.MISSING ? theme.c("state.bad")
+                : state == works.repka.ryscope.runtime.Ae2Terminal.State.CRAFTABLE ? theme.c("state.order") : 0;
+            float radius = slotSize != SLOT ? (size >= 24 ? 8f : 5f) : 2f;
+            if (slotSize != SLOT) theme.slotRounded(g, sx, sy, size, radius, hover && !s.ing.isEmpty(), stateColor);
+            else theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateColor);
+            if (stateColor != 0) Draw.round(g, sx + 1, sy + 1, size - 2, size - 2, Math.max(1f, radius - 1), Draw.alpha(stateColor, 0.2f));
             Stack shown = s.ing.shown(now);
             if (shown == null) continue;
             int ix = sx + (size - 16) / 2, iy = sy + (size - 16) / 2;
@@ -249,19 +251,11 @@ public final class NativeRecipe implements RecipeView {
                 shown.render(g, ix, iy);
                 shown.renderOverlay(g, ix, iy);
             }
-            if (state == works.repka.ryscope.runtime.Ae2Terminal.State.CRAFTABLE) {
-                // ингредиента нет, но сеть AE2 умеет его сделать: Ctrl при переносе закажет
-                g.pose().pushPose();
-                g.pose().translate(0, 0, 250);
-                Draw.rect(g, sx + size - 5, sy + 1, 4, 4, theme.c("accent"));
-                g.pose().popPose();
-            }
             if (state == works.repka.ryscope.runtime.Ae2Terminal.State.MISSING) {
-                // недостающий ингредиент: приглушаем слот и помечаем уголок, не только цветом
+                // недостающий предмет бледнеет: видно и без цвета
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 250);
-                Draw.rect(g, sx + 1, sy + 1, size - 2, size - 2, Draw.alpha(theme.c("slot.bg"), 1f - missingAlpha));
-                if (slotSize == SLOT) Draw.rect(g, sx + size - 5, sy + 1, 4, 4, theme.c("state.bad"));
+                Draw.round(g, sx + 1, sy + 1, size - 2, size - 2, Math.max(1f, radius - 1), Draw.alpha(theme.c("slot.bg"), 1f - missingAlpha));
                 g.pose().popPose();
             }
             if (s.ing.options.size() > 1 && slotSize == SLOT) {

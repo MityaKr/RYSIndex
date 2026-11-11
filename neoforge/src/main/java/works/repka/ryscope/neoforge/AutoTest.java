@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("states".equals(System.getProperty("ryscope.autotest"))) {
+            buildStates();
+            return;
+        }
         if ("scroll".equals(System.getProperty("ryscope.autotest"))) {
             buildScroll();
             return;
@@ -1516,7 +1520,8 @@ final class AutoTest {
         RYScope.LOG.info("[areas] окно {} и области:{}, экран {}x{}", acs.getClass().getSimpleName(), out, acs.width, acs.height);
     }
 
-    private static void buildAe2() {
+    /** Сеть AE2 с дисками и досками, открыт терминал крафта. */
+    private static void ae2Setup() {
         step("ae2: setup", () -> {
             command("clear @s");
             command("fill 0 -60 2 1 -58 2 minecraft:air");
@@ -1547,6 +1552,96 @@ final class AutoTest {
             logAreas();
             quickMoveAll(Items.OAK_PLANKS);
         }, 30);
+    }
+
+    /** Курсор в левый верхний угол: подсказки не закрывают кнопки на снимках. */
+    private static void parkMouse() {
+        try {
+            for (String name : new String[] {"xpos", "ypos"}) {
+                java.lang.reflect.Field f = net.minecraft.client.MouseHandler.class.getDeclaredField(name);
+                f.setAccessible(true);
+                f.setDouble(mc().mouseHandler, 2);
+            }
+        } catch (ReflectiveOperationException e) {
+            RYScope.LOG.warn("[autotest] курсор не перенесён: {}", e.toString());
+        }
+    }
+
+    private static void injectCraftable(net.minecraft.world.item.Item... items) {
+        try {
+            Class<?> c = works.repka.ryscope.runtime.Ae2Terminal.class;
+            java.lang.reflect.Field craftable = c.getDeclaredField("craftable");
+            java.lang.reflect.Field cachedAt = c.getDeclaredField("cachedAt");
+            java.lang.reflect.Field cachedFor = c.getDeclaredField("cachedFor");
+            java.lang.reflect.Field active = c.getDeclaredField("active");
+            for (var f : new java.lang.reflect.Field[] {craftable, cachedAt, cachedFor, active}) f.setAccessible(true);
+            cachedFor.set(null, active.get(null));
+            cachedAt.setLong(null, Long.MAX_VALUE / 4);
+            craftable.set(null, new java.util.HashSet<>(java.util.Arrays.asList(items)));
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Состояния кнопки «+» и ячеек над терминалом AE2 и вне станции. */
+    private static void buildStates() {
+        step("states: survival", () -> command("gamemode survival"), 10);
+        // курсор в угол: подсказки не закрывают кнопки на снимках
+        step("states: cursor", () -> parkMouse(), 2);
+        ae2Setup();
+        String[][] cases = {{"minecraft:chest", "full"}, {"minecraft:piston", "partial"}};
+        for (String[] c : cases) {
+            step("states: " + c[1], () -> RecipeScreen.open(new ItemRes(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+                net.minecraft.resources.ResourceLocation.parse(c[0])))), Lookup.Mode.RECIPES), 40);
+            step("states: cursor", () -> parkMouse(), 2);
+            shot("state_" + c[1]);
+            step("states: back", () -> mc().screen.onClose(), 15);
+        }
+        step("states: order open", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 40);
+        step("states: order", () -> {
+            // сеть «умеет сделать» все ингредиенты открытого рецепта: в тестовом мире нет шаблонов автокрафта
+            List<net.minecraft.world.item.Item> items = new ArrayList<>();
+            for (var placed : ((RecipeScreen) mc().screen).placed()) {
+                for (var ing : placed.recipe().inputs()) {
+                    for (var option : ing.options) if (option.key() instanceof net.minecraft.world.item.Item item) items.add(item);
+                }
+            }
+            items.remove(Items.OAK_PLANKS);
+            items.remove(Items.REDSTONE);
+            injectCraftable(items.toArray(new net.minecraft.world.item.Item[0]));
+            StringBuilder st = new StringBuilder();
+            for (var placed : ((RecipeScreen) mc().screen).placed()) {
+                st.append(java.util.Arrays.toString(works.repka.ryscope.runtime.Supply.states(placed.recipe().inputs())));
+            }
+            RYScope.LOG.info("[states] подставлено {}, активен терминал {}, состояния {}", items.size(),
+                works.repka.ryscope.runtime.Ae2Terminal.active(), st);
+        }, 20);
+        step("states: cursor", () -> parkMouse(), 2);
+        shot("state_order");
+        step("states: order glass", () -> ThemeManager.select("ryscore:glass"), 15);
+        shot("state_order_glass");
+        step("states: slate", () -> {
+            ThemeManager.select("ryscore:slate");
+            mc().screen.onClose();
+        }, 15);
+        step("states: none", () -> {
+            injectCraftable();
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.DIAMOND_PICKAXE)), Lookup.Mode.RECIPES);
+        }, 40);
+        step("states: cursor", () -> parkMouse(), 2);
+        shot("state_none");
+        step("states: close all", () -> {
+            mc().screen.onClose();
+            mc().player.closeContainer();
+        }, 20);
+        step("states: no host", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 40);
+        step("states: cursor", () -> parkMouse(), 2);
+        shot("state_no_host");
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    private static void buildAe2() {
+        ae2Setup();
         shot("ae2_terminal");
         step("ae2: simulate", () -> {
             logTransfer("сундук (доски есть в сети)", Items.CHEST, "crafting");
