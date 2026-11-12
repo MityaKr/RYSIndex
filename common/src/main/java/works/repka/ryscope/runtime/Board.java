@@ -70,6 +70,19 @@ public final class Board {
     /** Признак входных данных деревьев ({@link CraftTree#inputsVersion}), по которому построены нынешние деревья. */
     private static long inputs = Long.MIN_VALUE;
 
+    /** Общая сумма по всем целям: последняя готовая и та, что строится. */
+    @org.jetbrains.annotations.Nullable
+    private static CraftTree combined;
+    @org.jetbrains.annotations.Nullable
+    private static CraftTree combinedBuilding;
+    /** Список целей, их количества или маршруты поменялись: сумма строится заново. */
+    private static boolean combinedDirty = true;
+    /** Снимок индекса сменился: перенимать рецепты прежней суммы нельзя. */
+    private static boolean combinedStale;
+    private static boolean combinedFailed;
+    /** Когда экран просил сумму последний раз, мс: без стикера-суммы она строится, только пока её смотрят. */
+    private static long combinedWanted;
+
     private Board() {}
 
     public static List<Goal> goals() {
@@ -104,13 +117,49 @@ public final class Board {
         // дерево по прежнему маршруту или количеству больше не годится: строится заново в тике
         goal.tree = null;
         goal.building = null;
+        goalsChanged();
         save();
         return added;
     }
 
     public static void remove(Stack stack) {
         ensureLoaded();
-        if (GOALS.removeIf(g -> g.stack.same(stack))) save();
+        if (GOALS.removeIf(g -> g.stack.same(stack))) {
+            goalsChanged();
+            save();
+        }
+    }
+
+    /** Состав доски поменялся: общая сумма строится заново, прежняя видна, пока новая не готова. */
+    private static void goalsChanged() {
+        combinedDirty = true;
+        combinedBuilding = null;
+        if (GOALS.isEmpty()) combined = null;
+    }
+
+    /**
+     * Общая сумма по всем целям ({@link CraftTree#CraftTree(List, long)}) или null, пока первая не построена или целей
+     * нет. Строится в {@link #tick()} по тем же признакам устаревания, что деревья целей. Экран, который её
+     * показывает, зовёт {@link #wantCombined()} каждый кадр.
+     */
+    @org.jetbrains.annotations.Nullable
+    public static CraftTree combined() {
+        return GOALS.isEmpty() ? null : combined;
+    }
+
+    /** Сколько ресурсов уже просмотрено для строящейся суммы: для индикатора загрузки. */
+    public static int combinedExamined() {
+        CraftTree b = combinedBuilding;
+        return b != null ? b.examined() : combined != null ? combined.examined() : 0;
+    }
+
+    /** Экран показывает общую сумму: строить её, даже если стикер показывает цели по отдельности. */
+    public static void wantCombined() {
+        combinedWanted = System.currentTimeMillis();
+    }
+
+    private static boolean combinedNeeded() {
+        return !GOALS.isEmpty() && ("sum".equals(Config.get().stickerMode) || System.currentTimeMillis() - combinedWanted < 3000);
     }
 
     /** @return true, если цель закреплена; false, если снята. */
@@ -119,12 +168,14 @@ public final class Board {
         for (int i = 0; i < GOALS.size(); i++) {
             if (GOALS.get(i).stack.same(stack)) {
                 GOALS.remove(i);
+                goalsChanged();
                 save();
                 return false;
             }
         }
         if (stack.item().isEmpty()) return false;
         GOALS.add(new Goal(stack.withAmount(1), Math.max(1, amount)));
+        goalsChanged();
         save();
         return true;
     }
@@ -139,11 +190,20 @@ public final class Board {
             CraftTree.Route r = g.route.withoutRecipes();
             g.route = r.isEmpty() ? null : r;
         }
+        // сумма держит рецепты и маршруты прежнего рантайма: строится заново
+        combined = null;
+        combinedBuilding = null;
+        combinedDirty = true;
     }
 
     public static void reset() {
         GOALS.clear();
         loaded = false;
+        combined = null;
+        combinedBuilding = null;
+        combinedDirty = true;
+        combinedStale = false;
+        combinedFailed = false;
     }
 
     /**
@@ -187,6 +247,44 @@ public final class Board {
                 RYScope.LOG.debug("Цель {} не пересчитана: {}", g.stack.id(), t.toString());
             }
         }
+        tickCombined(periodic, inputsChanged, deadline);
+    }
+
+    /**
+     * Общая сумма строится после деревьев целей тем же способом: по частям, раз в секунду под инвентарь, сразу при
+     * смене целей, снимка индекса, настройки автокрафта или данных «сеть сделает».
+     */
+    private static void tickCombined(boolean periodic, boolean inputsChanged, long deadline) {
+        if (!combinedNeeded()) {
+            combinedBuilding = null;
+            return;
+        }
+        try {
+            if (inputsChanged) combinedBuilding = null;
+            boolean due = combinedDirty || combinedStale || periodic || inputsChanged || (combined == null && !combinedFailed);
+            if (combinedBuilding == null && due) {
+                CraftTree next = new CraftTree(GOALS, TICK_NANOS);
+                if (!combinedStale) {
+                    // найденные рецепты годятся, пока не сменился снимок: у прежней суммы и у деревьев целей
+                    if (combined != null) next.inherit(combined);
+                    for (Goal g : GOALS) if (g.tree != null && !g.stale) next.inherit(g.tree);
+                }
+                combinedBuilding = next;
+                combinedDirty = false;
+                combinedStale = false;
+            }
+            if (combinedBuilding == null || System.nanoTime() > deadline) return;
+            combinedBuilding.recompute();
+            if (combinedBuilding.ready()) {
+                combined = combinedBuilding;
+                combinedBuilding = null;
+                combinedFailed = false;
+            }
+        } catch (Throwable t) {
+            combinedBuilding = null;
+            combinedFailed = true;
+            RYScope.LOG.debug("Общая сумма целей не пересчитана: {}", t.toString());
+        }
     }
 
     /**
@@ -207,6 +305,8 @@ public final class Board {
             g.stale = true;
             g.building = null;
         }
+        combinedStale = true;
+        combinedBuilding = null;
     }
 
     public static void renderHud(GuiGraphics g) {
@@ -245,6 +345,7 @@ public final class Board {
                     GOALS.add(goal);
                 });
             }
+            goalsChanged();
         } catch (Exception e) {
             RYScope.LOG.warn("Не удалось прочитать доску целей: {}", e.toString());
         }
