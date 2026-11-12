@@ -127,6 +127,18 @@ public final class Board {
         return true;
     }
 
+    /**
+     * Рантайм JEI перезапущен: маршруты целей не должны держать прежние объекты рецептов, а с ними старый рантайм.
+     * Выбор сохраняется по id рецепта.
+     */
+    public static void releaseRecipes() {
+        for (Goal g : GOALS) {
+            if (g.route == null) continue;
+            CraftTree.Route r = g.route.withoutRecipes();
+            g.route = r.isEmpty() ? null : r;
+        }
+    }
+
     public static void reset() {
         GOALS.clear();
         loaded = false;

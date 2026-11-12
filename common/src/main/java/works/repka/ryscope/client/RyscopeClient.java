@@ -72,6 +72,7 @@ public final class RyscopeClient {
         works.repka.ryscope.runtime.CraftTree.clearShared();
         works.repka.ryscope.ui.Lens.clear();
         works.repka.ryscope.runtime.Operators.clearMemo();
+        works.repka.ryscope.runtime.Board.releaseRecipes();
     }
 
     public static void onLogout() {

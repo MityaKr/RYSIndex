@@ -417,6 +417,8 @@ public final class CraftTree {
         shortest = route.shortest;
         root.choice = -2;
         root.children.clear();
+        // дерево могло быть уже готово с выбором по умолчанию: пересчитать в ближайшем кадре
+        ready = false;
     }
 
     /** Выбрать в узле этот рецепт, как будто игрок долистал до него стрелками. */
