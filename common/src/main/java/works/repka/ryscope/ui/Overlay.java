@@ -1168,6 +1168,34 @@ public final class Overlay {
         return LIST.at(mouseX(), mouseY());
     }
 
+    /** Ресурс под курсором в закладках или в целях (клавиши Botania и других модов над закладками JEI). */
+    @Nullable
+    public static Stack markStackUnderMouse() {
+        if (!active(Minecraft.getInstance().screen)) return null;
+        Stack s = MARKS.at(mouseX(), mouseY());
+        if (s instanceof works.repka.ryscope.runtime.RecipeMark mark) return mark.output;
+        return s != null ? s : Stickers.stackAt(mouseX(), mouseY());
+    }
+
+    /** Видимая страница списка. */
+    public static List<Stack> visibleListStacks() {
+        return active(Minecraft.getInstance().screen) ? LIST.visibleItems() : List.of();
+    }
+
+    /**
+     * Shift+клик по списку кладёт предмет в фильтр окна без перетаскивания, как quickMove в JEI.
+     * @return true, если предмет положен
+     */
+    private static boolean quickMove(Screen screen, Stack stack) {
+        Foreign.Source foreign = Foreign.get();
+        if (foreign == null) return false;
+        try {
+            return foreign.quickMove(screen, stack);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** Левый край правой панели: карточка рецептов встаёт перед ним. */
     public static int sidebarLeft(Screen screen) {
         layout(screen);
@@ -1328,6 +1356,9 @@ public final class Overlay {
         }
         if (button == 2) {
             toggleBookmark(stack);
+            return true;
+        }
+        if (button == 0 && Screen.hasShiftDown() && LIST.at(mx, my) != null && screen instanceof AbstractContainerScreen<?> && quickMove(screen, stack)) {
             return true;
         }
         if (button == 0 && cheating() && (LIST.at(mx, my) != null || MARKS.at(mx, my) != null)) {

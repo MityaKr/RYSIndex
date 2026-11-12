@@ -73,6 +73,8 @@ public final class Config {
     /** Предметы, скрытые по одному, если JEI нет (с JEI они пишутся в его blacklist.json): id или id#компоненты. */
     public List<String> hiddenItems = new ArrayList<>();
     public boolean showHidden = false;
+    /** Порядок списка: "mod" (как JEI по умолчанию), "name" или "source" (как отдаёт источник). */
+    public String listSort = "mod";
     /** Не показывать в списке предметы закрытых стадий (иначе они видны с замком). */
     public boolean hideLocked = false;
 

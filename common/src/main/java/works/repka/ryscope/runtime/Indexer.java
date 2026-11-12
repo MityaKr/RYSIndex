@@ -144,6 +144,7 @@ public final class Indexer {
         step("ryscope.index.names", 0.25f);
         List<ClientLanguage> languages = languages(mc);
         Platform platform = Platform.get();
+        stacks = ListSort.apply(stacks, platform);
         int n = stacks.size();
         for (int i = 0; i < n; i++) {
             if ((i & 255) == 0) {

@@ -345,5 +345,16 @@
   "ryscope.recipe_default.cleared": "Default recipe for “%s” cleared",
   "ryscope.craft.none": "No recipe for “%s” fits this window",
   "ryscope.cheat.denied": "Items can be given in creative mode, or to an operator in survival when RYScope is installed on the server",
-  "ryscope.cheat.delete": "Click: delete the item on the cursor"
+  "ryscope.cheat.delete": "Click: delete the item on the cursor",
+  "key.ryscope.shot": "Save recipe as PNG",
+  "ryscope.settings.sort": "List order",
+  "ryscope.settings.sort.mod": "by mod",
+  "ryscope.settings.sort.name": "by name",
+  "ryscope.settings.sort.source": "as JEI lists them",
+  "ryscope.settings.sort.note": "By mod: Minecraft first, then mods by name, with fluids and other types next to their mod",
+  "ryscope.settings.mod_name": "Mod name in tooltips",
+  "ryscope.settings.mod_name.note": "As the last tooltip line in the list and the card, unless another mod has added it",
+  "ryscope.shot.saved": "Recipe image saved: %s",
+  "ryscope.shot.toast": "Recipe image saved to screenshots/ryscope",
+  "ryscope.shot.failed": "Could not save the recipe image"
 }

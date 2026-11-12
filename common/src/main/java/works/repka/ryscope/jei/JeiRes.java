@@ -54,9 +54,20 @@ public final class JeiRes<T> extends Stack {
         renderer.render(g, typed.getIngredient(), x + ox, y + oy);
     }
 
+    /** Как в JEI: последней строкой мод, если её ещё нет и настройка включена. */
     @Override
     public List<Component> tooltipLines() {
-        return renderer.getTooltip(typed.getIngredient(), TooltipFlag.NORMAL);
+        List<Component> lines = renderer.getTooltip(typed.getIngredient(), TooltipFlag.NORMAL);
+        if (!works.repka.ryscope.runtime.Config.get().showModName) return lines;
+        try {
+            String mod = works.repka.ryscope.platform.Platform.get().modName(helper.getDisplayModId(typed.getIngredient()));
+            if (!lines.isEmpty() && lines.get(lines.size() - 1).getString().equals(mod)) return lines;
+            List<Component> out = new ArrayList<>(lines);
+            out.add(Component.literal(mod).withStyle(net.minecraft.ChatFormatting.BLUE, net.minecraft.ChatFormatting.ITALIC));
+            return out;
+        } catch (Throwable t) {
+            return lines;
+        }
     }
 
     @Override

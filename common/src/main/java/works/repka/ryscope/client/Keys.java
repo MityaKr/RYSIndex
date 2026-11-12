@@ -36,6 +36,8 @@ public final class Keys {
     public static KeyMapping SHARE;
     /** Разложить рецепт предмета под курсором в сетку открытого окна, не открывая карточку. */
     public static KeyMapping CRAFT;
+    /** Снимок рецепта под курсором в PNG. */
+    public static KeyMapping SHOT;
 
     /** Только для автотеста: считать клавишу линзы зажатой. */
     public static boolean forceLens;

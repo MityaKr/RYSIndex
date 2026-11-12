@@ -120,6 +120,14 @@ public final class Foreign {
             return null;
         }
 
+        /**
+         * Положить ресурс в фильтр окна без перетаскивания (Shift+клик, quickMove в JEI).
+         * @return true, если положен
+         */
+        default boolean quickMove(Screen screen, Stack stack) {
+            return false;
+        }
+
         /** Другие имена мода для поиска через @. Из потока индексации. */
         default java.util.Collection<String> modAliases(String modId) {
             return List.of();

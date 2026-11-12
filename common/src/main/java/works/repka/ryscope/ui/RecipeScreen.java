@@ -1583,6 +1583,15 @@ public final class RecipeScreen extends ScaledScreen {
             setGroup(nav.group - 1);
             return true;
         }
+        if (Keys.matches(Keys.SHOT, key, scan)) {
+            double cx = Overlay.mouseX(), cy = Overlay.mouseY();
+            for (Placed p : placed) {
+                if (over(cx, cy, p.rowX, p.rowY, p.rowW, p.rowH)) {
+                    RecipeShot.take(p.recipe, group().category());
+                    return true;
+                }
+            }
+        }
         if (Keys.matches(Keys.COPY_ID, key, scan)) {
             double cx = Overlay.mouseX(), cy = Overlay.mouseY();
             for (Placed p : placed) {

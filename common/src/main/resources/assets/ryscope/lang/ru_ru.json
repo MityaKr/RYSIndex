@@ -345,5 +345,16 @@
   "ryscope.recipe_default.cleared": "Рецепт по умолчанию для «%s» снят",
   "ryscope.craft.none": "Для «%s» нет рецепта, который раскладывается в это окно",
   "ryscope.cheat.denied": "Выдавать предметы можно в творческом режиме, а оператору и в выживании, если RYScope стоит на сервере",
-  "ryscope.cheat.delete": "Клик: убрать предмет с курсора"
+  "ryscope.cheat.delete": "Клик: убрать предмет с курсора",
+  "key.ryscope.shot": "Снимок рецепта в PNG",
+  "ryscope.settings.sort": "Порядок списка",
+  "ryscope.settings.sort.mod": "по модам",
+  "ryscope.settings.sort.name": "по названию",
+  "ryscope.settings.sort.source": "как в JEI без сортировки",
+  "ryscope.settings.sort.note": "По модам: Minecraft первым, затем моды по имени, жидкости и прочее рядом со своим модом",
+  "ryscope.settings.mod_name": "Мод в подсказках",
+  "ryscope.settings.mod_name.note": "Последней строкой подсказки в списке и карточке, если её не дописал другой мод",
+  "ryscope.shot.saved": "Снимок рецепта сохранён: %s",
+  "ryscope.shot.toast": "Снимок рецепта сохранён в screenshots/ryscope",
+  "ryscope.shot.failed": "Снимок рецепта не получился"
 }

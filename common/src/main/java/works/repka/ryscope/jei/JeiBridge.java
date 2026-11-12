@@ -379,6 +379,54 @@ public final class JeiBridge implements Foreign.Source {
         return !found.isEmpty();
     }
 
+    /**
+     * Сначала обработчики, которые умеют quickMove сами (как в JEI). Если таких нет, предмет идёт в первую цель
+     * перетаскивания, под которой пустой слот: занятый фильтр не перезаписывается.
+     */
+    @Override
+    public boolean quickMove(Screen screen, Stack stack) {
+        Optional<ITypedIngredient<?>> typed = toTyped(stack);
+        if (typed.isEmpty()) return false;
+        for (var handler : runtime.getScreenHelper().getGhostIngredientHandlers(screen)) {
+            try {
+                if (handler.quickMove(screen, typed.get())) return true;
+            } catch (Throwable t) {
+                RYScope.LOG.debug("quickMove обработчика не сработал: {}", t.toString());
+            }
+        }
+        if (!ghostStart(screen, stack)) return false;
+        try {
+            Ghost target = freeTarget(screen);
+            if (target == null) return false;
+            var a = target.target().getArea();
+            return ghostDrop(a.getX() + a.getWidth() / 2.0, a.getY() + a.getHeight() / 2.0);
+        } finally {
+            ghostEnd();
+        }
+    }
+
+    @Nullable
+    private Ghost freeTarget(Screen screen) {
+        if (!(screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> acs)) return ghosts.isEmpty() ? null : ghosts.get(0);
+        int[] b = works.repka.ryscope.platform.Platform.get().screenBounds(acs);
+        boolean anySlot = false;
+        for (Ghost g : ghosts) {
+            var a = g.target().getArea();
+            net.minecraft.world.inventory.Slot under = null;
+            for (net.minecraft.world.inventory.Slot slot : acs.getMenu().slots) {
+                if (a.contains(b[0] + slot.x + 8, b[1] + slot.y + 8)) {
+                    under = slot;
+                    break;
+                }
+            }
+            if (under == null) continue;
+            anySlot = true;
+            if (!under.hasItem()) return g;
+        }
+        // цели без слотов игры (свои виджеты мода): тогда первая
+        return anySlot || ghosts.isEmpty() ? null : ghosts.get(0);
+    }
+
     private static <I> void collectGhosts(mezz.jei.api.gui.handlers.IGhostIngredientHandler<Screen> handler, Screen screen, ITypedIngredient<I> typed, List<Ghost> out) {
         for (var target : handler.getTargetsTyped(screen, typed, true)) out.add(new Ghost(target, typed.getIngredient()));
     }

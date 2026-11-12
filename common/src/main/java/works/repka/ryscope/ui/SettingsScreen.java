@@ -69,6 +69,9 @@ public final class SettingsScreen extends ScaledScreen {
             c.hideLocked = !c.hideLocked;
             works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());
         }, "ryscope.settings.hide_locked.note");
+        options.add(new Option("ryscope.settings.sort", () -> tr("ryscope.settings.sort." + works.repka.ryscope.runtime.ListSort.current()),
+            works.repka.ryscope.runtime.ListSort::cycle, "ryscope.settings.sort.note"));
+        toggle("ryscope.settings.mod_name", () -> c.showModName, () -> c.showModName = !c.showModName, "ryscope.settings.mod_name.note");
         toggle("ryscope.settings.search_bottom", () -> c.searchBottom, () -> c.searchBottom = !c.searchBottom, null);
         toggle("ryscope.settings.list_paged", () -> c.listPaged, () -> c.listPaged = !c.listPaged, null);
         toggle("ryscope.settings.restyle", () -> c.restyleRecipes, () -> c.restyleRecipes = !c.restyleRecipes, "ryscope.settings.restyle.note");

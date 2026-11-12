@@ -93,6 +93,14 @@ public final class RyscopeNeoForgeClient {
             }
         });
 
+        // мод в подсказках наших панелей, как в списке JEI; Jade его уже дописал, тогда второй раз не пишем
+        bus.addListener(net.neoforged.bus.api.EventPriority.LOWEST, (net.neoforged.neoforge.event.entity.player.ItemTooltipEvent e) -> {
+            if (!works.repka.ryscope.model.ItemRes.ourTooltip || !works.repka.ryscope.runtime.Config.get().showModName || e.getItemStack().isEmpty()) return;
+            String mod = works.repka.ryscope.platform.Platform.get().modName(e.getItemStack().getItem().getCreatorModId(e.getItemStack()));
+            var lines = e.getToolTip();
+            if (!lines.isEmpty() && lines.get(lines.size() - 1).getString().equals(mod)) return;
+            lines.add(net.minecraft.network.chat.Component.literal(mod).withStyle(net.minecraft.ChatFormatting.BLUE, net.minecraft.ChatFormatting.ITALIC));
+        });
         // выдача в режиме читов идёт через сервер, если там тоже стоит RYScope
         works.repka.ryscope.runtime.Give.serverSupports = () -> {
             var connection = Minecraft.getInstance().getConnection();
@@ -136,11 +144,12 @@ public final class RyscopeNeoForgeClient {
         Keys.FORWARD = gui("forward", KeyModifier.NONE, GLFW.GLFW_KEY_UNKNOWN);
         Keys.SHARE = gui("share", KeyModifier.NONE, GLFW.GLFW_KEY_UNKNOWN);
         Keys.CRAFT = gui("craft", KeyModifier.NONE, GLFW.GLFW_KEY_C);
+        Keys.SHOT = gui("shot", KeyModifier.CONTROL, GLFW.GLFW_KEY_P);
         Keys.LENS = new KeyMapping("key.ryscope.lens", KeyConflictContext.UNIVERSAL, KeyModifier.NONE,
             InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_ALT, Keys.CATEGORY);
         for (KeyMapping k : new KeyMapping[] {Keys.RECIPES, Keys.USES, Keys.BOOKMARK, Keys.LENS, Keys.SEARCH, Keys.THEME, Keys.TOGGLE, Keys.BACK, Keys.TREE,
             Keys.HIDE, Keys.HIDE_QUERY, Keys.SAVE_SEARCH, Keys.COPY_ID, Keys.NEXT_TAB, Keys.CLOSE_TAB, Keys.PREV_PAGE, Keys.NEXT_PAGE,
-            Keys.PREV_CATEGORY, Keys.NEXT_CATEGORY, Keys.FORWARD, Keys.SHARE, Keys.CRAFT}) {
+            Keys.PREV_CATEGORY, Keys.NEXT_CATEGORY, Keys.FORWARD, Keys.SHARE, Keys.CRAFT, Keys.SHOT}) {
             event.register(k);
         }
         Keys.matcher = (mapping, keyCode, scanCode) -> mapping.isActiveAndMatches(InputConstants.getKey(keyCode, scanCode));
