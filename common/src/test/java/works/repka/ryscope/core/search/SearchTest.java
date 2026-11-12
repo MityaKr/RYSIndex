@@ -82,6 +82,23 @@ class SearchTest {
         assertFalse(Fuzzy.containsWithinOne("mechanical press", "mxchxnical"));
     }
 
+    /** Быстрый разобранный шаблон отвечает так же, как таблица правок, на случайных строках. */
+    @Test
+    void compiledFuzzyMatchesTable() {
+        assertTrue(Fuzzy.compile("mechanicl").within("mechanical press"));
+        assertFalse(Fuzzy.compile("mxchxnical").within("mechanical press"));
+        assertTrue(Fuzzy.compile("жел").within("железо"));
+        java.util.Random r = new java.util.Random(7);
+        String alpha = "abcжз ё中";
+        for (int it = 0; it < 200_000; it++) {
+            StringBuilder t = new StringBuilder(), p = new StringBuilder();
+            for (int i = r.nextInt(12); i > 0; i--) t.append(alpha.charAt(r.nextInt(alpha.length())));
+            for (int i = 1 + r.nextInt(6); i > 0; i--) p.append(alpha.charAt(r.nextInt(alpha.length())));
+            String text = t.toString(), pattern = p.toString();
+            assertEquals(Fuzzy.containsWithinOne(text, pattern), Fuzzy.compile(pattern).within(text), text + " / " + pattern);
+        }
+    }
+
     @Test
     void operatorsAreParsed() {
         Query q = Query.parse("uses:piston craftable -almost");

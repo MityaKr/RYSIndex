@@ -146,9 +146,9 @@ public final class SearchIndex {
             if (e.id.contains(term)) best = min(best, 3 + penalty);
         }
         if (best >= 0 || !fuzzy || t.text.length() < 4) return best;
-        for (String term : t.variants) {
-            if (Fuzzy.containsWithinOne(e.name, term)) return 8;
-            for (String alt : e.altNames) if (Fuzzy.containsWithinOne(alt, term)) return 9;
+        for (Fuzzy.Compiled term : t.fuzzy()) {
+            if (term.within(e.name)) return 8;
+            for (String alt : e.altNames) if (term.within(alt)) return 9;
         }
         return -1;
     }
