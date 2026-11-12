@@ -129,8 +129,9 @@ public final class Indexer {
                 stacks.clear();
             }
         }
-        if (stacks.isEmpty() && JeiAsync.loading()) {
-            // JEI сейчас сам собирает креативные вкладки в своём потоке: не трогаем их параллельно.
+        if (stacks.isEmpty() && (JeiAsync.loading() || JeiAsync.expected())) {
+            // JEI сейчас сам собирает креативные вкладки в своём потоке или вот-вот начнёт: не трогаем их параллельно
+            // и не останавливаем главный поток ради списка, который JEI всё равно заменит своим.
             // До его готовности показываем предметы по реестру, это мгновенно.
             for (Item item : BuiltInRegistries.ITEM) {
                 if (item != net.minecraft.world.item.Items.AIR) stacks.add(new ItemRes(new ItemStack(item)));
