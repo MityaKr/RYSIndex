@@ -61,6 +61,10 @@ public final class SettingsScreen extends ScaledScreen {
             c.hiddenQueries.clear();
             works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());
         }, "ryscope.settings.hidden.note"));
+        toggle("ryscope.settings.show_hidden", () -> c.showHidden, () -> {
+            c.showHidden = !c.showHidden;
+            works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());
+        }, "ryscope.settings.show_hidden.note");
         toggle("ryscope.settings.hide_locked", () -> c.hideLocked, () -> {
             c.hideLocked = !c.hideLocked;
             works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());

@@ -111,9 +111,24 @@ public final class RyscopeNeoForgeClient {
         Keys.TOGGLE = gui("toggle", KeyModifier.CONTROL, GLFW.GLFW_KEY_O);
         Keys.BACK = gui("back", KeyModifier.NONE, GLFW.GLFW_KEY_BACKSPACE);
         Keys.TREE = gui("tree", KeyModifier.NONE, GLFW.GLFW_KEY_G);
+        Keys.HIDE = gui("hide", KeyModifier.CONTROL, GLFW.GLFW_KEY_DELETE);
+        Keys.HIDE_QUERY = gui("hide_query", KeyModifier.CONTROL, GLFW.GLFW_KEY_H);
+        Keys.SAVE_SEARCH = gui("save_search", KeyModifier.CONTROL, GLFW.GLFW_KEY_S);
+        Keys.COPY_ID = gui("copy_id", KeyModifier.CONTROL, GLFW.GLFW_KEY_C);
+        Keys.NEXT_TAB = gui("next_tab", KeyModifier.CONTROL, GLFW.GLFW_KEY_TAB);
+        Keys.CLOSE_TAB = gui("close_tab", KeyModifier.CONTROL, GLFW.GLFW_KEY_W);
+        Keys.PREV_PAGE = gui("prev_page", KeyModifier.NONE, GLFW.GLFW_KEY_PAGE_UP);
+        Keys.NEXT_PAGE = gui("next_page", KeyModifier.NONE, GLFW.GLFW_KEY_PAGE_DOWN);
+        Keys.PREV_CATEGORY = gui("prev_category", KeyModifier.SHIFT, GLFW.GLFW_KEY_PAGE_UP);
+        Keys.NEXT_CATEGORY = gui("next_category", KeyModifier.SHIFT, GLFW.GLFW_KEY_PAGE_DOWN);
+        Keys.FORWARD = gui("forward", KeyModifier.NONE, GLFW.GLFW_KEY_UNKNOWN);
+        Keys.SHARE = gui("share", KeyModifier.NONE, GLFW.GLFW_KEY_UNKNOWN);
+        Keys.CRAFT = gui("craft", KeyModifier.NONE, GLFW.GLFW_KEY_C);
         Keys.LENS = new KeyMapping("key.ryscope.lens", KeyConflictContext.UNIVERSAL, KeyModifier.NONE,
             InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_ALT, Keys.CATEGORY);
-        for (KeyMapping k : new KeyMapping[] {Keys.RECIPES, Keys.USES, Keys.BOOKMARK, Keys.LENS, Keys.SEARCH, Keys.THEME, Keys.TOGGLE, Keys.BACK, Keys.TREE}) {
+        for (KeyMapping k : new KeyMapping[] {Keys.RECIPES, Keys.USES, Keys.BOOKMARK, Keys.LENS, Keys.SEARCH, Keys.THEME, Keys.TOGGLE, Keys.BACK, Keys.TREE,
+            Keys.HIDE, Keys.HIDE_QUERY, Keys.SAVE_SEARCH, Keys.COPY_ID, Keys.NEXT_TAB, Keys.CLOSE_TAB, Keys.PREV_PAGE, Keys.NEXT_PAGE,
+            Keys.PREV_CATEGORY, Keys.NEXT_CATEGORY, Keys.FORWARD, Keys.SHARE, Keys.CRAFT}) {
             event.register(k);
         }
         Keys.matcher = (mapping, keyCode, scanCode) -> mapping.isActiveAndMatches(InputConstants.getKey(keyCode, scanCode));

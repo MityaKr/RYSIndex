@@ -28,6 +28,12 @@ public interface RecipeView {
     @Nullable
     Stack stackAt(int x, int y, int mouseX, int mouseY);
 
+    /** Ингредиент ячейки под курсором со всеми вариантами или null: для плашки «все варианты». */
+    @Nullable
+    default Ing ingAt(int x, int y, int mouseX, int mouseY) {
+        return null;
+    }
+
     /** Подсказка рецепта, если курсор над чем-то, кроме слота. Возвращает true, если подсказка нарисована. */
     default boolean renderTooltip(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
         return false;

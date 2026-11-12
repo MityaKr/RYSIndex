@@ -67,6 +67,7 @@ public final class RyscopeClient {
         indexDelay = -1;
         Indexer.clear();
         Bookmarks.reset();
+        works.repka.ryscope.runtime.RecipeDefaults.reset();
         works.repka.ryscope.runtime.LootSource.clear();
         works.repka.ryscope.runtime.Board.reset();
         works.repka.ryscope.ui.RecipeScreen.clearTabs();
@@ -78,6 +79,7 @@ public final class RyscopeClient {
         works.repka.ryscope.runtime.Groups.reload(manager);
         works.repka.ryscope.runtime.Stages.reload(manager);
         works.repka.ryscope.content.HelpContent.reload(manager);
+        works.repka.ryscope.runtime.RecipeDefaults.reload(manager);
         Indexer.invalidateLanguages();
         if (Minecraft.getInstance().level != null) indexDelay = 2;
     }

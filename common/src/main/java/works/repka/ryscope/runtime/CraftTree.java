@@ -360,6 +360,13 @@ public final class CraftTree {
      * Частичное наличие ингредиентов не учитывается: одна общая доска в рецепте ритуала перевешивала верстак.
      */
     private int defaultChoice(Node node) {
+        // рецепт по умолчанию, который задал игрок или сборка, главнее любых догадок
+        RecipeRef preferred = RecipeDefaults.get(node.stack);
+        if (preferred != null) {
+            for (int i = 0; i < node.options.size(); i++) {
+                if (preferred.matches(node.options.get(i).category, node.options.get(i).recipe)) return i;
+            }
+        }
         int first = -1, own = -1;
         String namespace = node.stack.namespace();
         for (int i = 0; i < node.options.size(); i++) {
@@ -498,6 +505,9 @@ public final class CraftTree {
         if (next < -1) next = n - 1;
         node.choice = next;
         node.children.clear();
+        // выбор в дереве запоминается: следующее дерево и быстрый крафт возьмут тот же рецепт
+        Option chosen = node.chosen();
+        RecipeDefaults.remember(node.stack, chosen == null ? null : chosen.category, chosen == null ? null : chosen.recipe);
         recompute();
     }
 

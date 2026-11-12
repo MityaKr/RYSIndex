@@ -246,6 +246,11 @@ public final class Indexer {
             namespace += " " + shownMod;
             modName += " " + platform.modName(shownMod).toLowerCase(Locale.ROOT);
         }
+        if (foreign != null) {
+            // псевдонимы, которые моды зарегистрировали в JEI: по ним ищет и JEI
+            for (String alias : foreign.aliases(s)) if (!alias.equals(name) && !alt.contains(alias)) alt.add(alias);
+            for (String alias : foreign.modAliases(id.getNamespace())) modName += " " + alias.toLowerCase(Locale.ROOT);
+        }
         List<String> tags = s.tags();
         return new SearchEntry(index, name, alt.toArray(new String[0]), id.getPath(), namespace, modName, tags.toArray(new String[0]));
     }

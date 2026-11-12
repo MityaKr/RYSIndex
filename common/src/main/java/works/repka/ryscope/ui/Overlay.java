@@ -1118,13 +1118,15 @@ public final class Overlay {
     public static boolean foreignKey(Screen screen, int key, int scan) {
         boolean recipes = Keys.matches(Keys.RECIPES, key, scan), uses = Keys.matches(Keys.USES, key, scan);
         boolean bookmark = Keys.matches(Keys.BOOKMARK, key, scan), tree = Keys.matches(Keys.TREE, key, scan);
-        if (!recipes && !uses && !bookmark && !tree) return false;
+        boolean share = Keys.matches(Keys.SHARE, key, scan);
+        if (!recipes && !uses && !bookmark && !tree && !share) return false;
         if (typingElsewhere(screen)) return false;
         Stack stack = foreignStack(screen);
         if (stack == null) return false;
         if (recipes) RecipeScreen.open(stack, Lookup.Mode.RECIPES);
         else if (uses) RecipeScreen.open(stack, Lookup.Mode.USES);
         else if (bookmark) toggleBookmark(stack);
+        else if (share) Share.toChat(stack);
         else TreeScreen.open(stack);
         return true;
     }
@@ -1415,12 +1417,12 @@ public final class Overlay {
             else folderEdit.keyPressed(key, scan, mods);
             return true;
         }
-        if (key == GLFW.GLFW_KEY_H && Screen.hasControlDown() && LIST.visible() && (box.isFocused() || !typingElsewhere(screen))) {
+        if (Keys.matches(Keys.HIDE_QUERY, key, scan) && LIST.visible() && (box.isFocused() || !typingElsewhere(screen))) {
             hideCurrent(box);
             return true;
         }
         if (box.isFocused()) {
-            if (key == GLFW.GLFW_KEY_S && Screen.hasControlDown()) {
+            if (Keys.matches(Keys.SAVE_SEARCH, key, scan)) {
                 toggleSaved(box.getValue().trim());
                 return true;
             }
@@ -1461,8 +1463,8 @@ public final class Overlay {
             }
             browsingHistory = false;
             if (key == GLFW.GLFW_KEY_TAB) autocomplete(box);
-            else if (key == GLFW.GLFW_KEY_PAGE_DOWN) LIST.pageBy(1);
-            else if (key == GLFW.GLFW_KEY_PAGE_UP) LIST.pageBy(-1);
+            else if (Keys.matches(Keys.NEXT_PAGE, key, scan)) LIST.pageBy(1);
+            else if (Keys.matches(Keys.PREV_PAGE, key, scan)) LIST.pageBy(-1);
             else box.keyPressed(key, scan, mods);
             // пока поле в фокусе, клавиши не должны доходить до экрана (иначе «E» закроет инвентарь)
             return true;
@@ -1480,19 +1482,33 @@ public final class Overlay {
             return true;
         }
         if (typingElsewhere(screen)) return false;
-        if (key == GLFW.GLFW_KEY_PAGE_DOWN && LIST.visible()) {
+        // в карточке рецептов страницы листают рецепты, а список только под курсором
+        boolean pagesList = LIST.visible() && (!(screen instanceof RecipeScreen) || LIST.contains(mouseX(), mouseY()));
+        if (Keys.matches(Keys.NEXT_PAGE, key, scan) && pagesList) {
             LIST.pageBy(1);
             return true;
         }
-        if (key == GLFW.GLFW_KEY_PAGE_UP && LIST.visible()) {
+        if (Keys.matches(Keys.PREV_PAGE, key, scan) && pagesList) {
             LIST.pageBy(-1);
             return true;
         }
         double mx = mouseX(), my = mouseY();
         Stack stack = hovered(screen, mx, my);
         if (stack == null) return false;
-        if (key == GLFW.GLFW_KEY_C && Screen.hasControlDown()) {
+        if (Keys.matches(Keys.HIDE, key, scan)) {
+            toggleHidden(stack);
+            return true;
+        }
+        if (Keys.matches(Keys.SHARE, key, scan)) {
+            Share.toChat(stack);
+            return true;
+        }
+        if (Keys.matches(Keys.COPY_ID, key, scan)) {
             copy(stack.id().toString());
+            return true;
+        }
+        // Shift раскладывает максимум: клавиша проверяется без модификаторов
+        if (Keys.matchesRaw(Keys.CRAFT, key, scan) && !Screen.hasControlDown() && !Screen.hasAltDown() && QuickCraft.run(screen, stack, Screen.hasShiftDown())) {
             return true;
         }
         if (Keys.matches(Keys.RECIPES, key, scan)) {
@@ -1562,6 +1578,13 @@ public final class Overlay {
     public static void copy(String text) {
         Minecraft.getInstance().keyboardHandler.setClipboard(text);
         toast(Component.translatable("ryscope.copied", text).getString());
+    }
+
+    private static void toggleHidden(Stack stack) {
+        boolean all = Screen.hasShiftDown();
+        boolean hidden = works.repka.ryscope.runtime.HiddenItems.toggle(stack, all);
+        String name = stack.name().getString();
+        toast(Component.translatable(!hidden ? "ryscope.hidden.item.shown" : all ? "ryscope.hidden.item.all" : "ryscope.hidden.item", name).getString());
     }
 
     private static void toggleBookmark(Stack stack) {

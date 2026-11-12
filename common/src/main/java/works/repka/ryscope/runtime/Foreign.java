@@ -86,6 +86,44 @@ public final class Foreign {
         default ClickArea clickArea(Screen screen, double x, double y) {
             return null;
         }
+
+        /** Другие имена предмета, которые моды дали ему для поиска (старые названия Mekanism). Из потока индексации. */
+        default List<String> aliases(Stack stack) {
+            return List.of();
+        }
+
+        /**
+         * Скрыть ресурс из списка или вернуть его, как Ctrl+клик в режиме правки JEI: запись в общий список скрытого
+         * источника. @param allVariants все варианты предмета, а не только этот @return скрыт ли теперь; null, если
+         * источник так не умеет
+         */
+        @Nullable
+        default Boolean toggleHidden(Stack stack, boolean allVariants) {
+            return null;
+        }
+
+        /**
+         * Метка ресурса для чата, которую источник у получателей превращает в ссылку с подсказкой и рецептами
+         * (у JEI вида [JEI:v1:тип;uid]). @return null, если источник так не умеет
+         */
+        @Nullable
+        default String chatMarker(Stack stack) {
+            return null;
+        }
+
+        /**
+         * Есть ли у категории перенос в это окно (обработчик переноса), без построения рецептов.
+         * @return null, если источник категорию не знает
+         */
+        @Nullable
+        default Boolean transfersTo(net.minecraft.world.inventory.AbstractContainerMenu menu, Category category) {
+            return null;
+        }
+
+        /** Другие имена мода для поиска через @. Из потока индексации. */
+        default java.util.Collection<String> modAliases(String modId) {
+            return List.of();
+        }
     }
 
     /** Нажимаемое место чужого окна: по клику открываются рецепты его категорий. */

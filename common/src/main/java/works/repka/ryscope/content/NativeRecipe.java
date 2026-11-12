@@ -290,6 +290,34 @@ public final class NativeRecipe implements RecipeView {
     }
 
     @Override
+    public Ing ingAt(int x, int y, int mouseX, int mouseY) {
+        for (SlotW s : slots) {
+            int sx = x + slotX(s), sy = y + slotY(s), size = sizeOf(s);
+            if (mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size) return s.ing;
+        }
+        return null;
+    }
+
+    /**
+     * У ячейки с несколькими вариантами к подсказке предмета добавляется, из чего выбор: тег или число вариантов,
+     * как «Принимает любой» в JEI. Обычная ячейка остаётся с подсказкой игры.
+     */
+    @Override
+    public boolean renderTooltip(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
+        Ing ing = ingAt(x, y, mouseX, mouseY);
+        if (ing == null || ing.options.size() < 2) return false;
+        Stack shown = ing.shown(System.currentTimeMillis());
+        if (shown == null) return false;
+        List<net.minecraft.network.chat.Component> lines = new java.util.ArrayList<>(shown.tooltipLines());
+        String tag = ing.tag();
+        lines.add(net.minecraft.network.chat.Component.translatable(tag != null ? "ryscope.ing.tag" : "ryscope.ing.options",
+            tag != null ? "#" + tag : ing.options.size(), ing.options.size()).withStyle(net.minecraft.ChatFormatting.GRAY));
+        lines.add(net.minecraft.network.chat.Component.translatable("ryscope.ing.hint").withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        g.renderTooltip(Minecraft.getInstance().font, lines, shown.item().getTooltipImage(), mouseX, mouseY);
+        return true;
+    }
+
+    @Override
     public Stack stackAt(int x, int y, int mouseX, int mouseY) {
         for (SlotW s : slots) {
             int sx = x + slotX(s), sy = y + slotY(s), size = sizeOf(s);
