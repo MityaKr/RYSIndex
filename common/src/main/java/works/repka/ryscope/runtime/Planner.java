@@ -103,6 +103,8 @@ public final class Planner {
         tree.useInventory = false;
         // и сеть AE2 поток не обеспечит: план считает все шаги
         tree.autocraft = false;
+        // режимы плана сами переставляют рецепты в узлах: смена станций их не сбрасывает
+        tree.followStations = false;
         tree.setAmount(rate);
         pass = 0;
         ready = false;

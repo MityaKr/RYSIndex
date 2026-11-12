@@ -35,6 +35,8 @@ public final class TreeScreen extends ScaledScreen {
     private static final int FOOTER = 52;
     /** Блок «Заказать в сети» над итогом: подпись и ряд плашек. */
     private static final int ORDER_H = 36;
+    /** Строка «Нужны станции» над итогом. */
+    private static final int STATIONS_H = 16;
 
     private record Row(Node node, int y) {}
 
@@ -191,6 +193,7 @@ public final class TreeScreen extends ScaledScreen {
         hits.clip(bodyY, bodyY + bodyH);
         Draw.scissor(g, px + 1, bodyY, px + pw - 1, bodyY + bodyH);
         Node hovered = null;
+        stationTip = null;
         for (int i = 0; i < nodes.size(); i++) {
             int y = bodyY + i * ROW - Math.round(scroll);
             if (y + ROW < bodyY || y > bodyY + bodyH) continue;
@@ -204,6 +207,7 @@ public final class TreeScreen extends ScaledScreen {
         Stack rawHover = renderFooter(g, theme, mx, my);
         Stack orderHover = renderOrdered(g, theme, mx, my);
         if (rawHover == null) rawHover = orderHover;
+        renderStations(g, theme);
         g.pose().pushPose();
         g.pose().translate(0, 0, 300);
         CraftTree.Raw hoveredRaw = rawHover == null ? null : tree.raw.get(rawHover.key());
@@ -214,14 +218,39 @@ public final class TreeScreen extends ScaledScreen {
             g.renderComponentTooltip(Minecraft.getInstance().font, lines, mx, my);
         } else if (rawHover != null) rawHover.renderTooltip(g, mx, my);
         else if (hovered != null && over(mx, my, px + PAD + hovered.depth * 12 + 9, 0, 18, height)) hovered.stack.renderTooltip(g, mx, my);
+        else if (stationTip != null) Kit.tooltip(g, theme, List.of(stationTip, tr("ryscope.tree.no_station.tip")), mx, my);
         else if (autocraftHot) Kit.tooltip(g, theme, List.of(tr("ryscope.tree.autocraft.tip")), mx, my);
         g.pose().popPose();
         Overlay.renderToast(this, g);
     }
 
-    /** Высота итога внизу окна: с блоком «Заказать в сети», если сеть что-то закажет. */
+    /** Высота итога внизу окна: с блоком «Заказать в сети», если сеть что-то закажет, и строкой «Нужны станции». */
     private int footerH() {
-        return FOOTER + (tree.ready() && !tree.ordered.isEmpty() ? ORDER_H : 0);
+        if (!tree.ready()) return FOOTER;
+        return FOOTER + (tree.ordered.isEmpty() ? 0 : ORDER_H) + (tree.missingStations.isEmpty() ? 0 : STATIONS_H);
+    }
+
+    /** Подсказка у значка «нет станции» под курсором, null, если курсор не на нём. */
+    @Nullable
+    private String stationTip;
+
+    /** Чем назвать станцию категории: её первым катализатором, без него названием категории. */
+    static String stationName(Category c) {
+        return c.stations.isEmpty() ? c.title.getString() : c.stations.get(0).name().getString();
+    }
+
+    /** «Нужны станции: …» по категориям, станций которых у игрока нет. */
+    static String missingStations(CraftTree t) {
+        java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+        for (Category c : t.missingStations) names.add(stationName(c));
+        return Component.translatable("ryscope.tree.need_stations", String.join(", ", names)).getString();
+    }
+
+    private void renderStations(GuiGraphics g, Theme t) {
+        if (tree.missingStations.isEmpty()) return;
+        int sy = py + ph - footerH();
+        Kit.divider(g, t, px + 0.5f, sy, pw - 1);
+        Draw.label(g, Draw.ellipsize(missingStations(tree), pw - PAD * 2, 12, Weight.REGULAR), px + PAD, sy + 8.5f, 12, Weight.REGULAR, t.c("state.warn"));
     }
 
     /** Под курсором переключатель автокрафта: показать подсказку. */
@@ -363,6 +392,7 @@ public final class TreeScreen extends ScaledScreen {
             } catch (Throwable ignored) {
                 g.pose().popPose();
             }
+            noStation(g, t, n, (int) right - 13, y, mx, my);
             right -= 17;
         }
         if (!readOnly && n.options != null && !n.options.isEmpty() && !have && !n.ordered) {
@@ -387,6 +417,7 @@ public final class TreeScreen extends ScaledScreen {
                 } catch (Throwable ignored) {
                     g.pose().popPose();
                 }
+                noStation(g, t, n, (int) right - 13, y, mx, my);
                 right -= 17;
             }
         }
@@ -398,6 +429,18 @@ public final class TreeScreen extends ScaledScreen {
         String label = n.needed + "× " + n.stack.name().getString();
         Draw.label(g, Draw.ellipsize(label, right - (x + 29), 13, Weight.REGULAR), x + 29, cy, 13, Weight.REGULAR, have ? t.c("text.muted") : t.c("text.body"));
         return hov;
+    }
+
+    /** Значок «нет станции» на углу значка категории узла; под курсором запоминает подсказку. */
+    private void noStation(GuiGraphics g, Theme t, Node n, int ix, int y, int mx, int my) {
+        if (!n.stationMissing || n.chosen() == null) return;
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 200);
+        Kit.indicator(g, t, ix + 8, y + 2.5f, 5, Kit.State.NONE, -1, -1);
+        g.pose().popPose();
+        if (over(mx, my, ix, y + 3, 13, 14)) {
+            stationTip = Component.translatable("ryscope.tree.no_station", stationName(n.chosen().category)).getString();
+        }
     }
 
     // --- все цели ---
@@ -415,6 +458,7 @@ public final class TreeScreen extends ScaledScreen {
 
     /** Вкладка «Все цели»: общая сумма по доске таблицей сырья или деревом. */
     private void drawAll(GuiGraphics g, Theme t, int mx, int my) {
+        stationTip = null;
         Board.wantCombined();
         CraftTree sum = Board.combined();
         renderAllHeader(g, t, sum, mx, my);
@@ -434,6 +478,7 @@ public final class TreeScreen extends ScaledScreen {
         g.pose().pushPose();
         g.pose().translate(0, 0, 300);
         if (hover != null) hover.renderTooltip(g, mx, my);
+        else if (stationTip != null) Kit.tooltip(g, t, List.of(stationTip, tr("ryscope.tree.no_station.tip")), mx, my);
         else if (autocraftHot) Kit.tooltip(g, t, List.of(tr("ryscope.tree.autocraft.tip")), mx, my);
         g.pose().popPose();
         Overlay.renderToast(this, g);
@@ -570,14 +615,15 @@ public final class TreeScreen extends ScaledScreen {
             ly += 9;
         }
         String extra = "";
-        if (sum.incomplete) extra = tr("ryscope.tree.all_incomplete.tip");
+        if (!sum.missingStations.isEmpty()) extra = missingStations(sum);
+        if (sum.incomplete) extra = extra.isEmpty() ? tr("ryscope.tree.all_incomplete.tip") : extra + " · " + tr("ryscope.tree.all_incomplete.tip");
         if (!sum.ordered.isEmpty() && sum.orderedAt > 0) {
             String at = Component.translatable("ryscope.tree.order_at", clock(sum.orderedAt)).getString();
             extra = extra.isEmpty() ? Component.translatable("ryscope.tree.col.order").getString() + ": " + at : extra + " · " + at;
         }
         if (!extra.isEmpty()) {
             Draw.label(g, Draw.ellipsize(extra, pw - PAD * 2, 12, Weight.REGULAR), px + PAD, fy + 40, 12, Weight.REGULAR,
-                sum.incomplete ? t.c("state.warn") : t.c("text.dim"));
+                sum.incomplete || !sum.missingStations.isEmpty() ? t.c("state.warn") : t.c("text.dim"));
         }
     }
 

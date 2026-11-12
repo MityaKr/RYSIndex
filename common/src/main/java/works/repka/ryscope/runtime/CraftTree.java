@@ -64,6 +64,8 @@ public final class CraftTree {
          */
         @org.jetbrains.annotations.Nullable
         public Stack routeFrom;
+        /** Станции выбранного рецепта у игрока нет ({@link Stations.State#MISSING}). */
+        public boolean stationMissing;
 
         Node(Stack stack, Node parent) {
             this.stack = stack;
@@ -226,6 +228,15 @@ public final class CraftTree {
     /** Когда прочитаны данные «сеть сделает», по которым посчитан {@link #ordered}, мс; 0, если не учитывались. */
     public long orderedAt;
     public final Set<Category> stations = new LinkedHashSet<>();
+    /** Категории выбранных рецептов, станций которых у игрока нет: «Нужны станции» в итоге. */
+    public final Set<Category> missingStations = new LinkedHashSet<>();
+    /**
+     * Сбрасывать выбор по умолчанию в узлах, когда меняются станции игрока ({@link Stations#version}): выбор игрока
+     * остаётся. План выключает: он сам переставляет рецепты в узлах.
+     */
+    public boolean followStations = true;
+    /** Версия станций, по которой выбраны рецепты в узлах. */
+    private int stationsVersion = Integer.MIN_VALUE;
     public int steps;
     public int maxDepth;
     /** Узлы вне раскрытых игроком веток: их общий предел MAX_NODES. */
@@ -444,6 +455,13 @@ public final class CraftTree {
         ordered.clear();
         leaves.clear();
         incomplete = false;
+        missingStations.clear();
+        int stationsNow = Stations.version();
+        if (stationsNow != stationsVersion) {
+            // станции изменились: рецепты по умолчанию выбираются заново, выбор игрока лежит в picks и вернётся
+            if (followStations && stationsVersion != Integer.MIN_VALUE) resetChoices();
+            stationsVersion = stationsNow;
+        }
         craftSet = autocraft && Config.get().treeAutocraft ? Ae2Terminal.craftableNow() : Set.of();
         orderedAt = craftSet.isEmpty() ? 0 : Ae2Terminal.craftableAt();
         stations.clear();
@@ -466,6 +484,13 @@ public final class CraftTree {
         }
         // сам целевой предмет из инвентаря не вычитаем: игрок спрашивает, как сделать ещё
         visit(root, false);
+    }
+
+    /** Узлы строятся заново с выбором по picks и правилам по умолчанию. */
+    private void resetChoices() {
+        if (tops.isEmpty()) root.choice = -2;
+        root.children.clear();
+        expanded.clear();
     }
 
     /** Корень общей суммы: цели по порядку доски делят один запас. */
@@ -515,6 +540,7 @@ public final class CraftTree {
         node.fromStorage = 0;
         node.ordered = false;
         node.routeFrom = null;
+        node.stationMissing = false;
         if (takeFromInventory) {
             long have = pool.getOrDefault(key, 0L);
             long use = Math.min(have, node.needed);
@@ -579,6 +605,10 @@ public final class CraftTree {
         node.crafts = (remaining + perCraft - 1) / perCraft;
         steps++;
         stations.add(option.category);
+        if (Stations.state(option.category) == Stations.State.MISSING) {
+            node.stationMissing = true;
+            missingStations.add(option.category);
+        }
 
         // одинаковые ингредиенты рецепта объединяются в один дочерний узел
         Map<Object, long[]> totals = new LinkedHashMap<>();
@@ -855,12 +885,16 @@ public final class CraftTree {
      * Какой рецепт взять по умолчанию. По порядку:
      * <ol>
      *   <li>рецепт, для которого у игрока есть все ингредиенты;</li>
-     *   <li>«родной» рецепт: из того же мода, что и сам предмет (для ванильного предмета это ванильный рецепт);</li>
-     *   <li>если родного нет, а предмет добывается в мире (дроп, лут), он считается сырьём: в больших сборках
+     *   <li>по станциям ({@link Stations}): сначала способы на станции, которая у игрока есть, потом на неизвестной
+     *       (мультиблоки, категории без катализатора), способ на станции, которой нет, идёт последним;</li>
+     *   <li>среди способов одного уровня «родной» рецепт: из того же мода, что и сам предмет (для ванильного
+     *       предмета это ванильный рецепт);</li>
+     *   <li>если родного нет совсем, а предмет добывается в мире (дроп, лут), он считается сырьём: в больших сборках
      *       у нити или кости десятки рецептов из чужих модов, и дерево уходило в них вместо «убить паука»;</li>
-     *   <li>иначе первый необратимый: варианты идут в порядке категорий, верстак первым.</li>
+     *   <li>иначе первый необратимый лучшего уровня: варианты идут в порядке категорий, верстак первым.</li>
      * </ol>
      * Частичное наличие ингредиентов не учитывается: одна общая доска в рецепте ритуала перевешивала верстак.
+     * Порядок вариантов в узле от станций не меняется: меняется только выбор по умолчанию.
      */
     private int defaultChoice(Node node) {
         // рецепт по умолчанию, который задал игрок или сборка, главнее любых догадок
@@ -870,13 +904,25 @@ public final class CraftTree {
                 if (preferred.matches(node.options.get(i).category, node.options.get(i).recipe)) return i;
             }
         }
-        int first = -1, own = -1;
+        // уровень способа: станция есть 0, неизвестно 1, нет 2; внутри уровня родной рецепт раньше чужого
+        int best = -1, bestScore = Integer.MAX_VALUE;
+        boolean anyOwn = false;
         String namespace = node.stack.namespace();
         for (int i = 0; i < node.options.size(); i++) {
             Option o = node.options.get(i);
             if (o.reversible) continue;
-            if (first < 0) first = i;
-            if (own < 0 && o.recipe.id() != null && o.recipe.id().getNamespace().equals(namespace)) own = i;
+            boolean isOwn = o.recipe.id() != null && o.recipe.id().getNamespace().equals(namespace);
+            anyOwn |= isOwn;
+            int tier = switch (Stations.state(o.category)) {
+                case OWNED -> 0;
+                case UNKNOWN -> 1;
+                case MISSING -> 2;
+            };
+            int score = tier * 2 + (isOwn ? 0 : 1);
+            if (score < bestScore) {
+                bestScore = score;
+                best = i;
+            }
             int total = 0, have = 0;
             for (Ing ing : o.recipe.inputs()) {
                 if (ing.isEmpty()) continue;
@@ -890,9 +936,9 @@ public final class CraftTree {
             }
             if (total > 0 && have == total) return i;
         }
-        if (own >= 0) return own;
-        if (!isTop(node) && node.sources != null && !node.sources.isEmpty()) return -1;
-        return first;
+        if (best >= 0 && bestScore % 2 == 0) return best;
+        if (!anyOwn && !isTop(node) && node.sources != null && !node.sources.isEmpty()) return -1;
+        return best;
     }
 
     // --- кратчайший путь ---
@@ -1055,6 +1101,7 @@ public final class CraftTree {
     public static long inputsVersion() {
         long h = Config.get().treeAutocraft ? 1 : 0;
         h = h * 1_000_003L + Ae2Terminal.craftableVersion();
+        h = h * 1_000_003L + Stations.version();
         return h;
     }
 }
