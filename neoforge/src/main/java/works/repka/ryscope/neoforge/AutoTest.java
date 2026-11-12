@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("batch".equals(System.getProperty("ryscope.autotest"))) {
+            buildBatch();
+            return;
+        }
         if ("searchload".equals(System.getProperty("ryscope.autotest"))) {
             buildSearchLoad();
             return;
@@ -1453,6 +1457,42 @@ final class AutoTest {
         }
         step("history: report", () -> RYScope.LOG.info("[supply] история поиска:{}", seen), 2);
         step("history: done", () -> searchKey(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE), 2);
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    private static long batchFrames;
+
+    /** Пачка кора: вызовы отрисовки кора за кадр и время кадра со старым режимом и с пачкой, снимки обоих. */
+    private static void buildBatch() {
+        step("batch: setup", () -> {
+            mc().options.enableVsync().set(false);
+            mc().options.framerateLimit().set(260);
+            mc().getWindow().updateVsync(false);
+            ThemeManager.select("ryscore:slate");
+        }, 20);
+        String[][] screens = {{"recipes", "окно рецептов"}, {"inventory", "инвентарь с панелями"}};
+        for (String[] screen : screens) {
+            step("batch: open " + screen[0], () -> {
+                if (screen[0].equals("recipes")) RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES);
+                else mc().setScreen(new InventoryScreen(mc().player));
+            }, 60);
+            for (boolean immediate : new boolean[] {true, false}) {
+                String mode = immediate ? "сразу" : "пачкой";
+                step("batch: " + screen[0] + " " + mode, () -> {
+                    works.repka.ryscore.ui.Batch.immediate = immediate;
+                    framesReset();
+                    works.repka.ryscore.ui.Batch.takeDrawCalls();
+                    batchFrames = frames;
+                }, 200);
+                step("batch: report " + screen[0] + " " + mode, () -> {
+                    long n = Math.max(1, frames - batchFrames);
+                    RYScope.LOG.info("[batch] {}, {}: вызовов кора за кадр {}, {}", screen[1], mode,
+                        works.repka.ryscore.ui.Batch.takeDrawCalls() / n, framesReport());
+                }, 2);
+                shot("batch_" + screen[0] + (immediate ? "_old" : "_new"));
+            }
+        }
+        step("batch: done", () -> works.repka.ryscore.ui.Batch.immediate = false, 2);
         step("quit", () -> mc().stop(), 0);
     }
 
