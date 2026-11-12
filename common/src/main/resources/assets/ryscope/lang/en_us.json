@@ -125,6 +125,7 @@
   "ryscope.board.added": "Goal pinned: shown on screen while you play",
   "ryscope.board.removed": "Goal removed",
   "ryscope.board.ready": "Everything is in your inventory",
+  "ryscope.board.computing": "Calculating",
   "ryscope.board.more": "and %s more",
   "ryscope.settings.board": "Pinned goals on screen",
   "ryscope.settings.board.note": "Shows what is still missing for the goals pinned in the crafting tree",

@@ -138,6 +138,12 @@ public final class JeiRecipeView<T> implements RecipeView {
         if (layout != null) layout.tick();
     }
 
+    /** Раскладка со всеми слотами и виджетами нужна только для показа: при следующем показе она соберётся заново. */
+    @Override
+    public void release() {
+        layout = null;
+    }
+
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         IRecipeLayoutDrawable<T> l = layout();

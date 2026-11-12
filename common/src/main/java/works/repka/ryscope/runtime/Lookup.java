@@ -22,12 +22,21 @@ public final class Lookup {
         Snapshot snap = Indexer.snapshot();
         Map<Category, List<RecipeView>> groups = new LinkedHashMap<>();
         List<Snapshot.Entry> entries = mode == Mode.RECIPES ? snap.producing(stack) : snap.consuming(stack);
-        // сначала категории в их порядке
-        for (Category c : snap.categories) {
-            for (Snapshot.Entry e : entries) {
-                if (!e.category().equals(c)) continue;
-                if (!matches(e.recipe(), stack, mode)) continue;
-                groups.computeIfAbsent(c, k -> new ArrayList<>()).add(e.recipe());
+        // подтип ресурса считается один раз на запрос, а не на каждый рецепт
+        Foreign.Source subtypes = Foreign.get();
+        Object want = subtypes == null ? null : subtypes.subtypeUid(stack);
+        // JEI не знает подтипа (мод его не зарегистрировал), но у предмета свои данные: сверяем данные целиком
+        boolean byData = want == null && stack instanceof works.repka.ryscope.model.ItemRes focus && !focus.stack.getComponentsPatch().isEmpty();
+        // один проход по рецептам ресурса, затем категории в их порядке
+        Map<Category, List<RecipeView>> matched = new java.util.HashMap<>();
+        for (Snapshot.Entry e : entries) {
+            if (!matches(e.recipe(), stack, mode, subtypes, want, byData)) continue;
+            matched.computeIfAbsent(e.category(), k -> new ArrayList<>()).add(e.recipe());
+        }
+        if (!matched.isEmpty()) {
+            for (Category c : snap.categories) {
+                List<RecipeView> list = matched.get(c);
+                if (list != null) groups.put(c, list);
             }
         }
         if (mode == Mode.USES) {
@@ -146,11 +155,7 @@ public final class Lookup {
      * Рецепт подходит к ресурсу с учётом подтипа: контроллер «Улья-матки» не путается с остальными контроллерами,
      * книга Patchouli с другими книгами. Ингредиент без данных («любой контроллер») подходит всем подтипам.
      */
-    private static boolean matches(RecipeView recipe, Stack stack, Mode mode) {
-        Foreign.Source foreign = Foreign.get();
-        Object want = foreign == null ? null : foreign.subtypeUid(stack);
-        // JEI не знает подтипа (мод его не зарегистрировал), но у предмета свои данные: сверяем данные целиком
-        boolean byData = want == null && stack instanceof works.repka.ryscope.model.ItemRes focus && !focus.stack.getComponentsPatch().isEmpty();
+    private static boolean matches(RecipeView recipe, Stack stack, Mode mode, Foreign.Source foreign, Object want, boolean byData) {
         if (mode == Mode.RECIPES) {
             for (Stack o : recipe.outputs()) {
                 if (o.key().equals(stack.key()) && sameKind(o, stack, want, byData, foreign)) return true;
