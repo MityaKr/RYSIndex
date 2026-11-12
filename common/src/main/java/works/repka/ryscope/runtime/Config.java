@@ -47,12 +47,16 @@ public final class Config {
     public boolean replaceFtbSidebar = true;
     /** Учитывать в дереве крафта и на доске то, что игрок видел в хранилищах рядом. */
     public boolean countStorages = true;
+    /** Дерево крафта не раскрывает то, что умеет делать сеть AE2, а пишет это в «Заказать в сети». */
+    public boolean treeAutocraft = true;
     /** Радиус в блоках, в котором запомненные хранилища считаются доступными. */
     public int storageRadius = 32;
     /** Сохранённые поисковые запросы. */
     public java.util.List<String> savedSearches = new java.util.ArrayList<>();
     /** Показывать закреплённые цели поверх мира. */
     public boolean boardHud = true;
+    /** Стикеры целей: "goals" (по стикеру на цель) или "sum" (один стикер с общей суммой по всем целям). */
+    public String stickerMode = "goals";
     /** В каких единицах показывать энергию: FE, RF, J, EU. */
     public String energyUnit = "FE";
     /** Где хранить закладки и цели: "global" (общие) или "world" (свои для каждого мира и сервера). */
@@ -125,6 +129,7 @@ public final class Config {
             // повторы одного запроса: убранный крестиком или Ctrl+Z запрос иначе продолжает скрывать
             instance.hiddenQueries = new ArrayList<>(new java.util.LinkedHashSet<>(instance.hiddenQueries));
             if (instance.hiddenItems == null) instance.hiddenItems = new ArrayList<>();
+            if (!"sum".equals(instance.stickerMode)) instance.stickerMode = "goals";
             // записи старого формата ни с чем не совпадают и копятся: компоненты в них строкой с хешами объектов
             if (instance.hiddenItems.removeIf(HiddenItems::legacy)) RYScope.LOG.info("Убраны скрытые предметы в старом формате");
         }

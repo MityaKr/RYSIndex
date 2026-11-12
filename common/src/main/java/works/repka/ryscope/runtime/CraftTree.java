@@ -43,6 +43,8 @@ public final class CraftTree {
         public Ing ing;
         public long needed;
         public long fromInventory;
+        /** Часть {@link #fromInventory}, взятая из запомненных хранилищ, а не из инвентаря. */
+        public long fromStorage;
         /** Сколько раз выполнить выбранный рецепт. */
         public long crafts;
         public List<Option> options;
@@ -54,6 +56,16 @@ public final class CraftTree {
         public String sources = "";
         /** Рецепт выбран, но ветка не раскрыта: дерево упёрлось в предел глубины или числа узлов. */
         public boolean truncated;
+        /** Остаток не крафтится вручную: его закажет сеть AE2 (на предмет есть шаблон), ветка не раскрывается. */
+        public boolean ordered;
+        /**
+         * В общей сумме целей: рецепт этого ресурса взят из маршрута цели выше на доске, хотя у другой цели выбран
+         * другой. null, если спора не было.
+         */
+        @org.jetbrains.annotations.Nullable
+        public Stack routeFrom;
+        /** Станции выбранного рецепта у игрока нет ({@link Stations.State#MISSING}). */
+        public boolean stationMissing;
 
         Node(Stack stack, Node parent) {
             this.stack = stack;
@@ -184,11 +196,47 @@ public final class CraftTree {
         }
     }
 
+    /**
+     * Строка итога: всё, что дерево берёт как есть (сырьё, заказ в сети, готовое из запасов), с тем, откуда оно.
+     * {@code need = inventory + storage + ordered + left}.
+     */
+    public static final class Leaf {
+        public final Stack stack;
+        public long need, inventory, storage, ordered, left;
+        public boolean truncated;
+
+        Leaf(Stack stack) {
+            this.stack = stack;
+        }
+    }
+
     public final Node root;
     public long amount = 1;
     public boolean useInventory = true;
     public final Map<Object, Raw> raw = new LinkedHashMap<>();
+    /** Итог по всему, что дерево берёт как есть: для таблицы общей суммы целей. */
+    public final Map<Object, Leaf> leaves = new LinkedHashMap<>();
+    /** Дерево упёрлось в предел числа узлов: итог неполный. */
+    public boolean incomplete;
+    /** Что закажет сеть AE2: остаток после инвентаря и хранилищ, по предметам. */
+    public final Map<Object, Raw> ordered = new LinkedHashMap<>();
+    /**
+     * Учитывать автокрафт AE2, если он включён в настройках ({@link Config#treeAutocraft}). План выключает:
+     * он считает производство с нуля.
+     */
+    public boolean autocraft = true;
+    /** Когда прочитаны данные «сеть сделает», по которым посчитан {@link #ordered}, мс; 0, если не учитывались. */
+    public long orderedAt;
     public final Set<Category> stations = new LinkedHashSet<>();
+    /** Категории выбранных рецептов, станций которых у игрока нет: «Нужны станции» в итоге. */
+    public final Set<Category> missingStations = new LinkedHashSet<>();
+    /**
+     * Сбрасывать выбор по умолчанию в узлах, когда меняются станции игрока ({@link Stations#version}): выбор игрока
+     * остаётся. План выключает: он сам переставляет рецепты в узлах.
+     */
+    public boolean followStations = true;
+    /** Версия станций, по которой выбраны рецепты в узлах. */
+    private int stationsVersion = Integer.MIN_VALUE;
     public int steps;
     public int maxDepth;
     /** Узлы вне раскрытых игроком веток: их общий предел MAX_NODES. */
@@ -198,6 +246,10 @@ public final class CraftTree {
     /** Сколько узлов уже обойдено под каждым раскрытым узлом: у каждой раскрытой ветки свой предел MAX_NODES / 2. */
     private final Map<Node, Integer> expandedCount = new java.util.IdentityHashMap<>();
     private Map<Object, Long> pool;
+    /** Сколько из {@link #pool} лежит в инвентаре: оттуда берётся в первую очередь, остальное из хранилищ. */
+    private Map<Object, Long> inventoryPool;
+    /** Что сеть умеет делать, на время одного прохода: весь проход считает по одним данным. */
+    private Set<Item> craftSet = Set.of();
 
     /** Сколько времени за один вызов можно тратить на поиск рецептов, когда дерево строится по частям. */
     private static final long SLICE_NANOS = 10_000_000L;
@@ -223,6 +275,66 @@ public final class CraftTree {
     private final Map<Object, Loaded> loaded = new HashMap<>();
     /** Выбор игрока по id ресурса: действует во всех узлах с этим ресурсом и переживает пересборку ветки. */
     private final Map<String, Pick> picks = new HashMap<>();
+
+    /** Цель общей суммы: что, сколько и по кратчайшему ли пути. */
+    private record Top(Stack stack, long amount, boolean shortest) {}
+
+    /** Цели общей суммы по порядку доски; пусто у обычного дерева. */
+    private final List<Top> tops = new ArrayList<>();
+    /** Ресурсы, о маршруте которых цели спорят: id ресурса и номер цели, чей выбор взят. */
+    private final Map<String, Integer> conflicts = new HashMap<>();
+    /** Предел узлов: у общей суммы больше, по числу целей. */
+    private final int nodeLimit;
+
+    /** Корень общей суммы: не ресурс, а «все цели». */
+    private static final class AllGoals extends Stack {
+        private static final net.minecraft.resources.ResourceLocation ID = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("ryscope", "all_goals");
+
+        @Override
+        public Object key() {
+            return AllGoals.class;
+        }
+
+        @Override
+        public String type() {
+            return "ryscope:all_goals";
+        }
+
+        @Override
+        public net.minecraft.resources.ResourceLocation id() {
+            return ID;
+        }
+
+        @Override
+        public net.minecraft.network.chat.Component name() {
+            return net.minecraft.network.chat.Component.translatable("ryscope.tree.all_goals");
+        }
+
+        @Override
+        public void render(net.minecraft.client.gui.GuiGraphics g, int x, int y) {}
+
+        @Override
+        public List<net.minecraft.network.chat.Component> tooltipLines() {
+            return List.of(name());
+        }
+
+        @Override
+        public List<String> tags() {
+            return List.of();
+        }
+
+        @Override
+        public boolean same(Stack other) {
+            return other instanceof AllGoals;
+        }
+
+        @Override
+        public Stack copy() {
+            AllGoals s = new AllGoals();
+            s.amount = amount;
+            return s;
+        }
+    }
 
     public CraftTree(Stack target) {
         this(target, false);
@@ -251,6 +363,64 @@ public final class CraftTree {
         this.root = new Node(target.withAmount(1), null);
         this.deferred = deferred;
         this.slice = sliceNanos;
+        this.nodeLimit = MAX_NODES;
+    }
+
+    /**
+     * Общая сумма по целям доски: синтетический корень, его дети это цели со своими количествами. Общий запас
+     * инвентаря и хранилищ делится между ветками, общие промежуточные предметы считаются один раз. Маршруты целей
+     * сливаются; если две цели выбрали для одного ресурса разные рецепты, берётся выбор цели выше на доске, а у узла
+     * ставится {@link Node#routeFrom}. Строится по частям, как дерево цели: первый шаг делает вызывающий.
+     */
+    public CraftTree(List<Board.Goal> goals, long sliceNanos) {
+        this.root = new Node(new AllGoals(), null);
+        this.deferred = true;
+        this.slice = sliceNanos;
+        this.ready = false;
+        this.nodeLimit = MAX_NODES * Math.max(1, Math.min(goals.size(), 4));
+        Map<String, Integer> owner = new HashMap<>();
+        for (int i = 0; i < goals.size(); i++) {
+            Board.Goal goal = goals.get(i);
+            Route route = goal.route;
+            tops.add(new Top(goal.stack.withAmount(1), Math.max(1, Math.min(9999, goal.amount)), route != null && route.shortest));
+            if (route == null) continue;
+            for (Map.Entry<String, Pick> e : route.picks.entrySet()) {
+                Pick known = picks.get(e.getKey());
+                if (known == null) {
+                    picks.put(e.getKey(), e.getValue());
+                    owner.put(e.getKey(), i);
+                } else if (!known.same(e.getValue())) {
+                    // побеждает цель выше на доске
+                    conflicts.putIfAbsent(e.getKey(), owner.get(e.getKey()));
+                }
+            }
+        }
+        root.options = List.of();
+        root.choice = -1;
+    }
+
+    /** Это общая сумма целей, а не дерево одного предмета. */
+    public boolean combined() {
+        return !tops.isEmpty();
+    }
+
+    /** Сколько целей в общей сумме. */
+    public int goalCount() {
+        return tops.size();
+    }
+
+    /** Узел, который считается корнем своего дерева: сам корень или цель общей суммы. */
+    private boolean isTop(Node node) {
+        return node.parent == null || (node.parent == root && !tops.isEmpty());
+    }
+
+    /** Кратчайший ли путь для узла: у общей суммы флаг маршрута той цели, в чьей ветке узел. */
+    private boolean shortestFor(Node node) {
+        if (tops.isEmpty()) return shortest;
+        Node n = node;
+        while (n.parent != null && n.parent != root) n = n.parent;
+        int index = root.children.indexOf(n);
+        return index >= 0 && index < tops.size() ? tops.get(index).shortest() : shortest;
     }
 
     /** Перенимает уже найденные рецепты у другого дерева того же предмета: пересчёт идёт почти мгновенно. */
@@ -282,55 +452,147 @@ public final class CraftTree {
 
     private void compute() {
         raw.clear();
+        ordered.clear();
+        leaves.clear();
+        incomplete = false;
+        missingStations.clear();
+        int stationsNow = Stations.version();
+        if (stationsNow != stationsVersion) {
+            // станции изменились: рецепты по умолчанию выбираются заново, выбор игрока лежит в picks и вернётся
+            if (followStations && stationsVersion != Integer.MIN_VALUE) resetChoices();
+            stationsVersion = stationsNow;
+        }
+        craftSet = autocraft && Config.get().treeAutocraft ? Ae2Terminal.craftableNow() : Set.of();
+        orderedAt = craftSet.isEmpty() ? 0 : Ae2Terminal.craftableAt();
         stations.clear();
         steps = 0;
         maxDepth = 0;
         nodeCount = 0;
         expandedCount.clear();
         pool = new HashMap<>();
+        inventoryPool = new HashMap<>();
         if (useInventory && InventoryView.tracking()) {
             for (Map.Entry<Item, Integer> e : InventoryView.snapshot().entrySet()) pool.put(e.getKey(), (long) e.getValue());
+            inventoryPool.putAll(pool);
             // то, что игрок видел в хранилищах рядом, тоже считается имеющимся
             for (Map.Entry<Item, Long> e : Storages.counts().entrySet()) pool.merge(e.getKey(), e.getValue(), Long::sum);
         }
         root.needed = amount;
+        if (!tops.isEmpty()) {
+            visitGoals();
+            return;
+        }
         // сам целевой предмет из инвентаря не вычитаем: игрок спрашивает, как сделать ещё
         visit(root, false);
+    }
+
+    /** Узлы строятся заново с выбором по picks и правилам по умолчанию. */
+    private void resetChoices() {
+        if (tops.isEmpty()) root.choice = -2;
+        root.children.clear();
+        expanded.clear();
+    }
+
+    /** Корень общей суммы: цели по порядку доски делят один запас. */
+    private void visitGoals() {
+        ++nodeCount;
+        root.crafts = 0;
+        root.fromInventory = 0;
+        List<Node> old = new ArrayList<>(root.children);
+        root.children.clear();
+        try {
+            for (Top top : tops) {
+                Node child = null;
+                for (Node o : old) {
+                    if (o.stack.same(top.stack())) {
+                        child = o;
+                        break;
+                    }
+                }
+                if (child == null) child = new Node(top.stack(), root);
+                child.needed = top.amount();
+                root.children.add(child);
+                // как в дереве одного предмета: саму цель из запасов не вычитаем
+                visit(child, false);
+            }
+        } catch (Pending pending) {
+            for (Node o : old) if (!root.children.contains(o)) root.children.add(o);
+            throw pending;
+        }
+    }
+
+    private Leaf leaf(Node node) {
+        Leaf leaf = leaves.computeIfAbsent(node.stack.key(), k -> new Leaf(node.stack));
+        leaf.need += node.needed;
+        leaf.inventory += node.fromInventory - node.fromStorage;
+        leaf.storage += node.fromStorage;
+        return leaf;
     }
 
     private void visit(Node node, boolean takeFromInventory) {
         // узлы раскрытой ветки считаются по её собственному пределу: иначе добавка ушла бы веткам выше по обходу,
         // а кликнутая осталась бы обрезанной
         Node owner = expandedOwner(node);
-        boolean overBudget = owner != null ? expandedCount.merge(owner, 1, Integer::sum) >= MAX_NODES / 2 : ++nodeCount >= MAX_NODES;
+        boolean overBudget = owner != null ? expandedCount.merge(owner, 1, Integer::sum) >= MAX_NODES / 2 : ++nodeCount >= nodeLimit;
         maxDepth = Math.max(maxDepth, node.depth);
         Object key = node.stack.key();
         node.fromInventory = 0;
+        node.fromStorage = 0;
+        node.ordered = false;
+        node.routeFrom = null;
+        node.stationMissing = false;
         if (takeFromInventory) {
             long have = pool.getOrDefault(key, 0L);
             long use = Math.min(have, node.needed);
             if (use > 0) {
                 pool.put(key, have - use);
                 node.fromInventory = use;
+                // сначала то, что в инвентаре, потом запомненные хранилища
+                long inInventory = inventoryPool.getOrDefault(key, 0L);
+                long fromInventory = Math.min(inInventory, use);
+                if (fromInventory > 0) inventoryPool.put(key, inInventory - fromInventory);
+                node.fromStorage = use - fromInventory;
             }
         }
         long remaining = node.remaining();
         if (remaining == 0) {
             node.children.clear();
             node.crafts = 0;
+            leaf(node);
+            return;
+        }
+        // сеть делает этот предмет сама: остаток заказывается, ветка не раскрывается. Сам целевой предмет
+        // раскрывается всегда: игрок спрашивает, из чего он делается
+        if (!isTop(node) && key instanceof Item item && craftSet.contains(item)) {
+            node.ordered = true;
+            node.truncated = false;
+            node.children.clear();
+            node.crafts = 0;
+            ordered.computeIfAbsent(key, k -> new Raw(node.stack)).need += remaining;
+            leaf(node).ordered += remaining;
             return;
         }
         if (node.options == null) loadOptions(node);
         if (node.choice == -2) node.choice = initialChoice(node);
+        if (!conflicts.isEmpty()) {
+            Integer from = conflicts.get(node.stack.id().toString());
+            if (from != null) node.routeFrom = tops.get(from).stack();
+        }
         Option option = node.chosen();
-        boolean cut = option != null && (node.depth - expandedBase(node) >= MAX_DEPTH || overBudget);
+        // у целей общей суммы глубина считается от них самих, а не от синтетического корня
+        int base = Math.max(expandedBase(node), tops.isEmpty() ? 0 : 1);
+        boolean cut = option != null && (node.depth - base >= MAX_DEPTH || overBudget);
         node.truncated = cut;
+        if (cut && overBudget) incomplete = true;
         if (option == null || cut) {
             node.children.clear();
             node.crafts = 0;
             Raw r = raw.computeIfAbsent(key, k -> new Raw(node.stack));
             r.need += remaining;
             r.truncated |= cut;
+            Leaf leaf = leaf(node);
+            leaf.left += remaining;
+            leaf.truncated |= cut;
             return;
         }
         long perCraft = 1;
@@ -343,6 +605,10 @@ public final class CraftTree {
         node.crafts = (remaining + perCraft - 1) / perCraft;
         steps++;
         stations.add(option.category);
+        if (Stations.state(option.category) == Stations.State.MISSING) {
+            node.stationMissing = true;
+            missingStations.add(option.category);
+        }
 
         // одинаковые ингредиенты рецепта объединяются в один дочерний узел
         Map<Object, long[]> totals = new LinkedHashMap<>();
@@ -387,7 +653,7 @@ public final class CraftTree {
             if (pick.raw()) return -1;
             for (int i = 0; i < node.options.size(); i++) if (pick.matches(node.options.get(i).recipe)) return i;
         }
-        return shortest ? shortestChoice(node) : defaultChoice(node);
+        return shortestFor(node) ? shortestChoice(node) : defaultChoice(node);
     }
 
     /**
@@ -619,12 +885,16 @@ public final class CraftTree {
      * Какой рецепт взять по умолчанию. По порядку:
      * <ol>
      *   <li>рецепт, для которого у игрока есть все ингредиенты;</li>
-     *   <li>«родной» рецепт: из того же мода, что и сам предмет (для ванильного предмета это ванильный рецепт);</li>
-     *   <li>если родного нет, а предмет добывается в мире (дроп, лут), он считается сырьём: в больших сборках
+     *   <li>по станциям ({@link Stations}): сначала способы на станции, которая у игрока есть, потом на неизвестной
+     *       (мультиблоки, категории без катализатора), способ на станции, которой нет, идёт последним;</li>
+     *   <li>среди способов одного уровня «родной» рецепт: из того же мода, что и сам предмет (для ванильного
+     *       предмета это ванильный рецепт);</li>
+     *   <li>если родного нет совсем, а предмет добывается в мире (дроп, лут), он считается сырьём: в больших сборках
      *       у нити или кости десятки рецептов из чужих модов, и дерево уходило в них вместо «убить паука»;</li>
-     *   <li>иначе первый необратимый: варианты идут в порядке категорий, верстак первым.</li>
+     *   <li>иначе первый необратимый лучшего уровня: варианты идут в порядке категорий, верстак первым.</li>
      * </ol>
      * Частичное наличие ингредиентов не учитывается: одна общая доска в рецепте ритуала перевешивала верстак.
+     * Порядок вариантов в узле от станций не меняется: меняется только выбор по умолчанию.
      */
     private int defaultChoice(Node node) {
         // рецепт по умолчанию, который задал игрок или сборка, главнее любых догадок
@@ -634,13 +904,25 @@ public final class CraftTree {
                 if (preferred.matches(node.options.get(i).category, node.options.get(i).recipe)) return i;
             }
         }
-        int first = -1, own = -1;
+        // уровень способа: станция есть 0, неизвестно 1, нет 2; внутри уровня родной рецепт раньше чужого
+        int best = -1, bestScore = Integer.MAX_VALUE;
+        boolean anyOwn = false;
         String namespace = node.stack.namespace();
         for (int i = 0; i < node.options.size(); i++) {
             Option o = node.options.get(i);
             if (o.reversible) continue;
-            if (first < 0) first = i;
-            if (own < 0 && o.recipe.id() != null && o.recipe.id().getNamespace().equals(namespace)) own = i;
+            boolean isOwn = o.recipe.id() != null && o.recipe.id().getNamespace().equals(namespace);
+            anyOwn |= isOwn;
+            int tier = switch (Stations.state(o.category)) {
+                case OWNED -> 0;
+                case UNKNOWN -> 1;
+                case MISSING -> 2;
+            };
+            int score = tier * 2 + (isOwn ? 0 : 1);
+            if (score < bestScore) {
+                bestScore = score;
+                best = i;
+            }
             int total = 0, have = 0;
             for (Ing ing : o.recipe.inputs()) {
                 if (ing.isEmpty()) continue;
@@ -654,9 +936,9 @@ public final class CraftTree {
             }
             if (total > 0 && have == total) return i;
         }
-        if (own >= 0) return own;
-        if (node.parent != null && node.sources != null && !node.sources.isEmpty()) return -1;
-        return first;
+        if (best >= 0 && bestScore % 2 == 0) return best;
+        if (!anyOwn && !isTop(node) && node.sources != null && !node.sources.isEmpty()) return -1;
+        return best;
     }
 
     // --- кратчайший путь ---
@@ -690,9 +972,10 @@ public final class CraftTree {
     private int shortestChoice(Node node) {
         Set<Object> path = new HashSet<>();
         for (Node n = node.parent; n != null; n = n.parent) path.add(n.stack.key());
-        steps(node.stack, node.parent == null ? 0 : 1, path, node.parent == null);
+        boolean top = isTop(node);
+        steps(node.stack, top ? 0 : 1, path, top);
         RecipeView best = bestMemo.get(node.stack.key());
-        if (best == null) return node.parent != null && costMemo.containsKey(node.stack.key()) ? -1 : defaultChoice(node);
+        if (best == null) return !top && costMemo.containsKey(node.stack.key()) ? -1 : defaultChoice(node);
         for (int i = 0; i < node.options.size(); i++) if (node.options.get(i).recipe == best) return i;
         return defaultChoice(node);
     }
@@ -704,6 +987,8 @@ public final class CraftTree {
     private int steps(Stack stack, int depth, Set<Object> path, boolean target) {
         Object key = stack.key();
         if (!target && pool != null && pool.getOrDefault(key, 0L) > 0) return 0;
+        // то, что закажет сеть, шагов игрока не требует
+        if (!target && craftSet.contains(key)) return 0;
         Integer known = costMemo.get(key);
         if (known != null) return known;
         if (depth >= SHORT_DEPTH || path.contains(key)) return FAR;
@@ -807,5 +1092,16 @@ public final class CraftTree {
 
     public int missingKinds() {
         return raw.size();
+    }
+
+    /**
+     * Всё, от чего зависит выбор и раскрытие узлов помимо рецептов и инвентаря: настройка автокрафта и данные
+     * «сеть сделает». Деревья целей и общая сумма пересобираются, когда это число меняется.
+     */
+    public static long inputsVersion() {
+        long h = Config.get().treeAutocraft ? 1 : 0;
+        h = h * 1_000_003L + Ae2Terminal.craftableVersion();
+        h = h * 1_000_003L + Stations.version();
+        return h;
     }
 }

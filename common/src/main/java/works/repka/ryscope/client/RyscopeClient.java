@@ -89,6 +89,7 @@ public final class RyscopeClient {
         works.repka.ryscope.runtime.Board.reset();
         works.repka.ryscope.ui.RecipeScreen.clearTabs();
         works.repka.ryscope.runtime.Stages.reset();
+        works.repka.ryscope.runtime.Stations.reset();
     }
 
     public static void onResourceReload(ResourceManager manager) {
@@ -106,6 +107,7 @@ public final class RyscopeClient {
         if (mc.level == null) return;
         InventoryView.tick();
         works.repka.ryscope.runtime.Storages.tick();
+        works.repka.ryscope.runtime.Stations.tick();
         works.repka.ryscope.runtime.Board.tick();
         works.repka.ryscope.runtime.Stages.tick();
         works.repka.ryscope.runtime.SearchService.warmTooltips();

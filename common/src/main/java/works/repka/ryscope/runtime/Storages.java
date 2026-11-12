@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
@@ -39,6 +40,10 @@ public final class Storages {
 
     private static final class Seen {
         Map<Item, Long> counts = Map.of();
+        /** Что сеть умеет делать автокрафтом (только у терминалов AE2). */
+        Set<Item> craftable = Set.of();
+        /** Когда терминал читался последний раз, мс. */
+        long readAt;
         boolean network;
         boolean anywhere;
     }
@@ -46,6 +51,12 @@ public final class Storages {
     private static final Map<Key, Seen> SEEN = new LinkedHashMap<>();
     private static volatile Map<Item, Long> merged = Map.of();
     private static volatile int inRange;
+    private static volatile Set<Item> mergedCraftable = Set.of();
+    private static volatile long craftableAt;
+    /** Растёт, только когда меняется само множество «сеть сделает». */
+    private static volatile int craftableVersion;
+    /** Растёт, только когда меняется сумма по хранилищам: по ней узнают, что запас тот же. */
+    private static volatile int version;
 
     private static AbstractContainerMenu trackedMenu;
     private static Key trackedKey;
@@ -64,6 +75,28 @@ public final class Storages {
         return counts().getOrDefault(item, 0L);
     }
 
+    /** Номер содержимого запомненных хранилищ: меняется, только когда меняется сама сумма. */
+    public static int version() {
+        return version;
+    }
+
+    /**
+     * Что умеют делать автокрафтом сети AE2, чьи терминалы игрок открывал: те же правила дальности, что у количеств
+     * (то же измерение и радиус, беспроводной терминал отовсюду). Не зависит от настройки учёта хранилищ.
+     */
+    public static Set<Item> craftable() {
+        return mergedCraftable;
+    }
+
+    /** Когда прочитан самый свежий из учтённых терминалов, мс; 0, если ни одного. */
+    public static long craftableAt() {
+        return craftableAt;
+    }
+
+    public static int craftableVersion() {
+        return craftableVersion;
+    }
+
     /** Сколько запомненных хранилищ сейчас учитывается. */
     public static int inRange() {
         return Config.get().countStorages ? inRange : 0;
@@ -74,8 +107,10 @@ public final class Storages {
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) {
             if (!SEEN.isEmpty()) SEEN.clear();
+            if (!merged.isEmpty()) version++;
             merged = Map.of();
             inRange = 0;
+            setCraftable(Set.of(), 0);
             trackedMenu = null;
             return;
         }
@@ -116,7 +151,8 @@ public final class Storages {
     }
 
     private static void record(Minecraft mc, LocalPlayer player, AbstractContainerMenu menu) {
-        Map<Item, Long> network = Ae2.read(menu);
+        Ae2.Read read = Ae2.read(menu);
+        Map<Item, Long> network = read == null ? null : read.counts();
         Key key = trackedKey;
         if (network != null && key == null) {
             // беспроводной терминал: блока нет, сеть доступна отовсюду
@@ -155,6 +191,9 @@ public final class Storages {
             }
         }
         seen.counts = counts;
+        // при каждом открытии терминала память о шаблонах этой сети перезаписывается
+        seen.craftable = read == null ? Set.of() : read.craftable();
+        if (read != null) seen.readAt = System.currentTimeMillis();
         seen.network = network != null;
         seen.anywhere = trackedAnywhere;
         mergeAge = 20;
@@ -164,6 +203,8 @@ public final class Storages {
         int radius = Math.max(4, Config.get().storageRadius);
         long limit = (long) radius * radius;
         Map<Item, Long> sum = new HashMap<>();
+        Set<Item> craft = new java.util.HashSet<>();
+        long craftAt = 0;
         int used = 0;
         for (Iterator<Map.Entry<Key, Seen>> it = SEEN.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<Key, Seen> e = it.next();
@@ -178,27 +219,54 @@ public final class Storages {
                 }
                 if (key.pos().distToCenterSqr(player.position()) > limit) continue;
             }
+            if (!seen.craftable.isEmpty()) {
+                craft.addAll(seen.craftable);
+                craftAt = Math.max(craftAt, seen.readAt);
+            }
             if (seen.counts.isEmpty()) continue;
             used++;
             for (Map.Entry<Item, Long> c : seen.counts.entrySet()) sum.merge(c.getKey(), c.getValue(), Long::sum);
         }
-        merged = sum;
+        // опубликованную карту не меняем: при той же сумме остаётся прежняя и прежний номер
+        if (!sum.equals(merged)) {
+            merged = sum;
+            version++;
+        }
         inRange = used;
+        setCraftable(craft, craftAt);
+    }
+
+    /** Публикует множество «сеть сделает»; прежний экземпляр не меняется, версия растёт только при другом составе. */
+    private static void setCraftable(Set<Item> craft, long at) {
+        craftableAt = craft.isEmpty() ? 0 : at;
+        if (craft.equals(mergedCraftable)) return;
+        mergedCraftable = craft.isEmpty() ? Set.of() : java.util.Collections.unmodifiableSet(craft);
+        craftableVersion++;
     }
 
     /**
      * Терминал сети AE2: клиент получает полный список содержимого сети, пока терминал открыт.
-     * Читается отражением, без зависимости от AE2. Имена проверены по AE2 19.2.19:
-     * MEStorageMenu.getClientRepo(), IClientRepo.getAllEntries(), GridInventoryEntry.getWhat()/getStoredAmount(),
-     * AEItemKey.getItem().
+     * Читается отражением, без зависимости от AE2. Имена проверены по AE2 19.2.17 и 19.2.19:
+     * MEStorageMenu.getClientRepo(), IClientRepo.getAllEntries(), GridInventoryEntry.getWhat()/getStoredAmount()/
+     * isCraftable(), AEItemKey.getItem().
+     *
+     * Что сеть умеет делать (AE2 19.2.17, декомпиляция): MEStorageMenu.broadcastChanges на сервере шлёт craftables
+     * из getCraftingService().getCraftables(isKeyVisible) в MEInventoryUpdatePacket; клиентский Repo.handleUpdate
+     * держит запись, пока она isMeaningful (есть количество или craftable), поэтому в getAllEntries попадают и
+     * предметы с нулём в сети, на которые есть шаблон. showsCraftables() внутри AE2 не переопределяется; у
+     * обесточенной сети список пуст.
      */
     private static final class Ae2 {
+        record Read(Map<Item, Long> counts, Set<Item> craftable) {}
+
         private static boolean broken;
         private static Class<?> menuClass;
         private static Method getClientRepo, getAllEntries, getWhat, getStoredAmount, getItem;
+        @org.jetbrains.annotations.Nullable
+        private static Method isCraftable;
         private static Class<?> itemKeyClass;
 
-        static Map<Item, Long> read(AbstractContainerMenu menu) {
+        static Read read(AbstractContainerMenu menu) {
             if (broken) return null;
             try {
                 if (menuClass == null) {
@@ -224,19 +292,29 @@ public final class Storages {
                     getStoredAmount = entry.getMethod("getStoredAmount");
                     itemKeyClass = Class.forName("appeng.api.stacks.AEItemKey", false, ae);
                     getItem = itemKeyClass.getMethod("getItem");
+                    try {
+                        isCraftable = entry.getMethod("isCraftable");
+                    } catch (NoSuchMethodException e) {
+                        // количества читаются и без этого, выключен только учёт автокрафта
+                        RYScope.LOG.warn("В этой версии AE2 нет GridInventoryEntry.isCraftable: учёт автокрафта отключён");
+                    }
                     menuClass = candidate;
                 }
                 if (!menuClass.isInstance(menu)) return null;
                 Object repo = getClientRepo.invoke(menu);
                 if (repo == null) return null;
                 Map<Item, Long> counts = new HashMap<>();
+                Set<Item> craftable = new java.util.HashSet<>();
                 for (Object entry : (Iterable<?>) getAllEntries.invoke(repo)) {
                     Object what = getWhat.invoke(entry);
+                    // жидкости и химикаты аддонов в первую версию не входят
                     if (!itemKeyClass.isInstance(what)) continue;
+                    Item item = (Item) getItem.invoke(what);
                     long amount = (long) getStoredAmount.invoke(entry);
-                    if (amount > 0) counts.merge((Item) getItem.invoke(what), amount, Long::sum);
+                    if (amount > 0) counts.merge(item, amount, Long::sum);
+                    if (isCraftable != null && (boolean) isCraftable.invoke(entry)) craftable.add(item);
                 }
-                return counts;
+                return new Read(counts, craftable);
             } catch (Throwable t) {
                 broken = true;
                 RYScope.LOG.warn("Не удалось прочитать содержимое сети AE2, учёт сети отключён: {}", t.toString());

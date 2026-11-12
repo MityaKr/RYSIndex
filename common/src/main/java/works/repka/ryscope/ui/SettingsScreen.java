@@ -70,6 +70,8 @@ public final class SettingsScreen extends ScaledScreen {
             toggle("ryscope.settings.ftb_dock", () -> c.replaceFtbSidebar, () -> c.replaceFtbSidebar = !c.replaceFtbSidebar, "ryscope.settings.ftb_dock.note");
         }
         toggle("ryscope.settings.board", () -> c.boardHud, () -> c.boardHud = !c.boardHud, "ryscope.settings.board.note");
+        options.add(new Option("ryscope.settings.sticker", () -> tr("ryscope.settings.sticker." + ("sum".equals(c.stickerMode) ? "sum" : "goals")),
+            () -> c.stickerMode = "sum".equals(c.stickerMode) ? "goals" : "sum", "ryscope.settings.sticker.note"));
         toggle("ryscope.settings.storages", () -> c.countStorages, () -> c.countStorages = !c.countStorages, "ryscope.settings.storages.note");
         toggle("ryscope.settings.groups", () -> c.groupItems, () -> {
             c.groupItems = !c.groupItems;

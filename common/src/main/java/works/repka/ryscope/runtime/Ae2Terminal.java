@@ -139,7 +139,51 @@ public final class Ae2Terminal {
             RYScope.LOG.debug("Содержимое сети AE2 не прочитано: {}", t.toString());
         }
         network = have;
+        if (!craft.equals(craftable)) liveVersion++;
         craftable = craft;
+    }
+
+    /** Растёт, когда меняется живое множество «можно заказать» открытого терминала. */
+    private static int liveVersion;
+
+    /**
+     * Умеет ли сеть AE2 сделать предмет автокрафтом: по открытому сейчас терминалу или по памяти о терминалах,
+     * которые игрок открывал в этом мире ({@link Storages#craftable}).
+     */
+    public static boolean craftableKnown(Item item) {
+        return craftableNow().contains(item);
+    }
+
+    /**
+     * Всё, что сеть сейчас умеет делать, одним множеством. Дерево берёт его один раз на проход, чтобы весь проход
+     * считал по одним данным. Не менять: это опубликованный экземпляр.
+     */
+    public static Set<Item> craftableNow() {
+        Set<Item> memory = Storages.craftable();
+        if (active == null || !Api.OK) return memory;
+        refresh();
+        if (craftable.isEmpty() || memory.containsAll(craftable)) return memory;
+        Set<Item> union = new java.util.HashSet<>(memory);
+        union.addAll(craftable);
+        return union;
+    }
+
+    /** Есть ли хоть что-то, что сеть умеет делать: без этого переключатель автокрафта не показывается. */
+    public static boolean anyCraftableKnown() {
+        return !craftableNow().isEmpty();
+    }
+
+    /**
+     * Номер данных «сеть сделает»: меняется вместе с памятью о терминалах и с живым терминалом. Входит в признаки
+     * устаревания деревьев целей и общей суммы.
+     */
+    public static int craftableVersion() {
+        return Storages.craftableVersion() + liveVersion + (active != null ? 1 << 20 : 0);
+    }
+
+    /** Когда прочитаны данные «сеть сделает», мс: сейчас, если терминал открыт, иначе время последнего чтения. */
+    public static long craftableAt() {
+        return active != null ? System.currentTimeMillis() : Storages.craftableAt();
     }
 
     /** Окно открыто над терминалом шаблонов: там важно только «можно заказать». */

@@ -715,17 +715,35 @@ public final class RecipeScreen extends ScaledScreen {
             } else if (hot) {
                 Draw.round(g, x, y, RAIL_SLOT, RAIL_SLOT, 4f, t.c("slot.hover"));
             }
+            Category category = nav.groups.get(i).category();
             g.pose().pushPose();
             g.pose().translate(x + 3.5f, y + 3.5f, 0);
             g.pose().scale(0.625f, 0.625f, 1f);
             try {
-                nav.groups.get(i).category().renderIcon(g, 0, 0);
+                category.renderIcon(g, 0, 0);
             } catch (Throwable ignored) {
                 // значок чужой категории
             }
             g.pose().popPose();
-            if (hot) hovered = nav.groups.get(i).category();
-            hits.add(x, y, RAIL_SLOT, RAIL_SLOT, b -> setGroup(index));
+            if (works.repka.ryscope.runtime.Stations.state(category) == works.repka.ryscope.runtime.Stations.State.MISSING) {
+                // станции нет: значок приглушён, место в рейке то же (порядок под рукой не меняется)
+                g.pose().pushPose();
+                g.pose().translate(0, 0, 200);
+                Draw.round(g, x + 1, y + 1, RAIL_SLOT - 2, RAIL_SLOT - 2, 3.5f, t.c("slot.dim"));
+                g.pose().popPose();
+            }
+            if (hot) hovered = category;
+            hits.add(x, y, RAIL_SLOT, RAIL_SLOT, b -> {
+                if (b == 1) {
+                    // правый клик: «у меня есть» → «нет» → определять самому
+                    works.repka.ryscope.runtime.Stations.cycleMark(category);
+                    Boolean mark = works.repka.ryscope.runtime.Stations.mark(category);
+                    String key = mark == null ? "ryscope.stations.auto" : mark ? "ryscope.stations.owned" : "ryscope.stations.missing";
+                    Overlay.toast(Component.translatable(key, TreeScreen.stationName(category)).getString());
+                } else {
+                    setGroup(index);
+                }
+            });
         }
         g.disableScissor();
         hits.unclip();
@@ -1338,7 +1356,14 @@ public final class RecipeScreen extends ScaledScreen {
         if (hovered != null) {
             if (!Lens.held() && !byRecipe) hovered.renderTooltip(g, mx, my);
         } else if (hoveredCategory != null) {
-            Kit.tooltip(g, t, List.of(hoveredCategory.title.getString()), mx, my);
+            List<String> lines = new java.util.ArrayList<>();
+            lines.add(hoveredCategory.title.getString());
+            works.repka.ryscope.runtime.Stations.State station = works.repka.ryscope.runtime.Stations.state(hoveredCategory);
+            boolean manual = works.repka.ryscope.runtime.Stations.mark(hoveredCategory) != null;
+            if (station == works.repka.ryscope.runtime.Stations.State.OWNED) lines.add(tr(manual ? "ryscope.stations.tip.owned_mark" : "ryscope.stations.tip.owned"));
+            else if (station == works.repka.ryscope.runtime.Stations.State.MISSING) lines.add(tr(manual ? "ryscope.stations.tip.missing_mark" : "ryscope.stations.tip.missing"));
+            lines.add(tr("ryscope.stations.tip.click"));
+            Kit.tooltip(g, t, lines, mx, my);
         } else if (hintHover) {
             Kit.tooltip(g, t, List.of(tr("ryscope.recipes.hint").split(" · ")), mx, my);
         } else if (pendingTip != null) {

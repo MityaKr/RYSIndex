@@ -14,6 +14,11 @@ public final class Profiles {
         return base + "-" + key() + ".json";
     }
 
+    /** Имя файла данных, своего для каждого мира и сервера при любой области профиля. */
+    public static String worldFile(String base) {
+        return base + "-" + key() + ".json";
+    }
+
     private static String key() {
         Minecraft mc = Minecraft.getInstance();
         String raw;

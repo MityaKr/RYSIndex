@@ -1315,7 +1315,7 @@ public final class Overlay {
     }
 
     public static boolean isOver(double mx, double my) {
-        return overStrip(mx, my) || LIST.contains(mx, my) || MARKS.contains(mx, my) || Stickers.goalAt(mx, my) != null || Dock.contains(mx, my);
+        return overStrip(mx, my) || LIST.contains(mx, my) || MARKS.contains(mx, my) || Stickers.goalAt(mx, my) != null || Stickers.sumAt(mx, my) || Dock.contains(mx, my);
     }
 
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
@@ -1431,6 +1431,11 @@ public final class Overlay {
         }
         if (Dock.contains(mx, my)) {
             Dock.click(mx, my, button);
+            return true;
+        }
+        if (Stickers.sumAt(mx, my)) {
+            // стикер «Все цели» открывает общую сумму
+            if (button == 0) TreeScreen.openAll();
             return true;
         }
         if (Stickers.goalAt(mx, my) != null) {
