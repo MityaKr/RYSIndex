@@ -61,11 +61,11 @@ public final class Groups {
             return Language.getInstance().has(name) ? Component.translatable(name) : Component.literal(name);
         }
 
-        boolean accepts(Stack stack) {
-            String id = stack.id().toString();
+        /** id и теги предмета считаются один раз на предмет, а не на каждое описание группы. */
+        boolean accepts(String id, List<String> stackTags) {
             if (items.contains(id)) return true;
             if (match != null && match.matcher(id).matches()) return true;
-            if (!tags.isEmpty()) for (String t : stack.tags()) if (tags.contains(t)) return true;
+            if (!tags.isEmpty()) for (String t : stackTags) if (tags.contains(t)) return true;
             return false;
         }
     }
@@ -176,16 +176,24 @@ public final class Groups {
         List<Group> defs = groups;
         Map<Object, Group> map = new HashMap<>();
         if (!defs.isEmpty()) {
+            // id и теги зависят только от самого предмета: у тысячи зелий одного предмета ответ один,
+            // поэтому каждый предмет проверяется один раз
+            java.util.Set<Object> seen = new HashSet<>();
             for (Stack s : stacks) {
-                if (s.item().isEmpty()) continue;
+                if (s.item().isEmpty() || !seen.add(s.key())) continue;
+                String id;
+                List<String> stackTags;
+                try {
+                    id = s.id().toString();
+                    stackTags = s.tags();
+                } catch (Throwable ignored) {
+                    // теги чужого предмета
+                    continue;
+                }
                 for (Group g : defs) {
-                    try {
-                        if (g.accepts(s)) {
-                            map.put(s.key(), g);
-                            break;
-                        }
-                    } catch (Throwable ignored) {
-                        // теги чужого предмета
+                    if (g.accepts(id, stackTags)) {
+                        map.put(s.key(), g);
+                        break;
                     }
                 }
             }

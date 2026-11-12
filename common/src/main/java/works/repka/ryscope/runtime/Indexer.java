@@ -1,9 +1,11 @@
 package works.repka.ryscope.runtime;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -145,6 +147,7 @@ public final class Indexer {
         step("ryscope.index.names", 0.25f);
         List<ClientLanguage> languages = languages(mc);
         Platform platform = Platform.get();
+        Strings strings = new Strings();
         int n = stacks.size();
         for (int i = 0; i < n; i++) {
             if ((i & 255) == 0) {
@@ -153,7 +156,7 @@ public final class Indexer {
             }
             Stack s = stacks.get(i);
             try {
-                b.addStack(s, entry(b.stackCount(), s, languages, platform));
+                b.addStack(s, entry(b.stackCount(), s, languages, platform, strings));
             } catch (Throwable t) {
                 RYScope.LOG.debug("Пропущен ресурс при индексации: {}", t.toString());
             }
@@ -214,7 +217,34 @@ public final class Indexer {
         progress = p;
     }
 
-    private static SearchEntry entry(int index, Stack s, List<ClientLanguage> languages, Platform platform) {
+    /**
+     * Общие строки одной сборки: теги, мод и его имя у тысяч записей одинаковы, в индексе лежит по одной копии.
+     * Теги предмета зависят только от самого предмета, поэтому у его вариантов (зелья, книги) считаются один раз.
+     */
+    private static final class Strings {
+        final Map<String, String> pool = new HashMap<>();
+        final Map<Object, String[]> itemTags = new HashMap<>();
+
+        String of(String value) {
+            String known = pool.putIfAbsent(value, value);
+            return known != null ? known : value;
+        }
+
+        String[] tags(Stack s) {
+            boolean byItem = s instanceof ItemRes;
+            if (byItem) {
+                String[] known = itemTags.get(s.key());
+                if (known != null) return known;
+            }
+            List<String> list = s.tags();
+            String[] out = new String[list.size()];
+            for (int i = 0; i < out.length; i++) out[i] = of(list.get(i));
+            if (byItem) itemTags.put(s.key(), out);
+            return out;
+        }
+    }
+
+    private static SearchEntry entry(int index, Stack s, List<ClientLanguage> languages, Platform platform, Strings strings) {
         String name = s.name().getString().toLowerCase(Locale.ROOT);
         ResourceLocation id = s.id();
         List<String> alt = new ArrayList<>(languages.size());
@@ -247,8 +277,7 @@ public final class Indexer {
             namespace += " " + shownMod;
             modName += " " + platform.modName(shownMod).toLowerCase(Locale.ROOT);
         }
-        List<String> tags = s.tags();
-        return new SearchEntry(index, name, alt.toArray(new String[0]), id.getPath(), namespace, modName, tags.toArray(new String[0]));
+        return new SearchEntry(index, name, alt.toArray(new String[0]), id.getPath(), strings.of(namespace), strings.of(modName), strings.tags(s));
     }
 
     /** Языки для поиска помимо текущего. Читаются один раз, пока не сменится список или ресурсы. */
