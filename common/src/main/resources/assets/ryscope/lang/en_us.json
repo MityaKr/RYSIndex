@@ -321,5 +321,8 @@
   "ryscope.settings.reports.note": "Recipe conflicts, duplicate recipes and items with no known way to obtain them",
   "ryscope.ore.above_bottom": "bottom+%s",
   "ryscope.ore.below_top": "top−%s",
-  "ryscope.stage.blocked": "This recipe is locked by the stage “%s”"
+  "ryscope.stage.blocked": "This recipe is locked by the stage “%s”",
+  "ryscope.slot.tag": "Any of: #%s",
+  "ryscope.slot.variants": "Any of %s variants",
+  "ryscope.slot.pause": "Shift: pause cycling"
 }
