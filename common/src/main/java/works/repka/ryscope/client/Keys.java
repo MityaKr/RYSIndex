@@ -31,7 +31,32 @@ public final class Keys {
     public static Matcher matcher = (mapping, keyCode, scanCode) -> mapping.matches(keyCode, scanCode);
 
     public static boolean matches(KeyMapping mapping, int keyCode, int scanCode) {
-        return mapping != null && !mapping.isUnbound() && matcher.test(mapping, keyCode, scanCode);
+        if (mapping == null) return false;
+        if (!mapping.isUnbound() && matcher.test(mapping, keyCode, scanCode)) return true;
+        // игрок переназначил клавишу в JEI, а нашу не трогал: привычная клавиша работает и у нас.
+        // Окно JEI отключено, поэтому двойного срабатывания нет; чужие настройки не меняем.
+        KeyMapping twin = jeiTwin(mapping);
+        return twin != null && mapping.isDefault() && !twin.isDefault() && !twin.isUnbound()
+            && works.repka.ryscope.runtime.Config.get().replaceJeiInterface && matcher.test(twin, keyCode, scanCode);
+    }
+
+    private static java.util.Map<KeyMapping, KeyMapping> jeiTwins;
+
+    /** Клавиша JEI того же действия или null, если JEI нет. */
+    private static KeyMapping jeiTwin(KeyMapping mapping) {
+        if (jeiTwins == null) {
+            java.util.Map<String, KeyMapping> byName = new java.util.HashMap<>();
+            for (KeyMapping k : Minecraft.getInstance().options.keyMappings) byName.put(k.getName(), k);
+            java.util.Map<KeyMapping, KeyMapping> twins = new java.util.IdentityHashMap<>();
+            String[] names = {"key.jei.showRecipe", "key.jei.showUses", "key.jei.bookmark", "key.jei.focusSearch", "key.jei.toggleOverlay", "key.jei.recipeBack"};
+            KeyMapping[] ours = {RECIPES, USES, BOOKMARK, SEARCH, TOGGLE, BACK};
+            for (int i = 0; i < ours.length; i++) {
+                KeyMapping jei = byName.get(names[i]);
+                if (ours[i] != null && jei != null) twins.put(ours[i], jei);
+            }
+            jeiTwins = twins;
+        }
+        return jeiTwins.get(mapping);
     }
 
     /** Только сама клавиша, без модификаторов и контекста: для клавиш интерфейса, нажатых в мире. */
