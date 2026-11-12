@@ -154,56 +154,72 @@ public final class JeiBridge implements Foreign.Source {
 
     // --- список ресурсов ---
 
+    /** Ресурсы последнего списка, которые игрок скрыл через общий список JEI: те самые объекты, что ушли в индекс. */
+    private volatile java.util.Set<Stack> playerHidden = java.util.Set.of();
+
     @Override
     public List<Stack> stacks() {
         IIngredientManager im = runtime.getIngredientManager();
         IIngredientVisibility visibility = runtime.getIngredientVisibility();
         List<Stack> out = new ArrayList<>();
+        java.util.Set<Stack> hidden = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         for (ItemStack s : im.getAllItemStacks()) {
             if (s.isEmpty()) continue;
+            boolean byPlayer = false;
             try {
                 // скрытое игроком остаётся в индексе: его прячет поиск, а при «показывать скрытые» его можно вернуть
-                if (!visibility.isIngredientVisible(VanillaTypes.ITEM_STACK, s)
-                    && !runtime.getIngredientManager().createTypedIngredient(VanillaTypes.ITEM_STACK, s).map(this::hiddenByPlayer).orElse(false)) continue;
+                if (!visibility.isIngredientVisible(VanillaTypes.ITEM_STACK, s)) {
+                    byPlayer = im.createTypedIngredient(VanillaTypes.ITEM_STACK, s).map(this::hiddenByPlayer).orElse(false);
+                    if (!byPlayer) continue;
+                }
             } catch (Throwable ignored) {
                 // если видимость определить не удалось, показываем
             }
-            out.add(new ItemRes(s));
+            ItemRes res = new ItemRes(s);
+            out.add(res);
+            if (byPlayer) hidden.add(res);
         }
         for (IIngredientType<?> type : im.getRegisteredIngredientTypes()) {
             if (type == VanillaTypes.ITEM_STACK) continue;
-            addAll(out, im, visibility, type);
+            addAll(out, hidden, im, visibility, type);
         }
+        playerHidden = hidden;
         return out;
     }
 
-    private <V> void addAll(List<Stack> out, IIngredientManager im, IIngredientVisibility visibility, IIngredientType<V> type) {
+    private <V> void addAll(List<Stack> out, java.util.Set<Stack> hidden, IIngredientManager im, IIngredientVisibility visibility, IIngredientType<V> type) {
         try {
             java.util.Set<Object> fluids = new java.util.HashSet<>();
             for (V ingredient : im.getAllIngredients(type)) {
                 Optional<ITypedIngredient<V>> typed = im.createTypedIngredient(type, ingredient);
-                if (typed.isEmpty() || (!visibility.isIngredientVisible(typed.get()) && !hiddenByPlayer(typed.get()))) continue;
+                if (typed.isEmpty()) continue;
+                boolean byPlayer = !visibility.isIngredientVisible(typed.get());
+                if (byPlayer && !hiddenByPlayer(typed.get())) continue;
                 Stack fluid = fluidFrom(typed.get());
                 if (fluid != null) {
-                    if (fluids.add(fluid.key())) out.add(fluid.withAmount(1000));
+                    if (fluids.add(fluid.key())) {
+                        Stack res = fluid.withAmount(1000);
+                        out.add(res);
+                        if (byPlayer) hidden.add(res);
+                    }
                     continue;
                 }
-                out.add(new JeiRes<>(typed.get(), im.getIngredientHelper(type), im.getIngredientRenderer(type)));
+                Stack res = new JeiRes<>(typed.get(), im.getIngredientHelper(type), im.getIngredientRenderer(type));
+                out.add(res);
+                if (byPlayer) hidden.add(res);
             }
         } catch (Throwable t) {
             RYScope.LOG.warn("Ингредиенты JEI типа {} пропущены: {}", type.getUid(), t.toString());
         }
     }
 
-    /** Скрыт игроком через общий список JEI (blacklist.json). Такие ресурсы остаются в индексе, чтобы их можно было вернуть. */
+    /**
+     * Скрыт игроком через общий список JEI (blacklist.json). Такие ресурсы остаются в индексе, чтобы их можно было
+     * вернуть. Ответ по объектам последнего списка: смена blacklist.json всё равно переиндексирует список.
+     */
     @Override
     public boolean isHidden(Stack stack) {
-        try {
-            Optional<ITypedIngredient<?>> typed = toTyped(stack);
-            return typed.isPresent() && runtime.getEditModeConfig().isIngredientHiddenUsingConfigFile(typed.get());
-        } catch (Throwable t) {
-            return false;
-        }
+        return playerHidden.contains(stack);
     }
 
     private boolean hiddenByPlayer(ITypedIngredient<?> typed) {
