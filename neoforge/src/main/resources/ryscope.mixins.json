@@ -21,7 +21,8 @@
     "StartEventObserverMixin",
     "JeiErrorUtilMixin",
     "GuiGraphicsMixin",
-    "RenderSystemMixin"
+    "RenderSystemMixin",
+    "GlStateManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 0

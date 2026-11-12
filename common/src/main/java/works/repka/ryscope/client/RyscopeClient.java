@@ -124,9 +124,17 @@ public final class RyscopeClient {
         panelsDrawn = true;
         // чужое окно может оставить включённую обрезку или прозрачный цвет (контроллер Modular Machinery
         // рисует всё окно внутри renderBackground): тогда панели не видны, хотя мышь по ним работает
-        boolean scissor = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
-        int[] box = new int[4];
-        if (scissor) org.lwjgl.opengl.GL11.glGetIntegerv(org.lwjgl.opengl.GL11.GL_SCISSOR_BOX, box);
+        // состояние берётся из GlStateManager (Scissor): запрос к драйверу в каждом кадре ждёт его очередь команд
+        boolean scissor;
+        int[] box;
+        if (Scissor.tracked()) {
+            scissor = Scissor.enabled();
+            box = Scissor.box();
+        } else {
+            scissor = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+            box = new int[4];
+            if (scissor) org.lwjgl.opengl.GL11.glGetIntegerv(org.lwjgl.opengl.GL11.GL_SCISSOR_BOX, box);
+        }
         float[] color = com.mojang.blaze3d.systems.RenderSystem.getShaderColor().clone();
         g.flush();
         com.mojang.blaze3d.systems.RenderSystem.disableScissor();
