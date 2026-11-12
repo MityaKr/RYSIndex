@@ -25,7 +25,17 @@ public final class SettingsScreen extends ScaledScreen {
     private static final int ROW = 20;
     private static final int PAD = Kit.PAD;
 
-    private record Option(String key, Supplier<String> value, Runnable onClick, @Nullable String note) {}
+    /** @param back правая кнопка листает значение назад; null, если назад листать нечем */
+    private record Option(String key, Supplier<String> value, Runnable onClick, @Nullable Runnable back, @Nullable String note) {
+        Option(String key, Supplier<String> value, Runnable onClick, @Nullable String note) {
+            this(key, value, onClick, null, note);
+        }
+    }
+
+    /** Вместо настроек показан список скрытых запросов. */
+    private boolean hiddenList;
+    /** До этого момента второй клик по «Вернуть все» возвращает все запросы. */
+    private long restoreArmed;
 
     @Nullable
     private final Screen parent;
@@ -41,9 +51,16 @@ public final class SettingsScreen extends ScaledScreen {
         options.add(new Option("ryscope.settings.theme", () -> ThemeManager.get().name, ThemeManager::cycle, null));
         options.add(new Option("ryscope.settings.ui_scale", () -> works.repka.ryscore.ui.UiScale.setting() == works.repka.ryscore.ui.UiScale.AUTO
             ? tr("ryscope.settings.ui_scale.auto") : works.repka.ryscore.ui.UiScale.setting() + " %", works.repka.ryscore.ui.UiScale::cycle, "ryscope.settings.ui_scale.note"));
-        options.add(new Option("ryscope.settings.density", () -> tr("ryscope.settings.density." + c.density), c::cycleDensity, null));
+        options.add(new Option("ryscope.settings.density", () -> tr("ryscope.settings.density." + c.density), c::cycleDensity, () -> {
+            // три значения по кругу: два шага вперёд это шаг назад
+            c.cycleDensity();
+            c.cycleDensity();
+        }, null));
+        // до 20 столбцов, как у «Авто» на широком экране
         options.add(new Option("ryscope.settings.columns", () -> c.maxColumns <= 0 ? tr("ryscope.settings.columns.auto") : Integer.toString(c.maxColumns), () -> {
-            c.maxColumns = c.maxColumns <= 0 ? 5 : c.maxColumns >= 12 ? 0 : c.maxColumns + 1;
+            c.maxColumns = c.maxColumns <= 0 ? 5 : c.maxColumns >= 20 ? 0 : c.maxColumns + 1;
+        }, () -> {
+            c.maxColumns = c.maxColumns <= 0 ? 20 : c.maxColumns <= 5 ? 0 : c.maxColumns - 1;
         }, null));
         options.add(new Option("ryscope.settings.energy_unit", works.repka.ryscope.runtime.Units::energyUnit,
             works.repka.ryscope.runtime.Units::cycleEnergyUnit, "ryscope.settings.energy_unit.note"));
@@ -58,9 +75,18 @@ public final class SettingsScreen extends ScaledScreen {
             works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());
         }, "ryscope.settings.groups.note");
         options.add(new Option("ryscope.settings.hidden", () -> Integer.toString(c.hiddenQueries.size()), () -> {
-            c.hiddenQueries.clear();
-            works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());
+            if (c.hiddenQueries.isEmpty()) {
+                Overlay.toast(tr("ryscope.settings.hidden.none"));
+                return;
+            }
+            hiddenList = true;
+            restoreArmed = 0;
+            scroll = 0;
         }, "ryscope.settings.hidden.note"));
+        toggle("ryscope.settings.show_hidden", () -> c.showHidden, () -> {
+            c.showHidden = !c.showHidden;
+            works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());
+        }, "ryscope.settings.show_hidden.note");
         toggle("ryscope.settings.hide_locked", () -> c.hideLocked, () -> {
             c.hideLocked = !c.hideLocked;
             works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());
@@ -86,7 +112,7 @@ public final class SettingsScreen extends ScaledScreen {
             works.repka.ryscope.runtime.Profiles::cycleScope, "ryscope.settings.profile.note"));
         options.add(new Option("ryscope.settings.reports", () -> tr("ryscope.settings.reports.run"), () -> {
             works.repka.ryscope.runtime.DevReports.Result r = works.repka.ryscope.runtime.DevReports.run();
-            Overlay.toast(r == null ? tr("ryscope.settings.export.failed")
+            Overlay.toast(r == null ? tr("ryscope.settings.reports.failed")
                 : Component.translatable("ryscope.settings.reports.done", r.conflicts(), r.duplicates(), r.unobtainable()).getString());
         }, "ryscope.settings.reports.note"));
         options.add(new Option("ryscope.settings.export", () -> tr("ryscope.settings.export.run"), () -> {
@@ -122,9 +148,11 @@ public final class SettingsScreen extends ScaledScreen {
         Theme t = ThemeManager.get();
         hits.clear();
         renderBackground(g, mx, my, partialTick);
+        if (hiddenList && Config.get().hiddenQueries.isEmpty()) hiddenList = false;
+        int rows = hiddenList ? Config.get().hiddenQueries.size() + 1 : options.size();
         pw = Math.min(width - 12, 320);
         py = Kit.panelTop(height);
-        ph = Math.min(height - py - 4, Kit.HEADER_H + 8 + options.size() * ROW + 8);
+        ph = Math.min(height - py - 4, Kit.HEADER_H + 8 + rows * ROW + 8);
         px = (width - pw) / 2;
         t.panel(g, px, py, pw, ph);
         int iconX = px + PAD, iconY = py + 12, closeX = px + pw - PAD - 18;
@@ -132,11 +160,17 @@ public final class SettingsScreen extends ScaledScreen {
         Icons.draw(g, Icons.Shape.GEAR, iconX + 5.5f, iconY + 5.5f, 12f, t.c("text.muted"));
         Kit.close(g, t, hits, closeX, py + 14, mx, my, this::onClose);
         float textX = iconX + 23 + 7;
-        Kit.headerText(g, t, title.getString(), tr("ryscope.settings.footer"), textX, py, closeX - 7 - textX);
+        String subtitle = tr(hiddenList ? "ryscope.settings.hidden.title" : "ryscope.settings.footer");
+        Kit.headerText(g, t, hiddenList ? tr("ryscope.settings.hidden") : title.getString(), subtitle, textX, py, closeX - 7 - textX);
         Kit.divider(g, t, px + 0.5f, py + Kit.HEADER_H - 0.5f, pw - 1);
 
         int top = py + Kit.HEADER_H + 4;
         int visible = Math.max(1, (ph - Kit.HEADER_H - 8) / ROW);
+        if (hiddenList) {
+            drawHidden(g, t, mx, my, top, visible);
+            Overlay.renderToast(this, g);
+            return;
+        }
         scroll = Math.max(0, Math.min(scroll, options.size() - visible));
         String note = null;
         int y = top;
@@ -166,7 +200,10 @@ public final class SettingsScreen extends ScaledScreen {
                 Draw.label(g, value, bx + 6, cy, 12, Weight.REGULAR, t.c("button.fg"));
             }
             hits.add(px + 5, y, pw - 10, ROW, b -> {
-                o.onClick.run();
+                // левая кнопка листает вперёд, правая назад; остальные кнопки ничего не меняют
+                if (b == 0) o.onClick.run();
+                else if (b == 1 && o.back != null) o.back.run();
+                else return;
                 Config.save();
             });
             y += ROW;
@@ -184,6 +221,54 @@ public final class SettingsScreen extends ScaledScreen {
             Kit.tooltip(g, t, List.of(tr(note)), mx, my);
             g.pose().popPose();
         }
+    }
+
+    /** Скрытые запросы по одному: крестик возвращает запрос в список, внизу «Вернуть все» со вторым кликом. */
+    private void drawHidden(GuiGraphics g, Theme t, int mx, int my, int top, int visible) {
+        Config c = Config.get();
+        List<String> queries = c.hiddenQueries;
+        int total = queries.size() + 1;
+        scroll = Math.max(0, Math.min(scroll, total - visible));
+        int y = top;
+        for (int i = scroll; i < Math.min(total, scroll + visible); i++) {
+            float cy = y + ROW / 2f;
+            int right = px + pw - PAD - 2;
+            if (i == queries.size()) {
+                String label = tr("ryscope.settings.hidden.restore_all");
+                int bw = (int) Math.ceil(Kit.buttonWidth(label, 12));
+                Kit.button(g, t, hits, right - bw, y + 2, bw, ROW - 4, label, false, mx, my, () -> {
+                    long now = System.currentTimeMillis();
+                    if (now < restoreArmed) {
+                        c.hiddenQueries.clear();
+                        changed();
+                    } else {
+                        restoreArmed = now + 3000;
+                        Overlay.toast(Component.translatable("ryscope.settings.hidden.confirm", c.hiddenQueries.size()).getString(), 3000);
+                    }
+                });
+                break;
+            }
+            String query = queries.get(i);
+            boolean hov = mx >= px + 5 && mx < px + pw - 5 && my >= y && my < y + ROW;
+            if (hov) Draw.round(g, px + 5, y, pw - 10, ROW - 1, 4.5f, Draw.alpha(t.c("slot.hover"), 0.5f));
+            int bx = right - 14, by = y + 3;
+            boolean hot = Kit.over(mx, my, bx, by, 14, 14);
+            Kit.iconButton(g, t, bx, by, 14, hot);
+            Icons.draw(g, Icons.Shape.CROSS, bx + 3.5f, by + 3.5f, 7f, hot ? t.c("accent") : t.c("button.fg"));
+            Draw.label(g, Draw.ellipsize(query, bx - 6 - (px + PAD + 2), 13, Weight.REGULAR), px + PAD + 2, cy, 13, Weight.REGULAR, t.c("text.body"));
+            hits.add(bx, by, 14, 14, b -> {
+                if (b != 0) return;
+                c.hiddenQueries.remove(query);
+                changed();
+                Overlay.toast(Component.translatable("ryscope.hidden.undone", query).getString());
+            });
+            y += ROW;
+        }
+    }
+
+    private static void changed() {
+        Config.save();
+        works.repka.ryscope.runtime.SearchService.submit(works.repka.ryscope.runtime.SearchService.text());
     }
 
     @Override
@@ -210,6 +295,12 @@ public final class SettingsScreen extends ScaledScreen {
 
     @Override
     public void onClose() {
+        if (hiddenList) {
+            // из списка скрытых запросов крестик и Esc возвращают к настройкам
+            hiddenList = false;
+            scroll = 0;
+            return;
+        }
         Config.save();
         Minecraft.getInstance().setScreen(parent);
     }
