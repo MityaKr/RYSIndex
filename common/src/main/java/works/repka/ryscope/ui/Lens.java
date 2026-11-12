@@ -58,6 +58,11 @@ public final class Lens {
 
     private Lens() {}
 
+    /** Забыть найденное: превью держит рецепт и мост JEI прошлого мира. */
+    public static void clear() {
+        found = null;
+    }
+
     public static boolean held() {
         return Keys.isHeld(Keys.LENS) && !yieldsToAdvancedTooltips();
     }

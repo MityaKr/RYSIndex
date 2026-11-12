@@ -40,6 +40,17 @@ public interface Platform {
     /** Обычная жидкость без компонентов. Жидкость с компонентами (зелья Create) это отдельный ресурс на каждый набор. */
     boolean plainFluid(Object fluidStack);
 
+    /**
+     * Подсказка из готовых строк, привязанная к предмету: события подсказки загрузчика получают этот стек,
+     * а не пустой, и моды (сытость, рамки) видят, над чем подсказка.
+     */
+    default void renderTooltip(net.minecraft.client.gui.GuiGraphics g, net.minecraft.client.gui.Font font,
+                               List<net.minecraft.network.chat.Component> lines,
+                               java.util.Optional<net.minecraft.world.inventory.tooltip.TooltipComponent> image,
+                               net.minecraft.world.item.ItemStack stack, int x, int y) {
+        g.renderTooltip(font, lines, image, x, y);
+    }
+
     final class Holder {
         private static Platform instance;
 

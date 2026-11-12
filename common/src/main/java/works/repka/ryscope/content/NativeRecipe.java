@@ -234,7 +234,7 @@ public final class NativeRecipe implements RecipeView {
             if (slotSize != SLOT) theme.slotRounded(g, sx, sy, size, radius, hover && !s.ing.isEmpty(), stateColor);
             else theme.slot(g, sx, sy, size, hover && !s.ing.isEmpty(), stateColor);
             if (stateColor != 0) Draw.round(g, sx + 1, sy + 1, size - 2, size - 2, Math.max(1f, radius - 1), Draw.alpha(stateColor, 0.2f));
-            Stack shown = s.ing.shown(Ing.clock());
+            Stack shown = s.ing.shown(System.currentTimeMillis());
             if (shown == null) continue;
             int ix = sx + (size - 16) / 2, iy = sy + (size - 16) / 2;
             if (size < 18) {
@@ -308,12 +308,22 @@ public final class NativeRecipe implements RecipeView {
         if (ing == null || ing.options.size() < 2) return false;
         Stack shown = ing.shown(System.currentTimeMillis());
         if (shown == null) return false;
-        List<net.minecraft.network.chat.Component> lines = new java.util.ArrayList<>(shown.tooltipLines());
+        // строки собираются как в обычной подсказке нашей панели: модуль загрузчика дописывает мод
+        List<net.minecraft.network.chat.Component> lines;
+        works.repka.ryscope.model.ItemRes.ourTooltip = true;
+        try {
+            lines = new java.util.ArrayList<>(shown.tooltipLines());
+        } finally {
+            works.repka.ryscope.model.ItemRes.ourTooltip = false;
+        }
         String tag = ing.tag();
         lines.add(net.minecraft.network.chat.Component.translatable(tag != null ? "ryscope.ing.tag" : "ryscope.ing.options",
             tag != null ? "#" + tag : ing.options.size(), ing.options.size()).withStyle(net.minecraft.ChatFormatting.GRAY));
         lines.add(net.minecraft.network.chat.Component.translatable("ryscope.ing.hint").withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-        g.renderTooltip(Minecraft.getInstance().font, lines, shown.item().getTooltipImage(), mouseX, mouseY);
+        // подсказка привязана к показанному предмету: события подсказки модов получают его, а не пустой стек
+        net.minecraft.world.item.ItemStack item = shown.item();
+        works.repka.ryscope.platform.Platform.get().renderTooltip(g, Minecraft.getInstance().font, lines,
+            item.getTooltipImage(), item, mouseX, mouseY);
         return true;
     }
 
@@ -322,7 +332,7 @@ public final class NativeRecipe implements RecipeView {
         for (SlotW s : slots) {
             int sx = x + slotX(s), sy = y + slotY(s), size = sizeOf(s);
             if (mouseX >= sx && mouseX < sx + size && mouseY >= sy && mouseY < sy + size) {
-                return s.ing.shown(Ing.clock());
+                return s.ing.shown(System.currentTimeMillis());
             }
         }
         return null;

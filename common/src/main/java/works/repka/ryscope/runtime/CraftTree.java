@@ -130,6 +130,21 @@ public final class CraftTree {
             return true;
         }
 
+        /**
+         * Копия без самих объектов рецептов, только с их id (как в файле): её можно долго хранить, не удерживая
+         * рецепты и рантайм JEI прошлого мира. Рецепты без id отбрасываются.
+         */
+        public Route withoutRecipes() {
+            Route r = new Route();
+            r.shortest = shortest;
+            for (Map.Entry<String, Pick> e : picks.entrySet()) {
+                Pick pick = e.getValue();
+                if (pick.raw()) r.picks.put(e.getKey(), Pick.RAW);
+                else if (pick.recipeId != null) r.picks.put(e.getKey(), new Pick(null, pick.recipeId));
+            }
+            return r;
+        }
+
         /** Для файла: рецепты без id не сохраняются, сырьё записывается пустой строкой. */
         public com.google.gson.JsonObject toJson() {
             com.google.gson.JsonObject o = new com.google.gson.JsonObject();
@@ -176,11 +191,12 @@ public final class CraftTree {
     public final Set<Category> stations = new LinkedHashSet<>();
     public int steps;
     public int maxDepth;
+    /** Узлы вне раскрытых игроком веток: их общий предел MAX_NODES. */
     private int nodeCount;
-    /** Предел узлов: растёт, когда игрок раскрывает обрезанную ветку. */
-    private int nodeBudget = MAX_NODES;
-    /** Узлы, раскрытые игроком: глубина под ними считается заново. */
+    /** Узлы, раскрытые игроком: глубина под ними считается заново, а узлы считаются отдельно от остального дерева. */
     private final Set<Node> expanded = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    /** Сколько узлов уже обойдено под каждым раскрытым узлом: у каждой раскрытой ветки свой предел MAX_NODES / 2. */
+    private final Map<Node, Integer> expandedCount = new java.util.IdentityHashMap<>();
     private Map<Object, Long> pool;
 
     /** Сколько времени за один вызов можно тратить на поиск рецептов, когда дерево строится по частям. */
@@ -270,6 +286,7 @@ public final class CraftTree {
         steps = 0;
         maxDepth = 0;
         nodeCount = 0;
+        expandedCount.clear();
         pool = new HashMap<>();
         if (useInventory && InventoryView.tracking()) {
             for (Map.Entry<Item, Integer> e : InventoryView.snapshot().entrySet()) pool.put(e.getKey(), (long) e.getValue());
@@ -282,7 +299,10 @@ public final class CraftTree {
     }
 
     private void visit(Node node, boolean takeFromInventory) {
-        nodeCount++;
+        // узлы раскрытой ветки считаются по её собственному пределу: иначе добавка ушла бы веткам выше по обходу,
+        // а кликнутая осталась бы обрезанной
+        Node owner = expandedOwner(node);
+        boolean overBudget = owner != null ? expandedCount.merge(owner, 1, Integer::sum) >= MAX_NODES / 2 : ++nodeCount >= MAX_NODES;
         maxDepth = Math.max(maxDepth, node.depth);
         Object key = node.stack.key();
         node.fromInventory = 0;
@@ -303,7 +323,7 @@ public final class CraftTree {
         if (node.options == null) loadOptions(node);
         if (node.choice == -2) node.choice = initialChoice(node);
         Option option = node.chosen();
-        boolean cut = option != null && (node.depth - expandedBase(node) >= MAX_DEPTH || nodeCount >= nodeBudget);
+        boolean cut = option != null && (node.depth - expandedBase(node) >= MAX_DEPTH || overBudget);
         node.truncated = cut;
         if (option == null || cut) {
             node.children.clear();
@@ -408,6 +428,7 @@ public final class CraftTree {
             node.choice = i;
             picks.put(node.stack.id().toString(), Pick.of(node.options.get(i).recipe));
             node.children.clear();
+            resetSameResource(node);
             recompute();
             return;
         }
@@ -420,11 +441,18 @@ public final class CraftTree {
         return 0;
     }
 
-    /** Раскрыть обрезанную ветку: под узлом снова доступна полная глубина и ещё порция узлов. */
+    /** Ближайший раскрытый игроком узел над этим (или он сам), null, если такого нет. */
+    @org.jetbrains.annotations.Nullable
+    private Node expandedOwner(Node node) {
+        if (expanded.isEmpty()) return null;
+        for (Node n = node; n != null; n = n.parent) if (expanded.contains(n)) return n;
+        return null;
+    }
+
+    /** Раскрыть обрезанную ветку: под узлом снова доступна полная глубина и своя порция узлов. */
     public void expand(Node node) {
         if (!node.truncated) return;
         expanded.add(node);
-        nodeBudget += MAX_NODES / 2;
         recompute();
     }
 
@@ -540,6 +568,11 @@ public final class CraftTree {
      * Живёт, пока не сменились снимок индекса и источник рецептов. Ключ это ресурс целиком, с подтипом:
      * дерево книги с одними чарами не берёт рецепты книги с другими.
      */
+    /** Забыть общий кеш рецептов: он держит рецепты JEI и снимок, а сам чистится только при следующем дереве. */
+    public static void clearShared() {
+        Shared.clear();
+    }
+
     private static final class Shared {
         private static final int LIMIT = 4096;
         private static final Map<Stack, Loaded> MAP = new HashMap<>();
@@ -555,6 +588,12 @@ public final class CraftTree {
             check();
             if (MAP.size() >= LIMIT) MAP.clear();
             MAP.put(stack.withAmount(1), value);
+        }
+
+        static synchronized void clear() {
+            MAP.clear();
+            snapshot = null;
+            source = null;
         }
 
         private static void check() {
@@ -717,6 +756,25 @@ public final class CraftTree {
         return best;
     }
 
+    /**
+     * Выбор пишется по id ресурса и действует во всех его узлах (план, цель и новое дерево берут его отовсюду):
+     * остальные узлы этого ресурса берут выбор заново, чтобы дерево сразу показывало то же, что они повторят.
+     */
+    private void resetSameResource(Node changed) {
+        String id = changed.stack.id().toString();
+        java.util.ArrayDeque<Node> queue = new java.util.ArrayDeque<>();
+        queue.add(root);
+        while (!queue.isEmpty()) {
+            Node n = queue.poll();
+            if (n != changed && n.options != null && n.stack.id().toString().equals(id)) {
+                n.choice = -2;
+                n.children.clear();
+                continue;
+            }
+            queue.addAll(n.children);
+        }
+    }
+
     /** Следующий рецепт узла; после последнего идёт «сырьё». */
     public void cycleChoice(Node node, int dir) {
         if (node.options == null || node.options.isEmpty()) return;
@@ -727,6 +785,7 @@ public final class CraftTree {
         node.choice = next;
         picks.put(node.stack.id().toString(), next < 0 ? Pick.RAW : Pick.of(node.options.get(next).recipe));
         node.children.clear();
+        resetSameResource(node);
         // выбор в дереве запоминается: следующее дерево и быстрый крафт возьмут тот же рецепт
         Option chosen = node.chosen();
         RecipeDefaults.remember(node.stack, chosen == null ? null : chosen.category, chosen == null ? null : chosen.recipe);

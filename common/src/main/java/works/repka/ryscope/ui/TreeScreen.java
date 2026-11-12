@@ -73,6 +73,14 @@ public final class TreeScreen extends ScaledScreen {
         mc.setScreen(new TreeScreen(parent, stack, route, amount));
     }
 
+    /**
+     * Дерево цели с доски: её маршрут и количество. Цель с выбором по умолчанию (route == null) открывается с пустым
+     * маршрутом, а не с запомненным в ROUTES, иначе дерево покажет чужой выбор и предложит «Обновить цель».
+     */
+    public static void openGoal(works.repka.ryscope.runtime.Board.Goal goal) {
+        open(goal.stack, goal.route != null ? goal.route : new CraftTree.Route(), goal.amount);
+    }
+
     private static String key(Stack stack) {
         return stack.id().toString();
     }
@@ -92,9 +100,15 @@ public final class TreeScreen extends ScaledScreen {
     @Override
     public void removed() {
         super.removed();
-        CraftTree.Route route = tree.route(false);
+        // в статическом запоминании только id рецептов: сами объекты держат рантайм JEI и снимок этого мира
+        CraftTree.Route route = tree.route(false).withoutRecipes();
         if (route.isEmpty()) ROUTES.remove(key(tree.root.stack));
         else ROUTES.put(key(tree.root.stack), route);
+    }
+
+    /** Забыть запомненные маршруты: при выходе из мира. */
+    public static void clearRoutes() {
+        ROUTES.clear();
     }
 
     /** Вкладка «Сравнить» неактивна, если сравнивать нечего: у предмета меньше двух способов. */
@@ -295,6 +309,11 @@ public final class TreeScreen extends ScaledScreen {
             if (pinned != null && !changed) {
                 Board.remove(tree.root.stack);
                 Overlay.toast(tr("ryscope.board.removed"));
+                return;
+            }
+            if (pinned == null && tree.root.stack.item().isEmpty()) {
+                // доска считает только предметы: жидкость или чужой ресурс целью не станет
+                Overlay.toast(tr("ryscope.board.unsupported"));
                 return;
             }
             boolean added = Board.set(tree.root.stack, tree.amount, route);
