@@ -42,8 +42,14 @@ final class ItemBatch {
     boolean add(ItemStack stack, float x, float y, float scale) {
         if (stack.isEmpty()) return false;
         Minecraft mc = Minecraft.getInstance();
-        BakedModel model = mc.getItemRenderer().getModel(stack, mc.level, mc.player, 0);
-        if (model.isCustomRenderer()) return false;
+        BakedModel model;
+        try {
+            model = mc.getItemRenderer().getModel(stack, mc.level, mc.player, 0);
+        } catch (Throwable t) {
+            // чужая модель упала: пусть предмет рисуется по одному, там ошибка ловится
+            return false;
+        }
+        if (model == null || model.isCustomRenderer()) return false;
         if (n == stacks.length) grow();
         stacks[n] = stack;
         models[n] = model;
@@ -66,6 +72,14 @@ final class ItemBatch {
     /** Рисует всё накопленное и очищает пачку. */
     void render(GuiGraphics g) {
         if (n == 0) return;
+        try {
+            renderAll(g);
+        } finally {
+            clear();
+        }
+    }
+
+    private void renderAll(GuiGraphics g) {
         // то, что уже лежит в буфере (плашки, подсветка), должно лечь под предметы
         g.flush();
         boolean flat = false, lit = false;
@@ -100,7 +114,6 @@ final class ItemBatch {
                 pose.popPose();
             }
         }
-        clear();
     }
 
     private void draw(GuiGraphics g, int i) {
