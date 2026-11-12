@@ -49,6 +49,8 @@ public final class JeiAsync {
     private static volatile Thread loader;
     /** Подключение нашего моста, отложенное до конца фоновой загрузки. */
     private static volatile Runnable publish;
+    /** Запуск JEI в этом мире закончился (удачно или нет). До этого список ресурсов скоро даст сам JEI. */
+    private static volatile boolean settled;
     private static Runnable rawStart;
     private static Runnable rawStop;
 
@@ -57,6 +59,21 @@ public final class JeiAsync {
     /** Идёт ли фоновая загрузка JEI прямо сейчас. */
     public static boolean loading() {
         return loading;
+    }
+
+    /**
+     * JEI установлен и вот-вот отдаст свой список ресурсов: запуск в этом мире ещё не закончился и не упал.
+     * Индексу тогда незачем собирать творческие вкладки в главном потоке: хватит списка по реестру, а полный
+     * список придёт с JEI.
+     */
+    public static boolean expected() {
+        return !settled && failure == null && Platform.get().isModLoaded("jei");
+    }
+
+    /** Запуск JEI закончился. Если наш мост так и не подключился, индекс строится заново без расчёта на JEI. */
+    private static void settle() {
+        settled = true;
+        if (Foreign.get() == null) Indexer.request("JEI запущен без моста");
     }
 
     /** Ошибка, из-за которой JEI не запустился в этом мире, или null. */
@@ -91,6 +108,7 @@ public final class JeiAsync {
                     failed(e);
                     throw e;
                 }
+                settle();
                 return;
             }
             loading = true;
@@ -102,6 +120,7 @@ public final class JeiAsync {
     public static Runnable wrapStop(Runnable stop) {
         rawStop = stop;
         return () -> {
+            settled = false;
             // остановка должна идти строго после запуска: если запуск ушёл в фон, туда же уходит и она
             if (queued) EXEC.execute(() -> safe(stop, "остановка JEI"));
             else stop.run();
@@ -174,6 +193,7 @@ public final class JeiAsync {
             Runnable connect = publish;
             publish = null;
             if (connect != null) connect.run();
+            settle();
             if (async.errors() == 0) {
                 RYScope.LOG.info("JEI загружен в фоне за {} мс, главный поток не останавливался", ms);
             } else {
@@ -200,6 +220,7 @@ public final class JeiAsync {
                 return;
             }
             failure = null;
+            settle();
             if (first.thrown() == null && sync.errors() >= first.errors()) {
                 cfg.asyncJeiTolerated = sync.errors();
                 RYScope.LOG.info("Те же ошибки плагинов ({}) есть и при обычной загрузке JEI: фоновый режим остаётся включён.",
@@ -224,6 +245,8 @@ public final class JeiAsync {
             root.getClass().getSimpleName(), brokenClass, mixins, error);
         String reason = root.getClass().getSimpleName() + (brokenClass == null ? "" : " (" + simpleName(brokenClass) + ")");
         Minecraft mc = Minecraft.getInstance();
+        // список ресурсов от JEI не придёт: индекс собирает его сам
+        Indexer.request("JEI не запустился");
         mc.execute(() -> {
             Component head = Component.translatable("ryscope.jei.failed", reason).withStyle(ChatFormatting.RED);
             Component hint = mixins.isEmpty()

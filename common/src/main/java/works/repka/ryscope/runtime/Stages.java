@@ -88,9 +88,13 @@ public final class Stages {
         }
 
         boolean ownsItem(Stack stack) {
-            String id = stack.id().toString();
-            if (items.contains(id) || mods.contains(stack.namespace())) return true;
-            if (!tags.isEmpty()) for (String t : stack.tags()) if (tags.contains(t)) return true;
+            return ownsItem(stack.id().toString(), stack.namespace(), stack.tags());
+        }
+
+        /** id, мод и теги ресурса считаются один раз на ресурс, а не на каждую стадию. */
+        boolean ownsItem(String id, String namespace, List<String> stackTags) {
+            if (items.contains(id) || mods.contains(namespace)) return true;
+            if (!tags.isEmpty()) for (String t : stackTags) if (tags.contains(t)) return true;
             return false;
         }
 
@@ -163,15 +167,24 @@ public final class Stages {
         List<Stage> defs = stages;
         Map<Object, Stage> map = new HashMap<>();
         if (!defs.isEmpty()) {
+            // у предметов id, мод и теги зависят только от самого предмета: каждый предмет проверяется один раз
+            java.util.Set<Object> seenItems = new java.util.HashSet<>();
             for (Stack s : stacks) {
+                if (!s.item().isEmpty() && !seenItems.add(s.key())) continue;
+                String id, namespace;
+                List<String> stackTags;
+                try {
+                    id = s.id().toString();
+                    namespace = s.namespace();
+                    stackTags = s.tags();
+                } catch (Throwable ignored) {
+                    // теги чужого ресурса
+                    continue;
+                }
                 for (Stage st : defs) {
-                    try {
-                        if (st.ownsItem(s)) {
-                            map.put(s.key(), st);
-                            break;
-                        }
-                    } catch (Throwable ignored) {
-                        // теги чужого ресурса
+                    if (st.ownsItem(id, namespace, stackTags)) {
+                        map.put(s.key(), st);
+                        break;
                     }
                 }
             }

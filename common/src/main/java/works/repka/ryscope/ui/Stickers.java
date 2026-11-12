@@ -29,11 +29,11 @@ public final class Stickers {
 
     private Stickers() {}
 
-    private static int widthOf(Board.Goal goal, CraftTree tree) {
+    private static int widthOf(Board.Goal goal, @Nullable CraftTree tree) {
         long have = Math.min(goal.amount, InventoryView.count(goal.stack));
         String title = title(goal), count = have + " / " + goal.amount;
         float text = Draw.labelWidth(title, 12.5f, Weight.SEMIBOLD) + 8 + Draw.labelWidth(count, 12.5f, Weight.REGULAR);
-        int tiles = Math.min(4, Math.max(1, tree.raw.size()));
+        int tiles = tree == null ? 1 : Math.min(4, Math.max(1, tree.raw.size()));
         return Math.max(tiles >= 4 ? 110 : 90, (int) Math.ceil(text) + PAD * 2);
     }
 
@@ -94,7 +94,7 @@ public final class Stickers {
         }
     }
 
-    private static void draw(GuiGraphics g, Theme t, Board.Goal goal, CraftTree tree, int x, int y, int w) {
+    private static void draw(GuiGraphics g, Theme t, Board.Goal goal, @Nullable CraftTree tree, int x, int y, int w) {
         Draw.roundBox(g, x, y, w, H, t.beveled() ? 0 : 6f, Draw.alpha(t.c("hud.bg"), 0.92f), t.c("hud.border"));
         // в скошенной теме стикер тёмный, как подсказка: текст цветом HUD, приглушённый смешан с фоном
         int textColor = t.beveled() ? t.c("hud.fg") : t.c("text.primary");
@@ -106,7 +106,10 @@ public final class Stickers {
         Draw.label(g, Draw.ellipsize(title(goal), w - PAD * 2 - countW - 8, 12.5f, Weight.SEMIBOLD), x + PAD, cy, 12.5f, Weight.SEMIBOLD, textColor);
         Draw.label(g, count, x + w - PAD - countW, cy, 12.5f, Weight.REGULAR, mutedColor);
         int ty = y + 6 + 8 + 4;
-        if (tree.raw.isEmpty()) {
+        if (tree == null) {
+            // первое дерево цели ещё строится по частям в тике
+            Draw.label(g, Draw.ellipsize(Component.translatable("ryscope.board.computing").getString(), w - PAD * 2, 12f, Weight.REGULAR), x + PAD, ty + TILE / 2f, 12f, Weight.REGULAR, mutedColor);
+        } else if (tree.raw.isEmpty()) {
             Draw.label(g, Component.translatable("ryscope.board.ready").getString(), x + PAD, ty + TILE / 2f, 12f, Weight.REGULAR, t.c("state.ok"));
         } else {
             int fits = Math.max(1, (w - PAD * 2 + TILE_GAP) / (TILE + TILE_GAP));

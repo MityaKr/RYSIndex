@@ -131,6 +131,8 @@ public final class RecipeScreen extends ScaledScreen {
     private RecipeView dragging;
     private List<Page> pages = List.of();
     private Object pagesFor;
+    private Object widthFor;
+    private int widthNeed;
     private int pagesAvail;
     private int tallestPage;
     /** Прокрутка страницы, которая не помещается в карточку целиком, и границы области рецептов. */
@@ -228,7 +230,7 @@ public final class RecipeScreen extends ScaledScreen {
 
     private static void show(Minecraft mc, Nav nav) {
         if (mc.screen instanceof RecipeScreen rs) {
-            rs.history.push(rs.nav);
+            rs.pushHistory(rs.nav);
             rs.nav = nav;
             rs.rail.reset();
             rs.clearCaches();
@@ -242,6 +244,20 @@ public final class RecipeScreen extends ScaledScreen {
         transfers.clear();
         statuses.clear();
         pagesFor = null;
+        widthFor = null;
+    }
+
+    /** Сколько переходов назад помнит карточка: у станции раздел держит тысячи рецептов. */
+    private static final int HISTORY_LIMIT = 32;
+
+    /**
+     * Прежний раздел уходит в историю. Его рецепты больше не на экране: раскладки JEI отпускаются и при возврате
+     * соберутся заново. Самые старые переходы забываются.
+     */
+    private void pushHistory(Nav old) {
+        history.push(old);
+        while (history.size() > HISTORY_LIMIT) history.removeLast();
+        for (Group g : old.groups) for (RecipeView r : g.recipes()) r.release();
     }
 
     /** Ресурс, рецепты которого сейчас показаны, или null для просмотра категории. */
@@ -320,11 +336,18 @@ public final class RecipeScreen extends ScaledScreen {
 
     /** Ширина карточки, которая нужна этому разделу. */
     public int preferredWidth() {
-        int need = 0;
-        for (RecipeView r : group().recipes()) {
-            int plate = r.needsPlate() ? 3 : 0;
-            need = Math.max(need, r.width() + plate * 2);
+        // вызывается каждый кадр дважды, а у станции в разделе тысячи рецептов: ширина считается раз на раздел
+        Group current = group();
+        if (widthFor != current) {
+            int need = 0;
+            for (RecipeView r : current.recipes()) {
+                int plate = r.needsPlate() ? 3 : 0;
+                need = Math.max(need, r.width() + plate * 2);
+            }
+            widthFor = current;
+            widthNeed = need;
         }
+        int need = widthNeed;
         widestCard = Math.max(widestCard, Math.max(CARD_W, need + BUTTON + 6 + BLOCK_PAD * 2 + PAD_X * 2 + railWidth()));
         return widestCard + testExtraWidth;
     }
@@ -1112,7 +1135,7 @@ public final class RecipeScreen extends ScaledScreen {
 
     private void switchSection(Section section) {
         if (nav.focus == null || nav.section == section || nav.sections.get(section).isEmpty()) return;
-        history.push(nav);
+        pushHistory(nav);
         nav = new Nav(nav.focus, section, nav.sections);
         remember(nav.focus, section == Section.USES ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
         rail.reset();

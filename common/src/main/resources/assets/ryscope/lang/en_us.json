@@ -134,6 +134,7 @@
   "ryscope.board.removed": "Goal removed",
   "ryscope.board.updated": "Goal updated",
   "ryscope.board.ready": "Everything is in your inventory",
+  "ryscope.board.computing": "Calculating",
   "ryscope.board.more": "and %s more",
   "ryscope.settings.board": "Pinned goals on screen",
   "ryscope.settings.board.note": "Shows what is still missing for pinned goals: the pin next to a recipe or the button in the crafting tree",

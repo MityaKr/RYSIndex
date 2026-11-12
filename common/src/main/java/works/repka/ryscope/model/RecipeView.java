@@ -39,6 +39,12 @@ public interface RecipeView {
 
     default void tick() {}
 
+    /**
+     * Отпустить тяжёлое, что нужно только для показа (раскладку JEI). Входы и выходы остаются; если рецепт
+     * снова покажут, показ соберётся заново. Не вызывать для рецепта, который сейчас на экране.
+     */
+    default void release() {}
+
     /** Колесо над рецептом. True, если рецепт прокрутил что-то своё и страницу листать не надо. */
     default boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         return false;

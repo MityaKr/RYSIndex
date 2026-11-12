@@ -50,6 +50,12 @@ public final class Lens {
     private static Object cachedKey;
     private static long cachedAt;
 
+    /** Число рецептов и превью ресурса: два полных поиска, поэтому живут, пока не сменились ресурс, снимок и источник. */
+    private record Found(Stack stack, Object snapshot, Object source, int recipes, int uses,
+                         @Nullable RecipeView preview, @Nullable Category previewCategory) {}
+
+    private static Found found;
+
     private Lens() {}
 
     public static boolean held() {
@@ -83,6 +89,25 @@ public final class Lens {
     private static Info info(Stack stack, List<String> facts, @Nullable String subject, @Nullable SourceView source, boolean preferSource) {
         long now = System.currentTimeMillis();
         if (cached != null && cached.stack.same(stack) && now - cachedAt < 2000 && java.util.Objects.equals(cachedKey, subject)) return cached;
+        Found f = found(stack);
+        int recipes = f.recipes(), uses = f.uses();
+        RecipeView preview = f.preview();
+        Category previewCategory = f.previewCategory();
+        if (source != null && (preferSource || preview == null) && source.height() <= 110) {
+            preview = source;
+            previewCategory = null;
+        }
+        List<String> tags = stack.tags();
+        cached = new Info(stack, recipes, uses, preview, previewCategory, tags, facts, subject);
+        cachedKey = subject;
+        cachedAt = now;
+        return cached;
+    }
+
+    private static Found found(Stack stack) {
+        Object snapshot = works.repka.ryscope.runtime.Indexer.snapshot(), source = works.repka.ryscope.runtime.Foreign.get();
+        Found f = found;
+        if (f != null && f.stack().same(stack) && f.snapshot() == snapshot && f.source() == source) return f;
         int recipes = 0, uses = 0;
         RecipeView preview = null;
         Category previewCategory = null;
@@ -98,15 +123,8 @@ public final class Lens {
         } catch (Throwable ignored) {
             // линза не должна ломаться из-за чужого источника
         }
-        if (source != null && (preferSource || preview == null) && source.height() <= 110) {
-            preview = source;
-            previewCategory = null;
-        }
-        List<String> tags = stack.tags();
-        cached = new Info(stack, recipes, uses, preview, previewCategory, tags, facts, subject);
-        cachedKey = subject;
-        cachedAt = now;
-        return cached;
+        found = f = new Found(stack, snapshot, source, recipes, uses, preview, previewCategory);
+        return f;
     }
 
     /** Карточка ресурса рядом с курсором. */

@@ -36,6 +36,19 @@ public final class Query {
             this.end = end;
             this.variants = kind == Kind.NAME || kind == Kind.TOOLTIP ? Fuzzy.variants(text) : List.of(text);
         }
+
+        private volatile Fuzzy.Compiled[] fuzzy;
+
+        /** Варианты, разобранные для нечёткого поиска: строятся при первом нечётком проходе, не при каждом разборе. */
+        Fuzzy.Compiled[] fuzzy() {
+            Fuzzy.Compiled[] out = fuzzy;
+            if (out == null) {
+                out = new Fuzzy.Compiled[variants.size()];
+                for (int i = 0; i < out.length; i++) out[i] = Fuzzy.compile(variants.get(i));
+                fuzzy = out;
+            }
+            return out;
+        }
     }
 
     /** ИЛИ-группы, внутри группы И. */
@@ -57,9 +70,16 @@ public final class Query {
         return false;
     }
 
+    private volatile List<Term> terms;
+
+    /** Все условия по порядку. Список общий и неизменяемый: собирается один раз на запрос. */
     public List<Term> terms() {
-        List<Term> out = new ArrayList<>();
-        for (List<Term> g : groups) out.addAll(g);
+        List<Term> out = terms;
+        if (out == null) {
+            List<Term> all = new ArrayList<>();
+            for (List<Term> g : groups) all.addAll(g);
+            terms = out = java.util.Collections.unmodifiableList(all);
+        }
         return out;
     }
 

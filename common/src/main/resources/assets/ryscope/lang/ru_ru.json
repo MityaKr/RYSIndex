@@ -134,6 +134,7 @@
   "ryscope.board.removed": "Цель снята",
   "ryscope.board.updated": "Цель обновлена",
   "ryscope.board.ready": "Всё есть в инвентаре",
+  "ryscope.board.computing": "Считаю сырьё",
   "ryscope.board.more": "и ещё %s",
   "ryscope.settings.board": "Закреплённые цели на экране",
   "ryscope.settings.board.note": "Показывает, чего ещё не хватает для закреплённых целей: булавка у рецепта или кнопка в дереве крафта",

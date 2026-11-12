@@ -58,8 +58,10 @@ public final class RyscopeClient {
     }
 
     private static void scheduleIndex() {
-        // рецепты и теги приходят отдельными пакетами: ждём оба, но не дольше секунды
-        indexDelay = recipesSeen && tagsSeen ? 2 : 20;
+        // рецепты и теги приходят отдельными пакетами: ждём оба, но не дольше десяти секунд.
+        // При входе в большую сборку рецепты приходят на несколько секунд позже тегов, и при ожидании в секунду
+        // индекс строился дважды подряд (журнал сборки RepYS: 6,3 с по одним тегам, затем 3,5 с с рецептами)
+        indexDelay = recipesSeen && tagsSeen ? 2 : 200;
     }
 
     public static void onLogout() {
@@ -122,9 +124,17 @@ public final class RyscopeClient {
         panelsDrawn = true;
         // чужое окно может оставить включённую обрезку или прозрачный цвет (контроллер Modular Machinery
         // рисует всё окно внутри renderBackground): тогда панели не видны, хотя мышь по ним работает
-        boolean scissor = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
-        int[] box = new int[4];
-        if (scissor) org.lwjgl.opengl.GL11.glGetIntegerv(org.lwjgl.opengl.GL11.GL_SCISSOR_BOX, box);
+        // состояние берётся из GlStateManager (Scissor): запрос к драйверу в каждом кадре ждёт его очередь команд
+        boolean scissor;
+        int[] box;
+        if (Scissor.tracked()) {
+            scissor = Scissor.enabled();
+            box = Scissor.box();
+        } else {
+            scissor = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+            box = new int[4];
+            if (scissor) org.lwjgl.opengl.GL11.glGetIntegerv(org.lwjgl.opengl.GL11.GL_SCISSOR_BOX, box);
+        }
         float[] color = com.mojang.blaze3d.systems.RenderSystem.getShaderColor().clone();
         g.flush();
         com.mojang.blaze3d.systems.RenderSystem.disableScissor();

@@ -50,6 +50,11 @@ public final class SearchService {
     private static final AtomicInteger GENERATION = new AtomicInteger();
     /** Сколько главного потока за тик отдаётся заранее собираемым подсказкам. */
     private static final long WARM_NANOS_PER_TICK = 2_000_000L;
+    /** То же, пока игрок ищет по {@code $} и ждёт подсказок, которые ещё не собраны. */
+    private static final long WARM_NANOS_WANTED = 6_000_000L;
+    /** Запрос с {@code $} пришёл раньше, чем собраны подсказки: сборка ускоряется, поиск повторяется по мере сборки. */
+    private static volatile boolean tooltipsWanted;
+    private static int wantedTicks;
     private static volatile long submittedAt;
     private static volatile long craftableMillis;
     private static volatile int examined;
@@ -156,7 +161,9 @@ public final class SearchService {
         SearchIndex index = snap.index;
         Query own = Query.parse(typed);
         Query query = tab.isEmpty() ? own : Query.parse(text);
-        if (own.needsTooltip()) fillTooltips(snap, gen);
+        // подсказки модов собираются только в главном потоке (warmTooltips): из потока поиска они падают или
+        // гоняются с самим модом. Пока сборка не дошла до конца, ищем по уже собранным и повторяем позже
+        if (own.needsTooltip() && !tooltipsReady(snap)) tooltipsWanted = true;
         IntPredicate filter = tab.isEmpty() ? null : Operators.filter(Query.parse(tab), snap);
         IntPredicate[] groups = Operators.groupFilters(own, snap);
         int total = index.size();
@@ -206,32 +213,26 @@ public final class SearchService {
         return mask;
     }
 
-    /** Тексты подсказок считаются только при первом запросе с {@code $}: это самая дорогая часть индекса. */
-    private static void fillTooltips(Snapshot snap, int gen) {
-        SearchIndex index = snap.index;
-        for (int i = 0; i < index.size(); i++) {
-            if ((i & 127) == 0) {
-                if (GENERATION.get() != gen) return;
-                examined = i;
-            }
-            SearchEntry e = index.entry(i);
-            if (e.tooltip == null) e.tooltip = tooltipText(snap.stacks.get(i));
-        }
+    /** Подсказки всех записей этого снимка уже собраны в главном потоке. */
+    private static boolean tooltipsReady(Snapshot snap) {
+        return warmFor == snap && warmNext >= snap.index.size();
     }
 
+    /** Текст подсказки без первой строки (названия) или null, если подсказка чужого мода упала. */
     private static String tooltipText(Stack stack) {
         StringBuilder sb = new StringBuilder();
         try {
             List<Component> lines = stack.tooltipLines();
             for (int l = 1; l < lines.size(); l++) sb.append(lines.get(l).getString()).append('\n');
         } catch (Throwable ignored) {
-            // подсказка чужого мода может не работать вне главного потока: оставляем пустой
+            // часть строк не сохраняем: по ней поиск находил бы предмет то по одним словам, то по другим
+            return null;
         }
         return sb.toString().toLowerCase(Locale.ROOT);
     }
 
-    private static Snapshot warmFor;
-    private static int warmNext;
+    private static volatile Snapshot warmFor;
+    private static volatile int warmNext;
 
     /**
      * Тексты подсказок собираются заранее, понемногу каждый тик в главном потоке: первый поиск с {@code $}
@@ -245,11 +246,24 @@ public final class SearchService {
             warmNext = 0;
         }
         SearchIndex index = snap.index;
-        long deadline = System.nanoTime() + WARM_NANOS_PER_TICK;
-        while (warmNext < index.size() && System.nanoTime() < deadline) {
-            SearchEntry e = index.entry(warmNext);
-            if (e.tooltip == null) e.tooltip = tooltipText(snap.stacks.get(warmNext));
-            warmNext++;
+        boolean wanted = tooltipsWanted;
+        long deadline = System.nanoTime() + (wanted ? WARM_NANOS_WANTED : WARM_NANOS_PER_TICK);
+        int next = warmNext;
+        while (next < index.size() && System.nanoTime() < deadline) {
+            SearchEntry e = index.entry(next);
+            if (e.tooltip == null) e.tooltip = tooltipText(snap.stacks.get(next));
+            next++;
+        }
+        warmNext = next;
+        if (!wanted) return;
+        // раз в секунду и в конце сборки поиск с $ повторяется: результат дополняется собранными подсказками
+        boolean done = next >= index.size();
+        if (done || ++wantedTicks % 20 == 0) {
+            if (done) tooltipsWanted = false;
+            String current = text;
+            String full = filter.isEmpty() ? current : current + " " + filter;
+            if (Query.parse(full).needsTooltip()) submit(current);
+            else tooltipsWanted = false;
         }
     }
 

@@ -166,7 +166,7 @@ public final class Overlay {
         if (full.isEmpty()) return FormattedCharSequence.forward(visible, Style.EMPTY.withColor(base));
         int[] colors = new int[full.length()];
         java.util.Arrays.fill(colors, base);
-        for (Query.Term t : Query.parse(full).terms()) {
+        for (Query.Term t : parsed(full).terms()) {
             int color = switch (t.kind) {
                 case MOD -> theme.c("chip.mod.fg");
                 case TAG -> theme.c("chip.tag.fg");
@@ -479,9 +479,7 @@ public final class Overlay {
             Draw.label(g, Component.translatable(Indexer.step()).getString(), LIST.x + SIDE_PAD, footerY + 2, 11, Weight.REGULAR, t.c("text.muted"));
         } else {
             int n = LIST.items().size();
-            String number = String.format("%,d", n).replace(',', ' ');
-            String count = plural("ryscope.count.items", n, number);
-            if (results.exactCount < results.stacks.size() && !results.query.isEmpty()) count = Component.translatable("ryscope.search.fuzzy", count).getString();
+            String count = footerCount(n, results.exactCount < results.stacks.size() && !results.query.isEmpty());
             listCount = count;
             boolean many = LIST.paged && LIST.pages() > 1;
             String footer = many ? count + " · " + Component.translatable("ryscope.list.page", LIST.page() + 1, LIST.pages()).getString() : count;
@@ -672,13 +670,53 @@ public final class Overlay {
         detachRect[0] = -1;
     }
 
-    /** Чипы и цвета запроса в поле поиска. */
+    private static int footerN = -1;
+    private static boolean footerFuzzy;
+    private static String footerLang = "";
+    private static String footerText = "";
+
+    /** Счётчик подвала: собирается заново только при смене числа, нечёткости или языка. */
+    private static String footerCount(int n, boolean fuzzy) {
+        String lang = Minecraft.getInstance().getLanguageManager().getSelected();
+        if (n != footerN || fuzzy != footerFuzzy || !lang.equals(footerLang)) {
+            String number = String.format("%,d", n).replace(',', ' ');
+            String count = plural("ryscope.count.items", n, number);
+            if (fuzzy) count = Component.translatable("ryscope.search.fuzzy", count).getString();
+            footerText = count;
+            footerN = n;
+            footerFuzzy = fuzzy;
+            footerLang = lang;
+        }
+        return footerText;
+    }
+
+    private static String parsedText;
+    private static Query parsedQuery;
+
+    /** Разбор строки поиска для подсветки: строка меняется редко, а рисуется каждый кадр. */
+    private static Query parsed(String text) {
+        if (!text.equals(parsedText)) {
+            parsedQuery = Query.parse(text);
+            parsedText = text;
+        }
+        return parsedQuery;
+    }
+
+    private static String spansText;
+    private static Theme spansTheme;
+    private static Field spansBox;
+
+    /** Чипы и цвета запроса в поле поиска. Пересчитываются только при смене поля, строки или темы. */
     private static void applySpans(Field box, Theme t) {
         String value = box.getValue();
+        if (box == spansBox && value.equals(spansText) && t == spansTheme) return;
+        spansBox = box;
+        spansText = value;
+        spansTheme = t;
         List<Field.Span> spans = new ArrayList<>();
         int[] colors = new int[value.length()];
         if (!value.isEmpty()) {
-            for (Query.Term term : Query.parse(value).terms()) {
+            for (Query.Term term : parsed(value).terms()) {
                 String kind = switch (term.kind) {
                     case MOD -> "mod";
                     case TAG -> "tag";

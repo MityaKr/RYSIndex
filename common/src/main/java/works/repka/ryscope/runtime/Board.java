@@ -36,22 +36,32 @@ public final class Board {
         public long amount;
         /** Маршрут из дерева крафта, по которому цель закреплена; null, если выбор по умолчанию. */
         public CraftTree.Route route;
+        /** Последнее готовое дерево: его и показываем, пока считается новое. */
         CraftTree tree;
+        /** Дерево, которое сейчас строится по частям в {@link #tick()}. */
+        CraftTree building;
+        /** Снимок индекса сменился: показанное дерево устарело, нужно строить заново без перенятых рецептов. */
+        boolean stale;
+        /** Последняя попытка построить дерево упала: следующая не раньше чем через секунду. */
+        boolean failed;
 
         Goal(Stack stack, long amount) {
             this.stack = stack;
             this.amount = amount;
         }
 
+        /**
+         * Последнее готовое дерево или null, пока первое ещё считается. Само ничего не строит: дерево большой цели
+         * считается сотни миллисекунд и строится по частям в тике, а не при отрисовке.
+         */
+        @org.jetbrains.annotations.Nullable
         public CraftTree tree() {
-            if (tree == null) {
-                tree = new CraftTree(stack);
-                tree.apply(route);
-                tree.setAmount(amount);
-            }
             return tree;
         }
     }
+
+    /** Сколько главного потока за тик отдаётся построению деревьев целей. */
+    private static final long TICK_NANOS = 3_000_000L;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final List<Goal> GOALS = new ArrayList<>();
@@ -89,7 +99,9 @@ public final class Board {
         }
         goal.amount = Math.max(1, amount);
         goal.route = route == null || route.isEmpty() ? null : route;
+        // дерево по прежнему маршруту или количеству больше не годится: строится заново в тике
         goal.tree = null;
+        goal.building = null;
         save();
         return added;
     }
@@ -120,21 +132,61 @@ public final class Board {
         loaded = false;
     }
 
+    /**
+     * Деревья целей строятся по частям, не дольше {@link #TICK_NANOS} за тик на все цели. Раз в секунду готовое дерево
+     * пересчитывается под инвентарь: новое дерево перенимает найденные рецепты у прежнего и обычно готово сразу,
+     * а прежнее остаётся на экране, пока новое не достроено.
+     */
     public static void tick() {
-        if (GOALS.isEmpty() || ++age % 20 != 0) return;
+        if (GOALS.isEmpty()) return;
+        boolean periodic = ++age % 20 == 0;
         if (Indexer.state() != Indexer.State.READY) return;
+        long deadline = System.nanoTime() + TICK_NANOS;
         for (Goal g : GOALS) {
             try {
-                g.tree().recompute();
+                boolean due = g.stale || periodic || (g.tree == null && !g.failed);
+                if (g.building == null && due) {
+                    CraftTree next = new CraftTree(g.stack, TICK_NANOS);
+                    // рецепты прежнего дерева годятся, только пока не сменился снимок
+                    if (g.tree != null && !g.stale) next.inherit(g.tree);
+                    next.apply(g.route);
+                    next.amount = Math.max(1, Math.min(9999, g.amount));
+                    g.building = next;
+                    g.stale = false;
+                }
+                if (g.building == null || System.nanoTime() > deadline) continue;
+                g.building.recompute();
+                if (g.building.ready()) {
+                    g.tree = g.building;
+                    g.building = null;
+                    g.failed = false;
+                }
             } catch (Throwable t) {
+                g.building = null;
+                g.failed = true;
                 RYScope.LOG.debug("Цель {} не пересчитана: {}", g.stack.id(), t.toString());
             }
         }
     }
 
-    /** Снимок индекса сменился: старые деревья ссылаются на устаревшие рецепты. */
+    /**
+     * Снимок индекса сменился: старые деревья ссылаются на устаревшие рецепты. Вызывается из потока индексации,
+     * поэтому сам список целей трогается только в главном потоке.
+     */
     public static void invalidate() {
-        for (Goal g : GOALS) g.tree = null;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.isSameThread()) {
+            markStale();
+        } else {
+            mc.execute(Board::markStale);
+        }
+    }
+
+    private static void markStale() {
+        for (Goal g : GOALS) {
+            g.stale = true;
+            g.building = null;
+        }
     }
 
     public static void renderHud(GuiGraphics g) {

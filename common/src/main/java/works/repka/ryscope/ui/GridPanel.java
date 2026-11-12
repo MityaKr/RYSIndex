@@ -28,6 +28,7 @@ public final class GridPanel {
     public boolean accentTiles;
     private int[] tileXy = new int[0];
     private int page;
+    private final ItemBatch batch = new ItemBatch();
 
     public boolean visible() {
         return cols > 0 && h > 0;
@@ -193,6 +194,9 @@ public final class GridPanel {
                     else theme.hover(g, cx, cy, cell);
                 }
                 Stack s = items.get(idx);
+                // обычные предметы копятся в пачку и рисуются за один сброс буфера после цикла
+                if (s instanceof works.repka.ryscope.model.ItemRes ir
+                    && batch.add(ir.stack, itemScale != 1f ? cx + scaledPad : cx + pad, itemScale != 1f ? cy + scaledPad : cy + pad, itemScale)) continue;
                 try {
                     if (itemScale != 1f) {
                         g.pose().pushPose();
@@ -206,7 +210,18 @@ public final class GridPanel {
                 } catch (Throwable ignored) {
                     // чужой рендер не должен ронять интерфейс
                 }
-                if (works.repka.ryscope.runtime.Stages.any() && works.repka.ryscope.runtime.Stages.lockOf(s) != null) {
+            }
+        }
+        batch.render(g);
+        if (works.repka.ryscope.runtime.Stages.any()) {
+            // замки поверх иконок: отдельным проходом после пачки
+            for (int row = first; row <= last; row++) {
+                int cy = gridY + row * cell - Math.round(scroll + push);
+                for (int col = 0; col < cols; col++) {
+                    int idx = row * cols + col;
+                    if (idx >= items.size()) break;
+                    if (works.repka.ryscope.runtime.Stages.lockOf(items.get(idx)) == null) continue;
+                    int cx = gridX + col * cell;
                     // закрытая стадия: приглушаем и ставим замок, а не только меняем цвет
                     g.pose().pushPose();
                     g.pose().translate(0, 0, 220);

@@ -201,6 +201,7 @@ public final class CraftTree {
     private record Candidate(Category category, RecipeView recipe, List<Ing> inputs, boolean unpacking, boolean singleKind) {}
 
     private final boolean deferred;
+    private final long slice;
     private boolean ready = true;
     private long deadline;
     private final Map<Object, Loaded> loaded = new HashMap<>();
@@ -217,9 +218,23 @@ public final class CraftTree {
      *                 Нужно экрану, чтобы он открывался сразу, а не после поиска по всем рецептам сборки.
      */
     public CraftTree(Stack target, boolean deferred) {
+        this(target, deferred, SLICE_NANOS);
+        recompute();
+    }
+
+    /**
+     * Дерево по частям со своим бюджетом на один вызов {@link #recompute()}. Сам конструктор ничего не считает:
+     * сначала можно перенять найденное ({@link #inherit}) и задать количество, первый шаг делает вызывающий.
+     */
+    public CraftTree(Stack target, long sliceNanos) {
+        this(target, true, sliceNanos);
+        ready = false;
+    }
+
+    private CraftTree(Stack target, boolean deferred, long sliceNanos) {
         this.root = new Node(target.withAmount(1), null);
         this.deferred = deferred;
-        recompute();
+        this.slice = sliceNanos;
     }
 
     /** Перенимает уже найденные рецепты у другого дерева того же предмета: пересчёт идёт почти мгновенно. */
@@ -239,7 +254,7 @@ public final class CraftTree {
 
     /** Пересчитывает количества, распределение инвентаря и итоги. Выбор рецептов в узлах сохраняется. */
     public void recompute() {
-        deadline = deferred ? System.nanoTime() + SLICE_NANOS : 0;
+        deadline = deferred ? System.nanoTime() + slice : 0;
         try {
             compute();
             ready = true;
@@ -460,13 +475,20 @@ public final class CraftTree {
 
     /**
      * Рецепты ресурса. Это самая долгая часть построения: поиск по всем рецептам сборки и разбор их входов.
-     * Результат кэшируется на время жизни дерева; при построении по частям здесь же проверяется бюджет времени.
+     * Результат кэшируется на время жизни дерева и в общем кэше снимка; при построении по частям здесь же
+     * проверяется бюджет времени.
      */
     private Loaded loaded(Stack stack) {
         Object key = stack.key();
         Loaded cached = loaded.get(key);
         if (cached != null) return cached;
+        cached = Shared.get(stack);
+        if (cached != null) {
+            loaded.put(key, cached);
+            return cached;
+        }
         if (deadline != 0 && System.nanoTime() > deadline) throw Pending.INSTANCE;
+        boolean complete = false;
         Set<Object> madeFromThis = new HashSet<>();
         List<Candidate> candidates = new ArrayList<>();
         List<String> names = new ArrayList<>();
@@ -497,14 +519,53 @@ public final class CraftTree {
                         }
                     }
                     candidates.add(new Candidate(g.category(), r, inputs, unpacking, singleKind));
+                    // входы и выходы уже прочитаны; раскладка JEI нужна только для показа, а держать её
+                    // у каждого кандидата каждого дерева дорого по памяти
+                    r.release();
                 }
             }
+            complete = true;
         } catch (Throwable ignored) {
             // без рецептов узел считается сырьём
         }
         Loaded result = new Loaded(candidates, madeFromThis, String.join(", ", names));
         loaded.put(key, result);
+        if (complete) Shared.put(stack, result);
         return result;
+    }
+
+    /**
+     * Рецепты ресурсов, общие для всех деревьев: доски целей, дерева, планировщика, сравнения маршрутов. Без него
+     * каждое дерево заново ищет рецепты и строит раскладки JEI тех же узлов (около 6 мс на узел в большой сборке).
+     * Живёт, пока не сменились снимок индекса и источник рецептов. Ключ это ресурс целиком, с подтипом:
+     * дерево книги с одними чарами не берёт рецепты книги с другими.
+     */
+    private static final class Shared {
+        private static final int LIMIT = 4096;
+        private static final Map<Stack, Loaded> MAP = new HashMap<>();
+        private static Snapshot snapshot;
+        private static Foreign.Source source;
+
+        static synchronized Loaded get(Stack stack) {
+            check();
+            return MAP.get(stack);
+        }
+
+        static synchronized void put(Stack stack, Loaded value) {
+            check();
+            if (MAP.size() >= LIMIT) MAP.clear();
+            MAP.put(stack.withAmount(1), value);
+        }
+
+        private static void check() {
+            Snapshot snap = Indexer.snapshot();
+            Foreign.Source foreign = Foreign.get();
+            if (snap != snapshot || foreign != source) {
+                MAP.clear();
+                snapshot = snap;
+                source = foreign;
+            }
+        }
     }
 
     /**
