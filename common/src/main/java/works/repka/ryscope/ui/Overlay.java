@@ -432,7 +432,7 @@ public final class Overlay {
     private static void renderSidebar(GuiGraphics g, Theme t, int mx, int my, float partialTick, boolean animate) {
         SearchService.updateCraftable();
         SearchService.Results results = SearchService.results();
-        LIST.setItems(filter == FILTER_BOOKMARKS ? Bookmarks.list() : results.stacks);
+        LIST.setItems(filter == FILTER_BOOKMARKS ? shownBookmarks(results) : results.stacks);
         t.sidebar(g, LIST.x, LIST.y, LIST.w, LIST.h);
 
         // поиск
@@ -463,6 +463,7 @@ public final class Overlay {
             works.repka.ryscore.ui.Loading.render(g, t, LIST.gridX, LIST.gridY, LIST.gridW, LIST.gridH, "ryscope.search.loading", SearchService.examined());
         } else {
             LIST.render(g, t, mx, my, animate);
+            if (LIST.items().isEmpty() && Indexer.state() != Indexer.State.BUILDING) renderEmpty(g, t, results);
         }
 
         // подвал: счётчик и страницы
@@ -499,6 +500,51 @@ public final class Overlay {
         }
 
         if (MARKS.visible() && !marksLeft) renderMarks(g, t, mx, my, animate);
+    }
+
+    private static List<Stack> bookmarksShown = List.of();
+    private static SearchService.Results bookmarkKeysFor;
+    private static java.util.Set<Object> bookmarkKeys = java.util.Set.of();
+
+    /** Вкладка «Закладки» при запросе показывает только закладки, которые он нашёл. Список меняется, только если изменился состав. */
+    private static List<Stack> shownBookmarks(SearchService.Results results) {
+        List<Stack> marks = Bookmarks.list();
+        if (results.query.isEmpty()) return marks;
+        if (bookmarkKeysFor != results) {
+            java.util.Set<Object> keys = new java.util.HashSet<>();
+            for (Stack s : results.stacks) keys.add(s.key());
+            bookmarkKeys = keys;
+            bookmarkKeysFor = results;
+        }
+        List<Stack> out = new ArrayList<>();
+        for (Stack s : marks) if (bookmarkKeys.contains(s.key())) out.add(s);
+        boolean same = out.size() == bookmarksShown.size();
+        for (int i = 0; same && i < out.size(); i++) same = out.get(i) == bookmarksShown.get(i);
+        if (!same) bookmarksShown = out;
+        return bookmarksShown;
+    }
+
+    /** Пустой список: что найдено ноль и что можно поправить. */
+    private static void renderEmpty(GuiGraphics g, Theme t, SearchService.Results results) {
+        List<String> hints = new ArrayList<>();
+        if (filter == FILTER_BOOKMARKS && Bookmarks.list().isEmpty()) {
+            hints.add(Component.translatable("ryscope.bookmarks.empty", Keys.label(Keys.BOOKMARK)).getString());
+        } else {
+            if (filter == FILTER_CRAFTABLE) hints.add(Component.translatable("ryscope.list.empty.craftable").getString());
+            int hidden = Config.get().hiddenQueries.size();
+            if (hidden > 0 && !Config.get().showHidden) hints.add(Component.translatable("ryscope.list.empty.hidden", hidden).getString());
+            if (!results.query.isEmpty()) hints.add(Component.translatable("ryscope.list.empty.query").getString());
+        }
+        float y = LIST.gridY + 8;
+        Draw.label(g, Component.translatable("ryscope.list.empty").getString(), LIST.gridX, y, 12, Weight.MEDIUM, t.c("text.muted"));
+        y += 13;
+        for (String hint : hints) {
+            for (String line : Draw.wrapLabel(hint, LIST.gridW, 11, Weight.REGULAR, 3)) {
+                Draw.label(g, line, LIST.gridX, y, 11, Weight.REGULAR, t.c("text.dim"));
+                y += 11;
+            }
+            y += 4;
+        }
     }
 
     private static String plural(String key, int n, String shown) {
@@ -678,7 +724,11 @@ public final class Overlay {
 
     /** Подсказки, линза и уведомления: поверх всего экрана. */
     public static void renderTop(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
-        if (!active(screen)) return;
+        if (!active(screen)) {
+            // панели выключены, но уведомление «Ctrl+O вернёт» должно быть видно
+            renderToast(screen, g);
+            return;
+        }
         Theme theme = ThemeManager.get();
         Stack own = ownStackAt(mx, my);
         if (Lens.held()) {
@@ -723,48 +773,48 @@ public final class Overlay {
     /** Шпаргалка по языку поиска: при наведении на значок «?» внизу списка. */
     private static void renderHelp(GuiGraphics g, Theme theme) {
         if (!LIST.visible() || !overInfo(helpIcon, Overlay.mouseX(), Overlay.mouseY())) return;
-        Font font = Minecraft.getInstance().font;
         List<String[]> lines = new ArrayList<>();
         int keyW = 0, textW = 0;
-        for (int i = 1; i <= 10; i++) {
+        for (int i = 1; net.minecraft.locale.Language.getInstance().has("ryscope.help." + i); i++) {
             String raw = Component.translatable("ryscope.help." + i).getString();
             int split = raw.indexOf(" — ");
             String[] parts = split < 0 ? new String[] {raw, ""} : new String[] {raw.substring(0, split), raw.substring(split + 3)};
             lines.add(parts);
-            keyW = Math.max(keyW, Math.round(Draw.widthScaled(parts[0], 0.75f)));
-            textW = Math.max(textW, Math.round(Draw.widthScaled(parts[1], 0.75f)));
+            keyW = Math.max(keyW, (int) Math.ceil(Draw.labelWidth(parts[0], HELP_PX, Weight.MEDIUM)));
+            textW = Math.max(textW, (int) Math.ceil(Draw.labelWidth(parts[1], HELP_PX, Weight.REGULAR)));
         }
         int w = keyW + textW + 20, h = lines.size() * 9 + 10;
         int x = Math.max(4, LIST.x - w - 4), y = LIST.y;
         g.pose().pushPose();
         g.pose().translate(0, 0, 380);
         theme.tooltipBox(g, x, y, w, h);
-        int ly = y + 6;
+        float cy = y + 5 + 4.5f;
         for (String[] parts : lines) {
-            Draw.textScaled(g, parts[0], x + 6, ly, 0.75f, theme.c("accent"));
-            Draw.textScaled(g, parts[1], x + 12 + keyW, ly, 0.75f, theme.c("text.body"));
-            ly += 9;
+            // приёмы языка поиска тем же цветом, что и их чипы в поле
+            Draw.label(g, parts[0], x + 6, cy, HELP_PX, Weight.MEDIUM, theme.c("chip.fn.fg"));
+            Draw.label(g, parts[1], x + 12 + keyW, cy, HELP_PX, Weight.REGULAR, theme.c("tooltip.fg"));
+            cy += 9;
         }
         g.pose().popPose();
     }
+
+    private static final float HELP_PX = 11.5f, TOAST_PX = 12f;
 
     /** Короткое уведомление внизу экрана. Работает на любом экране мода. */
     public static void renderToast(Screen screen, GuiGraphics g) {
         if (toast == null || System.currentTimeMillis() >= toastUntil) return;
         Theme theme = ThemeManager.get();
-        Font font = Minecraft.getInstance().font;
-        int maxText = Math.max(80, UiScale.width() - 40);
-        List<String> lines = Draw.wrap(toast, maxText);
-        if (lines.size() > 3) lines = lines.subList(0, 3);
-        int textW = 0;
-        for (String line : lines) textW = Math.max(textW, Draw.width(line));
-        int w = textW + 16, h = 6 + lines.size() * 10;
+        float maxText = Math.max(80, UiScale.width() - 40);
+        List<String> lines = Draw.wrapLabel(toast, maxText, TOAST_PX, Weight.REGULAR, 3);
+        float textW = 0;
+        for (String line : lines) textW = Math.max(textW, Draw.labelWidth(line, TOAST_PX, Weight.REGULAR));
+        int w = (int) Math.ceil(textW) + 16, h = 6 + lines.size() * 10;
         int x = (UiScale.width() - w) / 2, y = UiScale.height() - 18 - h;
         g.pose().pushPose();
         g.pose().translate(0, 0, 400);
         theme.tooltipBox(g, x, y, w, h);
         for (int i = 0; i < lines.size(); i++) {
-            Draw.text(g, lines.get(i), x + 8, y + 4 + i * 10, theme.c("text.primary"));
+            Draw.label(g, lines.get(i), x + 8, y + 3 + i * 10 + 5, TOAST_PX, Weight.REGULAR, theme.c("tooltip.fg"));
         }
         g.pose().popPose();
     }
@@ -792,7 +842,7 @@ public final class Overlay {
                 Draw.rect(g, x - 1, y, 1, 16, theme.c("accent"));
                 Draw.rect(g, x + 16, y, 1, 16, theme.c("accent"));
             } else {
-                Draw.rect(g, x, y, 16, 16, 0xA0000000);
+                Draw.rect(g, x, y, 16, 16, theme.c("overlay"));
             }
         }
         g.pose().popPose();
@@ -851,6 +901,7 @@ public final class Overlay {
     // --- папки закладок: вкладки, как в браузере ---
 
     private static final int FOLDER_TAB_H = 12;
+    private static final float FOLDER_PX = 10.5f;
     private static final int FOLDER_TAB_MIN = 20;
     private static final int FOLDER_TAB_MAX = 64;
     /** Видимые вкладки: номер папки, левый край и ширина. */
@@ -866,7 +917,7 @@ public final class Overlay {
     }
 
     private static int folderNatural(int index) {
-        int w = Math.round(Draw.widthScaled(folderLabel(index), 0.75f)) + 10;
+        int w = Math.round(Draw.labelWidth(folderLabel(index), FOLDER_PX, Weight.REGULAR)) + 10;
         return Math.max(FOLDER_TAB_MIN, Math.min(FOLDER_TAB_MAX, w));
     }
 
@@ -934,9 +985,9 @@ public final class Overlay {
                 folderEdit.render(g, mx, my, 0);
                 continue;
             }
-            String label = Draw.ellipsize(folderLabel(index), (int) ((tw - 6) / 0.75f));
-            float textW = Draw.widthScaled(label, 0.75f);
-            Draw.textScaled(g, label, tx + (tw - textW) / 2f, top + 3, 0.75f, current ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
+            String label = Draw.ellipsize(folderLabel(index), tw - 6, FOLDER_PX, Weight.REGULAR);
+            float textW = Draw.labelWidth(label, FOLDER_PX, Weight.REGULAR);
+            Draw.label(g, label, tx + (tw - textW) / 2f, top + FOLDER_TAB_H / 2f, FOLDER_PX, Weight.REGULAR, current ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
         }
         int plusX = folderPlusX();
         boolean plusHot = overMarksHeader(mx, my) && mx >= plusX - 1 && mx < plusX + 11;
@@ -1035,8 +1086,8 @@ public final class Overlay {
         theme.tooltipBox(g, x, y, w, h);
         for (int i = 0; i < rows.size(); i++) {
             int ry = y + 2 + i * 10;
-            if (i == hover || i == savedIndex) Draw.rect(g, x + 1, ry, w - 2, 10, (theme.c("accent") & 0xFFFFFF) | 0x38000000);
-            Draw.textScaled(g, Draw.ellipsize(rows.get(i), (int) ((w - 8) / 0.75f)), x + 4, ry + 2, 0.75f, theme.c("text.body"));
+            if (i == hover || i == savedIndex) Draw.rect(g, x + 1, ry, w - 2, 10, Draw.alpha(theme.c("slot.hover"), 0.8f));
+            Draw.label(g, Draw.ellipsize(rows.get(i), w - 8, HELP_PX, Weight.REGULAR), x + 4, ry + 5, HELP_PX, Weight.REGULAR, theme.c("tooltip.fg"));
         }
         g.pose().popPose();
     }
@@ -1275,7 +1326,15 @@ public final class Overlay {
         if (!carried.isEmpty() && screen instanceof AbstractContainerScreen<?>) {
             // предмет на курсоре: бросок на закладки закрепляет его, на список ничего не делает (и не выбрасывает)
             if (MARKS.contains(mx, my) || (LIST.contains(mx, my) && !MARKS.visible())) {
-                if (Bookmarks.toggle(new ItemRes(carried))) toast(Component.translatable("ryscope.bookmark.added").getString());
+                ItemRes dropped = new ItemRes(carried);
+                if (Bookmarks.contains(dropped)) {
+                    List<Stack> marks = Bookmarks.list();
+                    for (int i = 0; i < marks.size(); i++) if (marks.get(i).same(dropped)) MARKS.reveal(i);
+                    toast(Component.translatable("ryscope.bookmark.already").getString());
+                } else {
+                    Bookmarks.toggle(dropped);
+                    toast(Component.translatable("ryscope.bookmark.added").getString());
+                }
             }
             return true;
         }
@@ -1287,7 +1346,8 @@ public final class Overlay {
             // левая кнопка открывает дерево крафта цели, правая снимает её с доски
             Stack goal = Stickers.stackAt(mx, my);
             if (button == 0) {
-                TreeScreen.open(goal);
+                works.repka.ryscope.runtime.Board.Goal pinned = Stickers.goalAt(mx, my);
+                TreeScreen.open(goal, pinned.route, pinned.amount);
             } else if (button == 1) {
                 works.repka.ryscope.runtime.Board.toggle(goal, 1);
                 toast(Component.translatable("ryscope.goals.removed").getString());
@@ -1401,6 +1461,8 @@ public final class Overlay {
         if (host && Keys.matches(Keys.TOGGLE, key, scan) && !searchFocused() && !typingElsewhere(screen)) {
             Config.get().overlayEnabled = !Config.get().overlayEnabled;
             Config.save();
+            toast(Config.get().overlayEnabled ? Component.translatable("ryscope.overlay.shown").getString()
+                : Component.translatable("ryscope.overlay.hidden", Keys.label(Keys.TOGGLE)).getString(), 3000);
             // виджет FTB убирается при создании экрана: пересоздаём, чтобы он вернулся или исчез
             if (screen instanceof AbstractContainerScreen<?> && Dock.available()) {
                 screen.resize(Minecraft.getInstance(), screen.width, screen.height);
@@ -1417,6 +1479,11 @@ public final class Overlay {
         }
         if (key == GLFW.GLFW_KEY_H && Screen.hasControlDown() && LIST.visible() && (box.isFocused() || !typingElsewhere(screen))) {
             hideCurrent(box);
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_Z && Screen.hasControlDown() && LIST.visible() && lastHidden != null
+            && System.currentTimeMillis() < lastHiddenUntil && (box.isFocused() || !typingElsewhere(screen))) {
+            undoHide(box);
             return true;
         }
         if (box.isFocused()) {
@@ -1467,6 +1534,12 @@ public final class Overlay {
             // пока поле в фокусе, клавиши не должны доходить до экрана (иначе «E» закроет инвентарь)
             return true;
         }
+        if (Keys.matches(Keys.SEARCH, key, scan) && !LIST.visible() && !typingElsewhere(screen)) {
+            // список свёрнут ради карточки: раскрыть его; не поместился: молчащая клавиша выглядела бы поломкой
+            if (sidebarCollapsed) sidebarWanted = true;
+            else toast(Component.translatable("ryscope.list.no_room").getString(), 3000);
+            return true;
+        }
         if (Keys.matches(Keys.SEARCH, key, scan) && LIST.visible()) {
             SearchHistory.add(box.getValue());
             takeFocus(screen);
@@ -1480,11 +1553,13 @@ public final class Overlay {
             return true;
         }
         if (typingElsewhere(screen)) return false;
-        if (key == GLFW.GLFW_KEY_PAGE_DOWN && LIST.visible()) {
+        // в карточке PgUp/PgDn листают рецепты, список листается ими, только когда курсор над ним
+        boolean listPaging = LIST.visible() && (!(screen instanceof RecipeScreen) || LIST.contains(mouseX(), mouseY()));
+        if (key == GLFW.GLFW_KEY_PAGE_DOWN && listPaging) {
             LIST.pageBy(1);
             return true;
         }
-        if (key == GLFW.GLFW_KEY_PAGE_UP && LIST.visible()) {
+        if (key == GLFW.GLFW_KEY_PAGE_UP && listPaging) {
             LIST.pageBy(-1);
             return true;
         }
@@ -1553,10 +1628,32 @@ public final class Overlay {
             return;
         }
         int count = SearchService.results().stacks.size();
+        int total = Indexer.snapshot().stacks.size();
+        // запрос, который нашёл больше половины списка, почти наверняка опечатка или неработающий оператор
+        if (total > 0 && count * 2 > total) {
+            toast(Component.translatable("ryscope.hidden.too_many", count, total).getString(), 3000);
+            return;
+        }
         Config.get().hiddenQueries.add(query);
         Config.save();
         box.setValue("");
-        toast(Component.translatable("ryscope.hidden.added", count).getString());
+        lastHidden = query;
+        lastHiddenUntil = System.currentTimeMillis() + 30_000;
+        toast(Component.translatable("ryscope.hidden.added", count).getString(), 3000);
+    }
+
+    /** Последний скрытый запрос: Ctrl+Z в течение полуминуты возвращает его. */
+    @Nullable
+    private static String lastHidden;
+    private static long lastHiddenUntil;
+
+    private static void undoHide(EditBox box) {
+        String query = lastHidden;
+        lastHidden = null;
+        if (query == null || !Config.get().hiddenQueries.remove(query)) return;
+        Config.save();
+        box.setValue(query);
+        toast(Component.translatable("ryscope.hidden.undone", query).getString());
     }
 
     public static void copy(String text) {
@@ -1564,7 +1661,7 @@ public final class Overlay {
         toast(Component.translatable("ryscope.copied", text).getString());
     }
 
-    private static void toggleBookmark(Stack stack) {
+    static void toggleBookmark(Stack stack) {
         boolean added = Bookmarks.toggle(stack);
         toast(Component.translatable(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed").getString());
     }

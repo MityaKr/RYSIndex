@@ -300,7 +300,7 @@ public final class StructureRecipeView implements RecipeView {
         for (int i = 0; i < count; i++) {
             int sx = x + i % COLUMNS * (SLOT + GAP), sy = top + i / COLUMNS * (SLOT + GAP);
             t.slot(g, sx, sy, SLOT, mx >= sx && mx < sx + SLOT && my >= sy && my < sy + SLOT);
-            Stack shown = inputs.get(i).shown(now);
+            Stack shown = inputs.get(i).shown(Ing.clock());
             if (shown == null) continue;
             shown.render(g, sx + 1, sy + 1);
             shown.renderScaledAmount(g, sx, sy, SLOT);
@@ -328,7 +328,7 @@ public final class StructureRecipeView implements RecipeView {
         if (dx < 0 || dy < 0 || dx % (SLOT + GAP) >= SLOT || dy % (SLOT + GAP) >= SLOT) return null;
         int column = dx / (SLOT + GAP), index = dy / (SLOT + GAP) * COLUMNS + column;
         if (column >= COLUMNS || index >= Math.min(inputs.size(), COLUMNS * MAX_ROWS)) return null;
-        return inputs.get(index).shown(System.currentTimeMillis());
+        return inputs.get(index).shown(Ing.clock());
     }
 
     private boolean overScene(double mx, double my) {

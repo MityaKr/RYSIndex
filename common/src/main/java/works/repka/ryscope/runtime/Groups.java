@@ -106,17 +106,12 @@ public final class Groups {
         @Override
         public void render(GuiGraphics g, int x, int y) {
             // «стопка карточек» за иконкой: видно, что внутри несколько предметов
-            g.fill(x + 3, y + 1, x + 16, y + 14, 0x40FFFFFF);
-            g.fill(x + 1, y + 3, x + 14, y + 16, 0x30FFFFFF);
+            works.repka.ryscore.theme.Theme t = works.repka.ryscore.theme.ThemeManager.get();
+            g.fill(x + 3, y + 1, x + 16, y + 14, Draw.alpha(t.c("text.primary"), 0.25f));
+            g.fill(x + 1, y + 3, x + 14, y + 16, Draw.alpha(t.c("text.primary"), 0.19f));
             first.render(g, x, y);
-            Font font = Minecraft.getInstance().font;
-            String text = expanded ? "−" : Integer.toString(count);
-            g.pose().pushPose();
-            g.pose().translate(x + 16 - Draw.width(text) * 0.6f, y + 10, 200);
-            g.pose().scale(0.6f, 0.6f, 1f);
-            g.fill(-1, -1, Draw.width(text) + 1, 9, 0xD0000000);
-            g.drawString(font, text, 0, 0, 0xFFFFD166, false);
-            g.pose().popPose();
+            // число в углу, как у плашек семьи
+            works.repka.ryscore.ui.Kit.count(g, expanded ? "−" : Integer.toString(count), x - 2, y - 2);
         }
 
         @Override

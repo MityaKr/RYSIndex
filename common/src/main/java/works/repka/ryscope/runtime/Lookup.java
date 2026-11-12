@@ -34,7 +34,16 @@ public final class Lookup {
             // станция: показываем всё, что на ней делается
             for (Category c : snap.stationOf(stack)) {
                 List<RecipeView> all = snap.recipes(c);
-                if (!all.isEmpty()) groups.computeIfAbsent(c, k -> new ArrayList<>()).addAll(all);
+                if (all.isEmpty()) continue;
+                List<RecipeView> group = groups.computeIfAbsent(c, k -> new ArrayList<>());
+                if (group.isEmpty()) {
+                    group.addAll(all);
+                } else {
+                    // станция сама бывает ингредиентом (верстак в рецепте крафтера): без повторов
+                    java.util.Set<RecipeView> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+                    seen.addAll(group);
+                    for (RecipeView r : all) if (seen.add(r)) group.add(r);
+                }
             }
         }
         Foreign.Source foreign = Foreign.get();

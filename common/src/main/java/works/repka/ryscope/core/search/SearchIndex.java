@@ -37,6 +37,15 @@ public final class SearchIndex {
      * @param operatorFilter фильтр для операторов (uses:, craftable…), которые ядро поиска само не вычисляет; может быть null
      */
     public Result search(Query query, BooleanSupplier cancelled, IntPredicate operatorFilter, boolean allowFuzzy) {
+        return search(query, cancelled, operatorFilter, null, allowFuzzy);
+    }
+
+    /**
+     * @param operatorFilter общий фильтр для всех групп (вкладка «Доступно»); может быть null
+     * @param groupFilters операторы по группам ИЛИ, номер элемента равен номеру группы; null у группы без операторов
+     *                     или весь массив null. Группа подходит, только если её фильтр пропускает запись.
+     */
+    public Result search(Query query, BooleanSupplier cancelled, IntPredicate operatorFilter, IntPredicate[] groupFilters, boolean allowFuzzy) {
         int n = entries.length;
         if (query.isEmpty() && operatorFilter == null) {
             int[] all = new int[n];
@@ -50,7 +59,7 @@ public final class SearchIndex {
         for (int i = 0; i < n; i++) {
             if ((i & 511) == 0 && cancelled.getAsBoolean()) return null;
             if (operatorFilter != null && !operatorFilter.test(i)) continue;
-            int rank = onlyOperators ? 0 : match(entries[i], query, false);
+            int rank = onlyOperators && groupFilters == null ? 0 : match(entries[i], i, query, groupFilters, false);
             if (rank >= 0) ranked[count++] = ((long) rank << 32) | i;
         }
         int exact = count;
@@ -61,7 +70,7 @@ public final class SearchIndex {
                 if ((i & 511) == 0 && cancelled.getAsBoolean()) return null;
                 if (taken[i]) continue;
                 if (operatorFilter != null && !operatorFilter.test(i)) continue;
-                int rank = match(entries[i], query, true);
+                int rank = match(entries[i], i, query, groupFilters, true);
                 if (rank >= 0) ranked[count++] = ((long) (rank + 16) << 32) | i;
             }
         }
@@ -80,9 +89,15 @@ public final class SearchIndex {
 
     /** @return ранг (меньше = лучше) или -1, если запись не подходит. */
     static int match(SearchEntry e, Query q, boolean fuzzy) {
+        return match(e, -1, q, null, fuzzy);
+    }
+
+    private static int match(SearchEntry e, int index, Query q, IntPredicate[] groupFilters, boolean fuzzy) {
         int best = -1;
-        for (List<Query.Term> group : q.groups) {
+        for (int g = 0; g < q.groups.size(); g++) {
+            List<Query.Term> group = q.groups.get(g);
             if (group.isEmpty()) continue;
+            if (groupFilters != null && g < groupFilters.length && groupFilters[g] != null && !groupFilters[g].test(index)) continue;
             int rank = 0;
             boolean ok = true;
             for (Query.Term t : group) {

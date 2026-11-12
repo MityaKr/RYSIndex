@@ -135,10 +135,11 @@ public final class SearchService {
         if (!busy) submittedAt = System.currentTimeMillis();
         examined = 0;
         busy = true;
+        String tab = filter;
         EXEC.execute(() -> {
             if (GENERATION.get() != gen) return;
             try {
-                run(filter.isEmpty() ? newText : (newText + " " + filter).trim(), gen);
+                run(newText, tab, gen);
             } catch (Throwable t) {
                 RYScope.LOG.warn("Поиск «{}» завершился ошибкой", newText, t);
             } finally {
@@ -147,20 +148,24 @@ public final class SearchService {
         });
     }
 
-    private static void run(String text, int gen) {
+    /** @param tab добавка вкладки фильтра: действует на весь запрос, а не на последнюю группу ИЛИ */
+    private static void run(String typed, String tab, int gen) {
         long start = System.nanoTime();
+        String text = tab.isEmpty() ? typed : (typed + " " + tab).trim();
         Snapshot snap = Indexer.snapshot();
         SearchIndex index = snap.index;
-        Query query = Query.parse(text);
-        if (query.needsTooltip()) fillTooltips(snap, gen);
-        IntPredicate filter = Operators.filter(query, snap);
+        Query own = Query.parse(typed);
+        Query query = tab.isEmpty() ? own : Query.parse(text);
+        if (own.needsTooltip()) fillTooltips(snap, gen);
+        IntPredicate filter = tab.isEmpty() ? null : Operators.filter(Query.parse(tab), snap);
+        IntPredicate[] groups = Operators.groupFilters(own, snap);
         int total = index.size();
         examined = 0;
-        SearchIndex.Result r = index.search(query, () -> {
+        SearchIndex.Result r = index.search(own, () -> {
             // опрос идёт каждые 512 записей; нечёткий проход идёт вторым кругом, счёт не переваливает за всё
             examined = Math.min(total, examined + 512);
             return GENERATION.get() != gen;
-        }, filter, Config.get().fuzzySearch);
+        }, filter, groups, Config.get().fuzzySearch);
         if (r == null || GENERATION.get() != gen) return;
         List<Stack> out = new ArrayList<>(r.indices.length);
         Foreign.Source foreign = Foreign.get();
@@ -192,7 +197,7 @@ public final class SearchService {
         for (String text : new ArrayList<>(queries)) {
             Query q = Query.parse(text);
             if (q.isEmpty()) continue;
-            SearchIndex.Result r = snap.index.search(q, () -> false, Operators.filter(q, snap), false);
+            SearchIndex.Result r = snap.index.search(q, () -> false, null, Operators.groupFilters(q, snap), false);
             if (r != null) for (int i : r.indices) mask[i] = true;
         }
         hiddenFor = snap;

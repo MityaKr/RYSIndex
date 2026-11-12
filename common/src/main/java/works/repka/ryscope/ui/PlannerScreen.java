@@ -37,17 +37,22 @@ public final class PlannerScreen extends ScaledScreen {
     private final works.repka.ryscore.ui.Scroller scroller = new works.repka.ryscore.ui.Scroller();
     private final Kit.Hits hits = new Kit.Hits();
 
-    private PlannerScreen(@Nullable Screen parent, Stack stack) {
+    private PlannerScreen(@Nullable Screen parent, Stack stack, @Nullable CraftTree.Route route) {
         super(Component.translatable("ryscope.planner.title"));
         this.parent = parent;
-        this.planner = new Planner(stack);
+        this.planner = new Planner(stack, route);
     }
 
     public static void open(Stack stack) {
+        open(stack, null);
+    }
+
+    /** @param route маршрут дерева: режим «Как в дереве» повторяет выбор рецептов игрока */
+    public static void open(Stack stack, @Nullable CraftTree.Route route) {
         Minecraft mc = Minecraft.getInstance();
         // из сравнения в план переходят вкладкой: назад должно вести к дереву, а не к сравнению
         Screen parent = mc.screen instanceof CompareScreen cs ? cs.backTarget() : mc.screen;
-        mc.setScreen(new PlannerScreen(parent, stack));
+        mc.setScreen(new PlannerScreen(parent, stack, route));
     }
 
     /** Куда вернуться, минуя соседние вкладки. */
@@ -103,7 +108,7 @@ public final class PlannerScreen extends ScaledScreen {
         int tx = px + PAD;
         tx += Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.tab"), false, mx, my, this::backToTree) + 2;
         tx += Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.plan"), true, mx, my, () -> {}) + 2;
-        Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.compare"), false, mx, my, () -> CompareScreen.open(target));
+        TreeScreen.compareTab(g, theme, hits, tx, ty, planner.tree.root.options != null && planner.tree.root.options.size() > 1, mx, my, () -> CompareScreen.open(target));
 
         // --- режимы ---
         int mxp = px + PAD, myp = ty + Kit.TABS_H + 6;
@@ -172,7 +177,8 @@ public final class PlannerScreen extends ScaledScreen {
         String goal = tr(pinned ? "ryscope.tree.unpin_goal" : "ryscope.tree.pin_goal");
         int gw = (int) Math.ceil(Kit.buttonWidth(goal, 13)), gx = px + pw - PAD - gw;
         Kit.button(g, theme, hits, gx, fy + 32, gw, 20, goal, true, mx, my, () -> {
-            boolean added = Board.toggle(target, planner.rate);
+            // темп «штук в час» не количество цели: цель закрепляется на одну штуку, как из карточки
+            boolean added = Board.toggle(target, 1);
             Overlay.toast(tr(added ? "ryscope.board.added" : "ryscope.board.removed"));
         });
         if (planner.bottleneck != null && planner.lines.size() > 1) {

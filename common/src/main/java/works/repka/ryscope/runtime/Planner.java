@@ -46,8 +46,16 @@ public final class Planner {
     public double totalEnergy;
     public Line bottleneck;
 
+    /** Маршрут дерева, из которого открыт план: режим «Как в дереве» идёт по нему. */
+    private final CraftTree.Route route;
+
     public Planner(Stack target) {
+        this(target, null);
+    }
+
+    public Planner(Stack target, CraftTree.Route route) {
         this.target = target;
+        this.route = route;
         rebuild();
     }
 
@@ -90,6 +98,7 @@ public final class Planner {
         CraftTree previous = tree;
         tree = new CraftTree(target, true);
         if (previous != null) tree.inherit(previous);
+        tree.apply(route);
         // планируем производство с нуля: то, что лежит в инвентаре, поток не обеспечит
         tree.useInventory = false;
         tree.setAmount(rate);

@@ -31,7 +31,38 @@ public final class Ing {
         for (ItemStack s : items) {
             if (!s.isEmpty()) out.add(new ItemRes(s));
         }
-        return out.isEmpty() ? EMPTY : new Ing(out, null);
+        return out.isEmpty() ? EMPTY : new Ing(out, out.size() > 1 ? tagOf(ingredient) : null);
+    }
+
+    /** Тег, если ингредиент задан одним тегом. Поля ингредиента закрыты, поэтому тег берётся из его кодека. */
+    @Nullable
+    private static String tagOf(Ingredient ingredient) {
+        try {
+            var json = Ingredient.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, ingredient).result().orElse(null);
+            if (json instanceof com.google.gson.JsonObject o && o.has("tag")) return o.get("tag").getAsString();
+        } catch (Throwable ignored) {
+            // чужой ингредиент без кодека: тег просто не показывается
+        }
+        return null;
+    }
+
+    private static long pausedSince = -1, pausedTotal;
+
+    /**
+     * Часы смены вариантов: пока зажат Shift, варианты стоят на месте, как в JEI, а после отпускания
+     * смена продолжается с того же варианта.
+     */
+    public static long clock() {
+        long now = System.currentTimeMillis();
+        if (net.minecraft.client.gui.screens.Screen.hasShiftDown()) {
+            if (pausedSince < 0) pausedSince = now;
+            return pausedSince - pausedTotal;
+        }
+        if (pausedSince >= 0) {
+            pausedTotal += now - pausedSince;
+            pausedSince = -1;
+        }
+        return now - pausedTotal;
     }
 
     public boolean isEmpty() {

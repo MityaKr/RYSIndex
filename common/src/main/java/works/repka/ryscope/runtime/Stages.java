@@ -55,9 +55,12 @@ public final class Stages {
         final Set<String> recipes = new HashSet<>();
         final List<Pattern> recipePatterns = new ArrayList<>();
         final Set<String> categories = new HashSet<>();
+        /** Сервер не даёт выполнить закрытый рецепт (как {@code StageDef.enforce}, по умолчанию true). */
+        public final boolean enforce;
 
         Stage(String id, JsonObject json) {
             this.id = id;
+            this.enforce = !json.has("enforce") || json.get("enforce").getAsBoolean();
             this.name = json.has("name") ? json.get("name").getAsString() : id;
             this.order = json.has("order") ? json.get("order").getAsInt() : 0;
             this.advancement = json.has("advancement") ? ResourceLocation.tryParse(json.get("advancement").getAsString()) : null;
