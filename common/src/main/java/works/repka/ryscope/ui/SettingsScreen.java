@@ -48,9 +48,10 @@ public final class SettingsScreen extends ScaledScreen {
         super(Component.translatable("ryscope.settings.title"));
         this.parent = parent;
         Config c = Config.get();
-        options.add(new Option("ryscope.settings.theme", () -> ThemeManager.get().name, ThemeManager::cycle, null));
+        options.add(new Option("ryscope.settings.theme", () -> ThemeManager.get().name, ThemeManager::cycle, ThemeManager::cycleBack, null));
         options.add(new Option("ryscope.settings.ui_scale", () -> works.repka.ryscore.ui.UiScale.setting() == works.repka.ryscore.ui.UiScale.AUTO
-            ? tr("ryscope.settings.ui_scale.auto") : works.repka.ryscore.ui.UiScale.setting() + " %", works.repka.ryscore.ui.UiScale::cycle, "ryscope.settings.ui_scale.note"));
+            ? tr("ryscope.settings.ui_scale.auto") : works.repka.ryscore.ui.UiScale.setting() + " %", works.repka.ryscore.ui.UiScale::cycle,
+            works.repka.ryscore.ui.UiScale::cycleBack, "ryscope.settings.ui_scale.note"));
         options.add(new Option("ryscope.settings.density", () -> tr("ryscope.settings.density." + c.density), c::cycleDensity, () -> {
             // три значения по кругу: два шага вперёд это шаг назад
             c.cycleDensity();

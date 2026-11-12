@@ -54,6 +54,8 @@ final class RecipeShot {
         boolean pushed = false;
         NativeImage image = null;
         try {
+            // накопленное кором относится к главному окну: рисуем его до переключения на буфер снимка
+            works.repka.ryscore.ui.Batch.flush();
             target = new TextureTarget(pw, ph, true, Minecraft.ON_OSX);
             target.setClearColor(0f, 0f, 0f, 0f);
             target.clear(Minecraft.ON_OSX);

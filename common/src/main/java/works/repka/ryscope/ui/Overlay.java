@@ -891,7 +891,7 @@ public final class Overlay {
                 Draw.rect(g, x - 1, y, 1, 16, theme.c("accent"));
                 Draw.rect(g, x + 16, y, 1, 16, theme.c("accent"));
             } else {
-                Draw.rect(g, x, y, 16, 16, theme.c("overlay"));
+                Draw.rect(g, x, y, 16, 16, theme.c("slot.dim"));
             }
         }
         g.pose().popPose();
