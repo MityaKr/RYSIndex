@@ -77,6 +77,84 @@ public final class CraftTree {
         }
     }
 
+    /** Выбор игрока в узле: рецепт (сам объект и его id, если он есть) или сырьё, когда оба пусты. */
+    private record Pick(RecipeView recipe, String recipeId) {
+        static final Pick RAW = new Pick(null, null);
+
+        static Pick of(RecipeView recipe) {
+            return new Pick(recipe, recipe.id() == null ? null : recipe.id().toString());
+        }
+
+        boolean raw() {
+            return recipe == null && recipeId == null;
+        }
+
+        boolean matches(RecipeView r) {
+            return r == recipe || (recipeId != null && r.id() != null && recipeId.equals(r.id().toString()));
+        }
+
+        boolean same(Pick o) {
+            if (raw() || o.raw()) return raw() && o.raw();
+            return recipeId != null ? recipeId.equals(o.recipeId) : recipe == o.recipe;
+        }
+    }
+
+    /**
+     * Маршрут: выбор рецептов по id ресурса узла и флаг «кратчайший». Переносится в план, в цель на доске
+     * и в новое дерево того же предмета, чтобы они считали тем же путём, что показало дерево.
+     */
+    public static final class Route {
+        final Map<String, Pick> picks = new HashMap<>();
+        boolean shortest;
+
+        /** Маршрут, в котором в корне выбран этот рецепт. */
+        public static Route root(Stack stack, RecipeView recipe) {
+            Route r = new Route();
+            r.picks.put(stack.id().toString(), Pick.of(recipe));
+            return r;
+        }
+
+        public boolean isEmpty() {
+            return picks.isEmpty() && !shortest;
+        }
+
+        public boolean sameAs(Route o) {
+            if (o == null) return isEmpty();
+            if (shortest != o.shortest || picks.size() != o.picks.size()) return false;
+            for (Map.Entry<String, Pick> e : picks.entrySet()) {
+                Pick other = o.picks.get(e.getKey());
+                if (other == null || !e.getValue().same(other)) return false;
+            }
+            return true;
+        }
+
+        /** Для файла: рецепты без id не сохраняются, сырьё записывается пустой строкой. */
+        public com.google.gson.JsonObject toJson() {
+            com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+            if (shortest) o.addProperty("shortest", true);
+            com.google.gson.JsonObject p = new com.google.gson.JsonObject();
+            for (Map.Entry<String, Pick> e : picks.entrySet()) {
+                Pick pick = e.getValue();
+                if (pick.raw()) p.addProperty(e.getKey(), "");
+                else if (pick.recipeId != null) p.addProperty(e.getKey(), pick.recipeId);
+            }
+            if (p.size() > 0) o.add("picks", p);
+            return o;
+        }
+
+        public static Route fromJson(com.google.gson.JsonObject o) {
+            Route r = new Route();
+            r.shortest = o.has("shortest") && o.get("shortest").getAsBoolean();
+            if (o.has("picks")) {
+                for (Map.Entry<String, com.google.gson.JsonElement> e : o.getAsJsonObject("picks").entrySet()) {
+                    String id = e.getValue().getAsString();
+                    r.picks.put(e.getKey(), id.isEmpty() ? Pick.RAW : new Pick(null, id));
+                }
+            }
+            return r;
+        }
+    }
+
     /** Сырьё, которое осталось добыть: то, что уже есть в инвентаре, сюда не попадает. */
     public static final class Raw {
         public final Stack stack;
@@ -118,6 +196,8 @@ public final class CraftTree {
     private boolean ready = true;
     private long deadline;
     private final Map<Object, Loaded> loaded = new HashMap<>();
+    /** Выбор игрока по id ресурса: действует во всех узлах с этим ресурсом и переживает пересборку ветки. */
+    private final Map<String, Pick> picks = new HashMap<>();
 
     public CraftTree(Stack target) {
         this(target, false);
@@ -198,7 +278,7 @@ public final class CraftTree {
             return;
         }
         if (node.options == null) loadOptions(node);
-        if (node.choice == -2) node.choice = shortest ? shortestChoice(node) : defaultChoice(node);
+        if (node.choice == -2) node.choice = initialChoice(node);
         Option option = node.chosen();
         if (option == null || node.depth >= MAX_DEPTH || nodeCount >= MAX_NODES) {
             node.children.clear();
@@ -251,6 +331,59 @@ public final class CraftTree {
             // обход прерван: возвращаем узлы, до которых не дошли, иначе пропадёт выбор рецептов в них
             for (Node o : old) if (!node.children.contains(o)) node.children.add(o);
             throw pending;
+        }
+    }
+
+    /** Выбор игрока для этого ресурса, если он есть среди рецептов узла, иначе обычные правила. */
+    private int initialChoice(Node node) {
+        Pick pick = picks.get(node.stack.id().toString());
+        if (pick != null) {
+            if (pick.raw()) return -1;
+            for (int i = 0; i < node.options.size(); i++) if (pick.matches(node.options.get(i).recipe)) return i;
+        }
+        return shortest ? shortestChoice(node) : defaultChoice(node);
+    }
+
+    /**
+     * Маршрут дерева. {@code everyNode}: записать выбор каждого узла, а не только сделанный игроком;
+     * так план повторит дерево, даже если сам выбрал бы иначе (он не учитывает инвентарь).
+     */
+    public Route route(boolean everyNode) {
+        Route r = new Route();
+        r.shortest = shortest;
+        if (everyNode) collectPicks(root, r.picks);
+        r.picks.putAll(picks);
+        return r;
+    }
+
+    private static void collectPicks(Node node, Map<String, Pick> out) {
+        if (node.options != null && node.choice >= -1) {
+            Option o = node.chosen();
+            out.put(node.stack.id().toString(), o == null ? Pick.RAW : Pick.of(o.recipe));
+        }
+        for (Node c : node.children) collectPicks(c, out);
+    }
+
+    /** Применяет маршрут: выбор пересчитается при следующем {@link #recompute()}. */
+    public void apply(Route route) {
+        if (route == null) return;
+        picks.putAll(route.picks);
+        shortest = route.shortest;
+        root.choice = -2;
+        root.children.clear();
+    }
+
+    /** Выбрать в узле этот рецепт, как будто игрок долистал до него стрелками. */
+    public void choose(Node node, RecipeView recipe) {
+        if (node.options == null) return;
+        Pick pick = Pick.of(recipe);
+        for (int i = 0; i < node.options.size(); i++) {
+            if (!pick.matches(node.options.get(i).recipe)) continue;
+            node.choice = i;
+            picks.put(node.stack.id().toString(), Pick.of(node.options.get(i).recipe));
+            node.children.clear();
+            recompute();
+            return;
         }
     }
 
@@ -407,6 +540,7 @@ public final class CraftTree {
      */
     public void setShortest(boolean value) {
         shortest = value;
+        picks.clear();
         root.choice = -2;
         root.children.clear();
         recompute();
@@ -497,6 +631,7 @@ public final class CraftTree {
         if (next >= n) next = -1;
         if (next < -1) next = n - 1;
         node.choice = next;
+        picks.put(node.stack.id().toString(), next < 0 ? Pick.RAW : Pick.of(node.options.get(next).recipe));
         node.children.clear();
         recompute();
     }

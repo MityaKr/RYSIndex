@@ -34,6 +34,8 @@ public final class Board {
     public static final class Goal {
         public final Stack stack;
         public long amount;
+        /** Маршрут из дерева крафта, по которому цель закреплена; null, если выбор по умолчанию. */
+        public CraftTree.Route route;
         CraftTree tree;
 
         Goal(Stack stack, long amount) {
@@ -44,6 +46,7 @@ public final class Board {
         public CraftTree tree() {
             if (tree == null) {
                 tree = new CraftTree(stack);
+                tree.apply(route);
                 tree.setAmount(amount);
             }
             return tree;
@@ -66,6 +69,34 @@ public final class Board {
         ensureLoaded();
         for (Goal g : GOALS) if (g.stack.same(stack)) return true;
         return false;
+    }
+
+    public static Goal goal(Stack stack) {
+        ensureLoaded();
+        for (Goal g : GOALS) if (g.stack.same(stack)) return g;
+        return null;
+    }
+
+    /** Закрепляет цель или обновляет количество и маршрут уже закреплённой. @return true, если цель новая. */
+    public static boolean set(Stack stack, long amount, CraftTree.Route route) {
+        ensureLoaded();
+        Goal goal = goal(stack);
+        boolean added = goal == null;
+        if (added) {
+            if (stack.item().isEmpty()) return false;
+            goal = new Goal(stack.withAmount(1), 1);
+            GOALS.add(goal);
+        }
+        goal.amount = Math.max(1, amount);
+        goal.route = route == null || route.isEmpty() ? null : route;
+        goal.tree = null;
+        save();
+        return added;
+    }
+
+    public static void remove(Stack stack) {
+        ensureLoaded();
+        if (GOALS.removeIf(g -> g.stack.same(stack))) save();
     }
 
     /** @return true, если цель закреплена; false, если снята. */
@@ -134,8 +165,12 @@ public final class Board {
             for (JsonElement e : array) {
                 JsonObject o = e.getAsJsonObject();
                 long amount = o.has("amount") ? o.get("amount").getAsLong() : 1;
+                CraftTree.Route route = o.has("route") ? CraftTree.Route.fromJson(o.getAsJsonObject("route")) : null;
                 ItemStack.CODEC.parse(ops, o.get("item")).result().ifPresent(s -> {
-                    if (!s.isEmpty()) GOALS.add(new Goal(new ItemRes(s), amount));
+                    if (s.isEmpty()) return;
+                    Goal goal = new Goal(new ItemRes(s), amount);
+                    goal.route = route;
+                    GOALS.add(goal);
                 });
             }
         } catch (Exception e) {
@@ -155,6 +190,7 @@ public final class Board {
                 JsonObject o = new JsonObject();
                 o.addProperty("amount", g.amount);
                 ItemStack.CODEC.encodeStart(ops, item).result().ifPresent(j -> o.add("item", j));
+                if (g.route != null && !g.route.isEmpty()) o.add("route", g.route.toJson());
                 if (o.has("item")) array.add(o);
             }
             Files.createDirectories(Config.dir());

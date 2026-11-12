@@ -194,23 +194,31 @@ public final class CompareScreen extends ScaledScreen {
             right = px1 - 7;
         }
         float textX = iconX + 23 + 7;
-        Kit.headerText(g, theme, target.name().getString(), Component.translatable("ryscope.compare.count", routes.size()).getString(), textX, py, right - textX);
+        int ways = probe.root.options == null ? routes.size() : probe.root.options.size();
+        String count = ways > routes.size() ? Component.translatable("ryscope.compare.count_of", ways, routes.size()).getString()
+            : Component.translatable("ryscope.compare.count", routes.size()).getString();
+        Kit.headerText(g, theme, target.name().getString(), count, textX, py, right - textX);
 
         int ty = py + Kit.HEADER_H;
         Kit.divider(g, theme, px + 0.5f, ty + Kit.TABS_H - 0.5f, pw - 1);
         int tx = px + PAD;
         tx += Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.tab"), false, mx, my, this::backToTree) + 2;
-        tx += Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.plan"), false, mx, my, () -> PlannerScreen.open(target)) + 2;
+        tx += Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.plan"), false, mx, my,
+            () -> PlannerScreen.open(target, parent instanceof TreeScreen ts ? ts.route(true) : null)) + 2;
         Kit.sectionTab(g, theme, hits, tx, ty, Kit.TABS_H, tr("ryscope.tree.compare"), true, mx, my, () -> {});
 
         Stack hover = null;
+        boolean overCard = false;
         int cardTop = ty + Kit.TABS_H + 8;
         int cardH = ph - (cardTop - py) - PAD;
         for (int c = 0; c < Math.min(cols, routes.size() - first); c++) {
             Route r = routes.get(first + c);
             int x = px + PAD + c * COL, y = cardTop, w = COL - 4;
             theme.card(g, x, y, w, cardH);
-            hits.add(x, y, w, cardH, b -> RecipeScreen.open(target, Lookup.Mode.RECIPES));
+            hits.add(x, y, w, cardH, b -> {
+                if (b == 0) chooseRoute(r);
+            });
+            overCard |= over(mx, my, x, y, w, cardH);
             int cx = x + 6;
             try {
                 r.option.category.renderIcon(g, cx, y + 5);
@@ -263,8 +271,21 @@ public final class CompareScreen extends ScaledScreen {
         g.pose().pushPose();
         g.pose().translate(0, 0, 300);
         if (hover != null) hover.renderTooltip(g, mx, my);
+        else if (overCard) Kit.tooltip(g, theme, List.of(tr("ryscope.compare.pick")), mx, my);
         g.pose().popPose();
         Overlay.renderToast(this, g);
+    }
+
+    /** Клик по карточке: этот маршрут выбирается в дереве, и окно возвращается к дереву. */
+    private void chooseRoute(Route r) {
+        Minecraft mc = Minecraft.getInstance();
+        if (parent instanceof TreeScreen ts) {
+            ts.chooseRoot(r.option.recipe);
+            mc.setScreen(ts);
+        } else {
+            mc.setScreen(parent);
+            TreeScreen.open(target, CraftTree.Route.root(target, r.option.recipe), 0);
+        }
     }
 
     private void backToTree() {
@@ -281,7 +302,7 @@ public final class CompareScreen extends ScaledScreen {
     @Override
     public void tick() {
         if (done && routes.size() < 2) {
-            Overlay.toast(Component.translatable("ryscope.compare.single").getString());
+            Overlay.toast(Component.translatable(routes.isEmpty() ? "ryscope.compare.none" : "ryscope.compare.single").getString());
             onClose();
         }
     }

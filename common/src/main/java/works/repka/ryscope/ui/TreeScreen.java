@@ -45,17 +45,65 @@ public final class TreeScreen extends ScaledScreen {
     private int refresh;
     private final Kit.Hits hits = new Kit.Hits();
 
-    private TreeScreen(@Nullable Screen parent, Stack stack) {
+    /** Последний маршрут дерева каждого предмета: новое открытие показывает тот же выбор рецептов. */
+    private static final java.util.Map<String, CraftTree.Route> ROUTES = new java.util.LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(java.util.Map.Entry<String, CraftTree.Route> eldest) {
+            return size() > 32;
+        }
+    };
+
+    private TreeScreen(@Nullable Screen parent, Stack stack, @Nullable CraftTree.Route route, long amount) {
         super(Component.translatable("ryscope.tree.title"));
         this.parent = parent;
         this.tree = new CraftTree(stack, true);
+        tree.apply(route != null ? route : ROUTES.get(key(stack)));
+        if (amount > 1) tree.setAmount(amount);
     }
 
     public static void open(Stack stack) {
+        open(stack, null, 0);
+    }
+
+    /** Дерево с этим маршрутом и количеством: так открывается цель с доски и выбранный в сравнении маршрут. */
+    public static void open(Stack stack, @Nullable CraftTree.Route route, long amount) {
         Minecraft mc = Minecraft.getInstance();
         Screen parent = mc.screen;
         if (parent instanceof TreeScreen ts) parent = ts.parent;
-        mc.setScreen(new TreeScreen(parent, stack));
+        mc.setScreen(new TreeScreen(parent, stack, route, amount));
+    }
+
+    private static String key(Stack stack) {
+        return stack.id().toString();
+    }
+
+    /** Маршрут этого дерева для плана и сравнения. */
+    CraftTree.Route route(boolean everyNode) {
+        return tree.route(everyNode);
+    }
+
+    /** Выбрать в корне рецепт маршрута из сравнения. */
+    void chooseRoot(works.repka.ryscope.model.RecipeView recipe) {
+        if (tree.ready()) tree.choose(tree.root, recipe);
+        else tree.apply(CraftTree.Route.root(tree.root.stack, recipe));
+        scroller.reset();
+    }
+
+    @Override
+    public void removed() {
+        super.removed();
+        CraftTree.Route route = tree.route(false);
+        if (route.isEmpty()) ROUTES.remove(key(tree.root.stack));
+        else ROUTES.put(key(tree.root.stack), route);
+    }
+
+    /** Вкладка «Сравнить» неактивна, если сравнивать нечего: у предмета меньше двух способов. */
+    static int compareTab(GuiGraphics g, Theme t, Kit.Hits hits, int x, int y, boolean enabled, int mx, int my, Runnable action) {
+        String label = tr("ryscope.tree.compare");
+        if (enabled) return Kit.sectionTab(g, t, hits, x, y, Kit.TABS_H, label, false, mx, my, action);
+        int w = (int) Math.ceil(Draw.labelWidth(label, 12f, Weight.SEMIBOLD)) + 12;
+        Kit.tabs(g, t, hits, x, y, Kit.TABS_H, w, List.of(new Kit.Tab(label, -1, false, null)), mx, my);
+        return w;
     }
 
     /** Куда вернуться: экран, из которого открыто дерево. */
@@ -144,8 +192,8 @@ public final class TreeScreen extends ScaledScreen {
         Kit.divider(g, t, px + 0.5f, y + Kit.TABS_H - 0.5f, pw - 1);
         int x = px + PAD;
         x += Kit.sectionTab(g, t, hits, x, y, Kit.TABS_H, tr("ryscope.tree.tab"), true, mx, my, () -> {}) + 2;
-        x += Kit.sectionTab(g, t, hits, x, y, Kit.TABS_H, tr("ryscope.tree.plan"), false, mx, my, () -> PlannerScreen.open(tree.root.stack)) + 2;
-        Kit.sectionTab(g, t, hits, x, y, Kit.TABS_H, tr("ryscope.tree.compare"), false, mx, my, () -> CompareScreen.open(tree.root.stack));
+        x += Kit.sectionTab(g, t, hits, x, y, Kit.TABS_H, tr("ryscope.tree.plan"), false, mx, my, () -> PlannerScreen.open(tree.root.stack, tree.route(true))) + 2;
+        compareTab(g, t, hits, x, y, tree.root.options != null && tree.root.options.size() > 1, mx, my, () -> CompareScreen.open(tree.root.stack));
         String label = tr("ryscope.tree.shortest");
         int w = (int) Math.ceil(Draw.labelWidth(label, 12.5f, Weight.MEDIUM)) + 12;
         Kit.pill(g, t, hits, px + pw - PAD - w, y + 1, label, tree.shortest(), mx, my, () -> {
@@ -227,13 +275,31 @@ public final class TreeScreen extends ScaledScreen {
     private Stack renderFooter(GuiGraphics g, Theme t, int mx, int my) {
         int fy = py + ph - FOOTER;
         Kit.divider(g, t, px + 0.5f, fy, pw - 1);
-        boolean pinned = Board.contains(tree.root.stack);
-        String goal = tr(pinned ? "ryscope.tree.unpin_goal" : "ryscope.tree.pin_goal");
+        Board.Goal pinned = Board.goal(tree.root.stack);
+        CraftTree.Route route = tree.route(false);
+        // цель уже закреплена, но с другим количеством или маршрутом: главное действие обновляет её
+        boolean changed = pinned != null && (pinned.amount != tree.amount || !route.sameAs(pinned.route));
+        String goal = tr(pinned == null ? "ryscope.tree.pin_goal" : changed ? "ryscope.tree.update_goal" : "ryscope.tree.unpin_goal");
         int gw = (int) Math.ceil(Kit.buttonWidth(goal, 13)), gx = px + pw - PAD - gw, gy = fy + 6;
         Kit.button(g, t, hits, gx, gy, gw, 20, goal, true, mx, my, () -> {
-            boolean added = Board.toggle(tree.root.stack, tree.amount);
-            Overlay.toast(tr(added ? "ryscope.board.added" : "ryscope.board.removed"));
+            if (pinned != null && !changed) {
+                Board.remove(tree.root.stack);
+                Overlay.toast(tr("ryscope.board.removed"));
+                return;
+            }
+            boolean added = Board.set(tree.root.stack, tree.amount, route);
+            Overlay.toast(tr(added ? "ryscope.board.added" : "ryscope.board.updated"));
         });
+        int tilesEnd = gx;
+        if (changed) {
+            String unpin = tr("ryscope.tree.unpin_short");
+            int uw = (int) Math.ceil(Kit.buttonWidth(unpin, 12));
+            tilesEnd = gx - 4 - uw;
+            Kit.button(g, t, hits, tilesEnd, gy, uw, 20, unpin, false, mx, my, () -> {
+                Board.remove(tree.root.stack);
+                Overlay.toast(tr("ryscope.board.removed"));
+            });
+        }
         Stack rawHover = null;
         if (tree.raw.isEmpty()) {
             Draw.label(g, tr("ryscope.tree.all_have"), px + PAD, fy + 14, 13, Weight.REGULAR, t.c("state.ok"));
@@ -250,10 +316,10 @@ public final class TreeScreen extends ScaledScreen {
             String caption = tr("ryscope.tree.to_gather");
             if (!InventoryView.tracking()) caption += " · " + tr("ryscope.tree.creative");
             else if (works.repka.ryscope.runtime.Storages.inRange() > 0) caption += " · " + Component.translatable("ryscope.tree.storages", works.repka.ryscope.runtime.Storages.inRange()).getString();
-            Kit.section(g, t, Draw.ellipsize(caption, gx - px - PAD - 8, 12, Weight.REGULAR), px + PAD, fy + 11);
+            Kit.section(g, t, Draw.ellipsize(caption, tilesEnd - px - PAD - 8, 12, Weight.REGULAR), px + PAD, fy + 11);
             int rx = px + PAD, ry = fy + 23;
             for (CraftTree.Raw r : tree.raw.values()) {
-                if (rx + 20 > gx - 8) {
+                if (rx + 20 > tilesEnd - 8) {
                     Draw.label(g, "…", rx + 2, ry + 10, 13, Weight.REGULAR, t.c("text.dim"));
                     break;
                 }

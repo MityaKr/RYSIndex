@@ -1287,7 +1287,8 @@ public final class Overlay {
             // левая кнопка открывает дерево крафта цели, правая снимает её с доски
             Stack goal = Stickers.stackAt(mx, my);
             if (button == 0) {
-                TreeScreen.open(goal);
+                works.repka.ryscope.runtime.Board.Goal pinned = Stickers.goalAt(mx, my);
+                TreeScreen.open(goal, pinned.route, pinned.amount);
             } else if (button == 1) {
                 works.repka.ryscope.runtime.Board.toggle(goal, 1);
                 toast(Component.translatable("ryscope.goals.removed").getString());
