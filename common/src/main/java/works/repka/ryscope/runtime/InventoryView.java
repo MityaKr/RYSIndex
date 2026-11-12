@@ -12,6 +12,8 @@ import works.repka.ryscope.model.Stack;
 /** Снимок инвентаря игрока: что есть и сколько. Обновляется раз в несколько тиков в главном потоке. */
 public final class InventoryView {
     private static volatile Map<Item, Integer> counts = Map.of();
+    /** Растёт только при изменении содержимого: по нему фоновые расчёты узнают, что инвентарь тот же. */
+    private static volatile int version;
     private static int age;
     private static boolean tracking;
 
@@ -22,6 +24,7 @@ public final class InventoryView {
         age = 0;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
+            if (!counts.isEmpty()) version++;
             counts = Map.of();
             tracking = false;
             return;
@@ -33,8 +36,17 @@ public final class InventoryView {
         }
         ItemStack carried = player.containerMenu.getCarried();
         if (!carried.isEmpty()) map.merge(carried.getItem(), carried.getCount(), Integer::sum);
-        counts = map;
+        // опубликованную карту не меняем никогда: её читают потоки поиска; при том же содержимом остаётся прежняя
+        if (!map.equals(counts)) {
+            counts = map;
+            version++;
+        }
         tracking = !player.isCreative() && !player.isSpectator();
+    }
+
+    /** Номер содержимого инвентаря: меняется, только когда меняется само содержимое. */
+    public static int version() {
+        return version;
     }
 
     /** Имеет ли смысл подсвечивать недостающее (в творческом режиме нет). */

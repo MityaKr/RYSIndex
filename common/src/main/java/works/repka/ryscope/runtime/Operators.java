@@ -3,6 +3,7 @@ package works.repka.ryscope.runtime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.IntPredicate;
 import net.minecraft.world.item.Item;
@@ -41,7 +42,45 @@ public final class Operators {
         };
     }
 
+    /**
+     * Наборы операторов, зависящие только от снимка (и инвентаря у {@code craftable}, {@code almost}): пока игрок
+     * дописывает запрос или вкладка «Доступно» добавляет {@code craftable} к каждому запросу, набор не считается
+     * заново. Последние восемь; наборы общие, их никто не меняет.
+     */
+    private record MemoKey(String operator, String text, Snapshot snap, int inventory) {}
+
+    private static final Map<MemoKey, Set<Object>> MEMO = new java.util.LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<MemoKey, Set<Object>> eldest) {
+            return size() > 8;
+        }
+    };
+
     private static Set<Object> keys(Query.Term t, Snapshot snap) {
+        int inventory;
+        switch (t.operator) {
+            case "from", "uses", "in" -> inventory = 0;
+            case "craftable", "almost" -> inventory = InventoryView.version();
+            // стадии открываются по ходу игры, их наборы дешёвые и считаются каждый раз
+            default -> {
+                return compute(t, snap);
+            }
+        }
+        MemoKey key = new MemoKey(t.operator, t.text, snap, inventory);
+        synchronized (MEMO) {
+            Set<Object> known = MEMO.get(key);
+            if (known != null) return known;
+        }
+        Set<Object> out = compute(t, snap);
+        if (out != null) {
+            synchronized (MEMO) {
+                MEMO.put(key, out);
+            }
+        }
+        return out;
+    }
+
+    private static Set<Object> compute(Query.Term t, Snapshot snap) {
         Set<Object> out = new HashSet<>();
         switch (t.operator) {
             case "from": {
