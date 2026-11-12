@@ -14,6 +14,7 @@ import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.RecipeDefaults;
 import works.repka.ryscope.runtime.RecipeMark;
 import works.repka.ryscope.runtime.RecipeRef;
+import works.repka.ryscope.runtime.Stages;
 
 /**
  * Быстрый крафт (идея EMI): клавиша над предметом раскладывает его рецепт в сетку открытого окна,
@@ -33,6 +34,15 @@ final class QuickCraft {
         if (host == null) return false;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.player.containerMenu != host.getMenu()) return false;
+        if (stack instanceof RecipeMark mark) {
+            // рецепт закладки закрыт стадией: «+» в окне рецептов для него выключен, раскладывать тоже не будем
+            Lookup.Group g = mark.group();
+            Stages.Stage lock = g == null || g.recipes().isEmpty() ? null : blocking(g.recipes().get(0), g);
+            if (lock != null) {
+                Overlay.toast(Component.translatable("ryscope.stage.blocked", lock.title().getString()).getString());
+                return true;
+            }
+        }
         RecipeView recipe = pick(stack, host);
         if (recipe == null) {
             Overlay.toast(Component.translatable("ryscope.craft.none", stack.name().getString()).getString());
@@ -47,7 +57,8 @@ final class QuickCraft {
         if (result.applicable()) {
             if (mc.screen != host) mc.setScreen(host);
         } else {
-            String message = result.message() == null ? "ryscope.transfer.missing" : result.message();
+            String message = result.message() != null ? result.message()
+                : result.status() == Transfer.Status.UNSUPPORTED ? "ryscope.transfer.unsupported" : "ryscope.transfer.missing";
             Overlay.toast(Component.translatable(message).getString());
         }
         return true;
@@ -55,12 +66,19 @@ final class QuickCraft {
 
     @Nullable
     private static RecipeView pick(Stack stack, AbstractContainerScreen<?> host) {
-        if (stack instanceof RecipeMark mark) return mark.recipe();
+        if (stack instanceof RecipeMark mark) {
+            // рецепт закладки другой станции (печь в верстаке): подбираем рецепт её результата, как для предмета
+            RecipeView r = mark.recipe();
+            if (r != null && fits(host, r)) return r;
+            stack = mark.output;
+        }
         List<Lookup.Group> groups = Lookup.find(stack.withAmount(1), Lookup.Mode.RECIPES);
         RecipeRef preferred = RecipeDefaults.get(stack);
         if (preferred != null) {
             for (Lookup.Group g : groups) {
-                for (RecipeView r : g.recipes()) if (preferred.matches(g.category(), r) && fits(host, r)) return r;
+                for (RecipeView r : g.recipes()) {
+                    if (preferred.matches(g.category(), r) && blocking(r, g) == null && fits(host, r)) return r;
+                }
             }
         }
         // полностью собираемый лучше частичного, частичный лучше «не хватает»: тогда хотя бы видно, чего
@@ -69,7 +87,7 @@ final class QuickCraft {
         for (Lookup.Group g : groups) {
             if (!transfers(host, g)) continue;
             for (RecipeView r : g.recipes()) {
-                if (!r.isCrafting() || tries++ >= MAX_TRIES) continue;
+                if (!r.isCrafting() || blocking(r, g) != null || tries++ >= MAX_TRIES) continue;
                 Transfer t;
                 try {
                     t = r.transfer(host, false, true);
@@ -82,6 +100,13 @@ final class QuickCraft {
             }
         }
         return partial != null ? partial : missing;
+    }
+
+    /** Стадия, которая запрещает переносить рецепт (как у «+» в окне рецептов), или null. */
+    @Nullable
+    private static Stages.Stage blocking(RecipeView r, Lookup.Group g) {
+        Stages.Stage lock = Stages.lockOf(r, g.category());
+        return lock != null && lock.enforce ? lock : null;
     }
 
     private static boolean fits(AbstractContainerScreen<?> host, RecipeView r) {

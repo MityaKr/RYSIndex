@@ -262,7 +262,7 @@ public final class SettingsScreen extends ScaledScreen {
             Draw.label(g, Draw.ellipsize(query, bx - 6 - (px + PAD + 2), 13, Weight.REGULAR), px + PAD + 2, cy, 13, Weight.REGULAR, t.c("text.body"));
             hits.add(bx, by, 14, 14, b -> {
                 if (b != 0) return;
-                c.hiddenQueries.remove(query);
+                c.hiddenQueries.removeIf(query::equals);
                 changed();
                 Overlay.toast(Component.translatable("ryscope.hidden.undone", query).getString());
             });

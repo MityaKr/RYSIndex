@@ -522,9 +522,13 @@ public final class CraftTree {
         Set<Object> madeFromThis = new HashSet<>();
         List<Candidate> candidates = new ArrayList<>();
         List<String> names = new ArrayList<>();
+        // снимок может смениться посреди расчёта (его публикует поток индексации): в общий кеш результат
+        // кладётся, только если снимок и источник остались теми, по которым он собран
+        Snapshot snapAt = Indexer.snapshot();
+        Foreign.Source srcAt = Foreign.get();
         try {
             // что делается из этого предмета
-            for (Snapshot.Entry e : Indexer.snapshot().consuming(stack)) {
+            for (Snapshot.Entry e : snapAt.consuming(stack)) {
                 if (distinctKinds(e.recipe().inputs()) != 1) continue;
                 for (Stack o : e.recipe().outputs()) madeFromThis.add(o.key());
             }
@@ -560,7 +564,7 @@ public final class CraftTree {
         }
         Loaded result = new Loaded(candidates, madeFromThis, String.join(", ", names));
         loaded.put(key, result);
-        if (complete) Shared.put(stack, result);
+        if (complete) Shared.put(stack, result, snapAt, srcAt);
         return result;
     }
 
@@ -586,8 +590,10 @@ public final class CraftTree {
             return MAP.get(stack);
         }
 
-        static synchronized void put(Stack stack, Loaded value) {
+        static synchronized void put(Stack stack, Loaded value, Snapshot snapAt, Foreign.Source srcAt) {
             check();
+            // собран по прежнему снимку: остаётся только в дереве, которое Board перестроит после переиндексации
+            if (snapAt != snapshot || srcAt != source) return;
             if (MAP.size() >= LIMIT) MAP.clear();
             MAP.put(stack.withAmount(1), value);
         }

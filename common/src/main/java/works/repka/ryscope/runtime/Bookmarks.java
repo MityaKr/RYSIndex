@@ -143,6 +143,11 @@ public final class Bookmarks {
         save();
     }
 
+    /** Закладки на рецепты отпускают найденные рецепты: при перезапуске JEI, вызывать в главном потоке. */
+    public static void releaseRecipes() {
+        for (Folder folder : FOLDERS) for (Stack s : folder.items) if (s instanceof RecipeMark m) m.release();
+    }
+
     public static void reset() {
         FOLDERS.clear();
         active = 0;

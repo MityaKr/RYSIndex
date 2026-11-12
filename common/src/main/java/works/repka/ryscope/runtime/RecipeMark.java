@@ -20,10 +20,13 @@ import works.repka.ryscore.ui.Draw;
 public final class RecipeMark extends Stack {
     public final Stack output;
     public final RecipeRef ref;
-    /** Найденный рецепт и снимок, для которого он искался: после переиндексации ищется заново. */
+    /**
+     * Найденный рецепт и снимок, для которого он искался: после переиндексации ищется заново.
+     * Снимок держится слабо, чтобы закладка не держала прежний индекс; рецепт отпускает {@link #release}.
+     */
     @Nullable
     private Lookup.Group resolved;
-    private Snapshot resolvedFor;
+    private java.lang.ref.WeakReference<Snapshot> resolvedFor = new java.lang.ref.WeakReference<>(null);
 
     public RecipeMark(Stack output, RecipeRef ref) {
         this.output = output.withAmount(1);
@@ -34,11 +37,17 @@ public final class RecipeMark extends Stack {
     @Nullable
     public Lookup.Group group() {
         Snapshot snap = Indexer.snapshot();
-        if (resolvedFor != snap) {
-            resolvedFor = snap;
+        if (resolvedFor.get() != snap) {
+            resolvedFor = new java.lang.ref.WeakReference<>(snap);
             resolved = ref.resolve(output);
         }
         return resolved;
+    }
+
+    /** Отпускает найденный рецепт: в нём рецепты и мост прежнего рантайма JEI. Найдётся заново при наведении. */
+    void release() {
+        resolved = null;
+        resolvedFor = new java.lang.ref.WeakReference<>(null);
     }
 
     @Nullable

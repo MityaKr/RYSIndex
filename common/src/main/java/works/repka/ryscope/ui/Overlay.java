@@ -511,7 +511,8 @@ public final class Overlay {
         if (results.query.isEmpty()) return marks;
         if (bookmarkKeysFor != results) {
             java.util.Set<Object> keys = new java.util.HashSet<>();
-            for (Stack s : results.stacks) keys.add(s.key());
+            // по тому, что нашёл сам запрос: закладка на скрытый или закрытый стадией предмет видна и без запроса
+            for (int i : results.matched) if (i < results.snapshot.stacks.size()) keys.add(results.snapshot.stacks.get(i).key());
             bookmarkKeys = keys;
             bookmarkKeysFor = results;
         }
@@ -875,7 +876,8 @@ public final class Overlay {
         if (!highlight || results.query.isEmpty()) return;
         if (highlightFor != results) {
             java.util.Set<Object> keys = new java.util.HashSet<>();
-            for (Stack s : results.stacks) keys.add(s.key());
+            // по тому, что нашёл сам запрос: закладка на скрытый или закрытый стадией предмет видна и без запроса
+            for (int i : results.matched) if (i < results.snapshot.stacks.size()) keys.add(results.snapshot.stacks.get(i).key());
             highlightKeys = keys;
             highlightFor = results;
         }
@@ -1669,8 +1671,12 @@ public final class Overlay {
             copy(stack.id().toString());
             return true;
         }
-        // Shift раскладывает максимум: клавиша проверяется без модификаторов
-        if (Keys.matchesRaw(Keys.CRAFT, key, scan) && !Screen.hasControlDown() && !Screen.hasAltDown() && QuickCraft.run(screen, stack, Screen.hasShiftDown())) {
+        // Shift раскладывает максимум. Сначала точная проверка (клавиша могла быть переназначена на Ctrl+K),
+        // затем сама клавиша с одним Shift: у клавиши без модификатора точная проверка с Shift не проходит
+        boolean craftExact = Keys.matches(Keys.CRAFT, key, scan);
+        boolean craftShift = !craftExact && Screen.hasShiftDown() && !Screen.hasControlDown() && !Screen.hasAltDown()
+            && Keys.matchesRaw(Keys.CRAFT, key, scan);
+        if ((craftExact || craftShift) && QuickCraft.run(screen, stack, craftShift || Screen.hasShiftDown())) {
             return true;
         }
         if (Keys.matches(Keys.RECIPES, key, scan)) {
@@ -1730,10 +1736,19 @@ public final class Overlay {
             toast(Component.translatable("ryscope.hidden.empty").getString());
             return;
         }
+        if (Config.get().hiddenQueries.contains(query)) {
+            toast(Component.translatable("ryscope.hidden.already", query).getString());
+            return;
+        }
         // охват считается так же, как его потом скроет поиск: по самому запросу, без вкладки «Доступно» и без
         // нечёткого прохода, а не по последнему готовому результату (он может быть от прошлого текста)
         Query q = Query.parse(query);
         works.repka.ryscope.runtime.Snapshot snap = Indexer.snapshot();
+        // пока индекс строится или не собраны подсказки для $, охват занижен и защита ниже не сработает
+        if (Indexer.state() != Indexer.State.READY || snap.index.size() == 0 || (q.needsTooltip() && !SearchService.tooltipsReady())) {
+            toast(Component.translatable("ryscope.hidden.not_ready").getString());
+            return;
+        }
         works.repka.ryscope.core.search.SearchIndex.Result found = q.isEmpty() ? null
             : snap.index.search(q, () -> false, null, works.repka.ryscope.runtime.Operators.groupFilters(q, snap), false);
         int count = found == null ? 0 : found.indices.length;
@@ -1759,7 +1774,7 @@ public final class Overlay {
     private static void undoHide(EditBox box) {
         String query = lastHidden;
         lastHidden = null;
-        if (query == null || !Config.get().hiddenQueries.remove(query)) return;
+        if (query == null || !Config.get().hiddenQueries.removeIf(query::equals)) return;
         Config.save();
         box.setValue(query);
         toast(Component.translatable("ryscope.hidden.undone", query).getString());

@@ -122,7 +122,11 @@ public final class Config {
             if (instance.searchLanguages == null) instance.searchLanguages = new ArrayList<>(List.of("en_us"));
             if (instance.expandedGroups == null) instance.expandedGroups = new ArrayList<>();
             if (instance.hiddenQueries == null) instance.hiddenQueries = new ArrayList<>();
+            // повторы одного запроса: убранный крестиком или Ctrl+Z запрос иначе продолжает скрывать
+            instance.hiddenQueries = new ArrayList<>(new java.util.LinkedHashSet<>(instance.hiddenQueries));
             if (instance.hiddenItems == null) instance.hiddenItems = new ArrayList<>();
+            // записи старого формата ни с чем не совпадают и копятся: компоненты в них строкой с хешами объектов
+            if (instance.hiddenItems.removeIf(HiddenItems::legacy)) RYScope.LOG.info("Убраны скрытые предметы в старом формате");
         }
         return instance;
     }

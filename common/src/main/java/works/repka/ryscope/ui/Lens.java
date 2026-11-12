@@ -58,9 +58,12 @@ public final class Lens {
 
     private Lens() {}
 
-    /** Забыть найденное: превью держит рецепт и мост JEI прошлого мира. */
+    /** Забыть найденное: превью держит рецепт и мост JEI прошлого мира, и в found, и в cached. */
     public static void clear() {
         found = null;
+        cached = null;
+        cachedKey = null;
+        cachedAt = 0;
     }
 
     public static boolean held() {

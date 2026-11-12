@@ -178,6 +178,8 @@
   "ryscope.hidden.empty": "Type a search first, then press Ctrl+H to hide the results",
   "ryscope.hidden.too_many": "The search finds %s of %s, nothing was hidden: narrow it down",
   "ryscope.hidden.undone": "Back in the list: %s",
+  "ryscope.hidden.already": "Already hidden: %s",
+  "ryscope.hidden.not_ready": "The list is still loading, try Ctrl+H again in a moment",
   "ryscope.list.empty": "Nothing found",
   "ryscope.list.empty.craftable": "The Craftable filter keeps only what you can make now",
   "ryscope.list.empty.hidden": "Hidden by searches: %s, restore them in settings",

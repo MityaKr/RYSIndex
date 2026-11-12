@@ -178,6 +178,8 @@
   "ryscope.hidden.empty": "Сначала введите запрос, затем Ctrl+H скроет найденное",
   "ryscope.hidden.too_many": "Запрос находит %s из %s, скрывать не стали: уточните его",
   "ryscope.hidden.undone": "Снова в списке: %s",
+  "ryscope.hidden.already": "Уже скрыто: %s",
+  "ryscope.hidden.not_ready": "Список ещё загружается, нажмите Ctrl+H чуть позже",
   "ryscope.list.empty": "Ничего не найдено",
   "ryscope.list.empty.craftable": "Фильтр «Доступно» оставляет только то, что можно сделать сейчас",
   "ryscope.list.empty.hidden": "Скрыто запросами: %s, вернуть можно в настройках",

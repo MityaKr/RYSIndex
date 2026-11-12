@@ -73,6 +73,7 @@ public final class RyscopeClient {
         works.repka.ryscope.ui.Lens.clear();
         works.repka.ryscope.runtime.Operators.clearMemo();
         works.repka.ryscope.runtime.Board.releaseRecipes();
+        Bookmarks.releaseRecipes();
     }
 
     public static void onLogout() {

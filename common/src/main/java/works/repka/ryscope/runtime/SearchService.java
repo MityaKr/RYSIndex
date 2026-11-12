@@ -20,16 +20,19 @@ public final class SearchService {
         public final String text;
         public final Query query;
         public final List<Stack> stacks;
+        /** Номера записей снимка, которые нашёл сам запрос, до скрытого и закрытых стадий. */
+        public final int[] matched;
         public final int exactCount;
         public final Snapshot snapshot;
         public final long micros;
         /** Когда результат готов, мс по часам системы. */
         public final long readyAt = System.currentTimeMillis();
 
-        Results(String text, Query query, List<Stack> stacks, int exactCount, Snapshot snapshot, long micros) {
+        Results(String text, Query query, List<Stack> stacks, int[] matched, int exactCount, Snapshot snapshot, long micros) {
             this.text = text;
             this.query = query;
             this.stacks = stacks;
+            this.matched = matched;
             this.exactCount = exactCount;
             this.snapshot = snapshot;
             this.micros = micros;
@@ -59,7 +62,7 @@ public final class SearchService {
     private static volatile long craftableMillis;
     private static volatile int examined;
 
-    private static volatile Results results = new Results("", Query.parse(""), List.of(), 0, Snapshot.EMPTY, 0);
+    private static volatile Results results = new Results("", Query.parse(""), List.of(), new int[0], 0, Snapshot.EMPTY, 0);
     private static volatile String text = "";
     private static volatile boolean busy;
     /** Добавка к запросу от вкладки фильтра, например {@code craftable}. */
@@ -186,7 +189,7 @@ public final class SearchService {
         }
         // при поиске группы не сворачиваются: игрок ищет конкретный предмет
         if (Config.get().groupItems && query.isEmpty()) out = Groups.collapse(out);
-        results = new Results(text, query, out, r.exactCount, snap, (System.nanoTime() - start) / 1000);
+        results = new Results(text, query, out, r.indices, r.exactCount, snap, (System.nanoTime() - start) / 1000);
     }
 
     private static Snapshot hiddenFor;
@@ -201,14 +204,18 @@ public final class SearchService {
         List<String> queries = Config.get().hiddenQueries;
         List<String> items = Config.get().hiddenItems;
         Foreign.Source foreign = Foreign.get();
-        String key = String.join("\n", queries) + "\u0000" + String.join("\n", items) + "\u0000" + (foreign == null ? "" : foreign.name());
+        String key = String.join("\n", queries) + "\u0000" + String.join("\n", items) + "\u0000" + (foreign == null ? "" : foreign.name())
+            // маска с запросом по $, посчитанная до конца сборки подсказок, пересчитается, когда сборка дойдёт до конца
+            + "\u0000" + tooltipsReady(snap);
         if (snap == hiddenFor && key.equals(hiddenKey)) return hiddenMask;
         boolean[] mask = new boolean[snap.index.size()];
         java.util.Set<String> itemKeys = new java.util.HashSet<>(items);
+        // ключ с компонентами кодируется только для предметов, у которых такие записи есть, а не для всего списка
+        java.util.Set<String> variantIds = HiddenItems.variantIds(itemKeys);
         for (int i = 0; i < mask.length && i < snap.stacks.size(); i++) {
             Stack s = snap.stacks.get(i);
             try {
-                mask[i] = (!itemKeys.isEmpty() && HiddenItems.hiddenLocally(s, itemKeys)) || (foreign != null && foreign.isHidden(s));
+                mask[i] = (!itemKeys.isEmpty() && HiddenItems.hiddenLocally(s, itemKeys, variantIds)) || (foreign != null && foreign.isHidden(s));
             } catch (Throwable ignored) {
                 // чужой ресурс
             }
@@ -223,6 +230,11 @@ public final class SearchService {
         hiddenKey = key;
         hiddenMask = mask;
         return mask;
+    }
+
+    /** Подсказки всех записей текущего снимка уже собраны: до этого поиск по {@code $} видит не всё. */
+    public static boolean tooltipsReady() {
+        return tooltipsReady(Indexer.snapshot());
     }
 
     /** Подсказки всех записей этого снимка уже собраны в главном потоке. */
@@ -260,13 +272,15 @@ public final class SearchService {
         SearchIndex index = snap.index;
         boolean wanted = tooltipsWanted;
         long deadline = System.nanoTime() + (wanted ? WARM_NANOS_WANTED : WARM_NANOS_PER_TICK);
-        int next = warmNext;
+        int next = warmNext, before = next;
         while (next < index.size() && System.nanoTime() < deadline) {
             SearchEntry e = index.entry(next);
             if (e.tooltip == null) e.tooltip = tooltipText(snap.stacks.get(next));
             next++;
         }
         warmNext = next;
+        // сборка дошла до конца: скрытые запросы по $ дособирают маску (её ключ учитывает готовность подсказок)
+        if (before < index.size() && next >= index.size() && !Config.get().showHidden && hidesByTooltip()) submit(text);
         if (!wanted) return;
         // раз в секунду и в конце сборки поиск с $ повторяется: результат дополняется собранными подсказками
         boolean done = next >= index.size();
@@ -277,6 +291,11 @@ public final class SearchService {
             if (Query.parse(full).needsTooltip()) submit(current);
             else tooltipsWanted = false;
         }
+    }
+
+    private static boolean hidesByTooltip() {
+        for (String q : Config.get().hiddenQueries) if (Query.parse(q).needsTooltip()) return true;
+        return false;
     }
 
     /** Доля предметов, чьи подсказки уже собраны заранее. */
