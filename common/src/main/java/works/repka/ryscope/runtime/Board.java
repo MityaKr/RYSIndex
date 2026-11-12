@@ -40,6 +40,8 @@ public final class Board {
         CraftTree building;
         /** Снимок индекса сменился: показанное дерево устарело, нужно строить заново без перенятых рецептов. */
         boolean stale;
+        /** Последняя попытка построить дерево упала: следующая не раньше чем через секунду. */
+        boolean failed;
 
         Goal(Stack stack, long amount) {
             this.stack = stack;
@@ -110,7 +112,8 @@ public final class Board {
         long deadline = System.nanoTime() + TICK_NANOS;
         for (Goal g : GOALS) {
             try {
-                if (g.building == null && (g.tree == null || g.stale || periodic)) {
+                boolean due = g.stale || periodic || (g.tree == null && !g.failed);
+                if (g.building == null && due) {
                     CraftTree next = new CraftTree(g.stack, TICK_NANOS);
                     // рецепты прежнего дерева годятся, только пока не сменился снимок
                     if (g.tree != null && !g.stale) next.inherit(g.tree);
@@ -123,9 +126,11 @@ public final class Board {
                 if (g.building.ready()) {
                     g.tree = g.building;
                     g.building = null;
+                    g.failed = false;
                 }
             } catch (Throwable t) {
                 g.building = null;
+                g.failed = true;
                 RYScope.LOG.debug("Цель {} не пересчитана: {}", g.stack.id(), t.toString());
             }
         }
