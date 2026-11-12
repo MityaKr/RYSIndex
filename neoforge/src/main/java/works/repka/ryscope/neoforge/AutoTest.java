@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("soak".equals(System.getProperty("ryscope.autotest"))) {
+            buildSoak();
+            return;
+        }
         if ("craft".equals(System.getProperty("ryscope.autotest"))) {
             buildCraft();
             return;
@@ -1583,6 +1587,114 @@ final class AutoTest {
         step("quit", () -> mc().stop(), 0);
     }
 
+    private static long soakFrames, soakAt;
+    /** Предел длительности автотеста в тиках: 10 минут, долгому прогону больше. */
+    private static int tickLimit = 20 * 600;
+
+    /** Размер статической коллекции или карты по имени класса и поля, -1 если не нашлось. */
+    private static int staticSize(String className, String field) {
+        try {
+            java.lang.reflect.Field f = Class.forName(className).getDeclaredField(field);
+            f.setAccessible(true);
+            Object v = f.get(null);
+            if (v instanceof java.util.Map<?, ?> m) return m.size();
+            if (v instanceof java.util.Collection<?> c) return c.size();
+            if (v instanceof it.unimi.dsi.fastutil.longs.Long2ObjectMap<?> m) return m.size();
+            return -2;
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    private static void soakReport(int minute) {
+        Runtime rt = Runtime.getRuntime();
+        System.gc();
+        long used = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
+        long now = System.currentTimeMillis();
+        double fps = soakAt == 0 ? 0 : (frames - soakFrames) * 1000.0 / Math.max(1, now - soakAt);
+        soakFrames = frames;
+        soakAt = now;
+        int textures = -1;
+        try {
+            java.lang.reflect.Field f = net.minecraft.client.renderer.texture.TextureManager.class.getDeclaredField("byPath");
+            f.setAccessible(true);
+            var map = (java.util.Map<?, ?>) f.get(mc().getTextureManager());
+            textures = map.size();
+            java.util.TreeMap<String, Integer> byMod = new java.util.TreeMap<>();
+            for (Object k : map.keySet()) {
+                String id = k.toString();
+                String key = id.contains("/") ? id.substring(0, id.indexOf('/')) : id;
+                byMod.merge(key, 1, Integer::sum);
+            }
+            RYScope.LOG.info("[soak] текстуры по модам: {}", byMod);
+        } catch (Throwable ignored) {
+        }
+        RYScope.LOG.info("[soak] минута {}: память {} МБ, FPS {}, текстур {}, страниц атласа {}, глифов {}, фигур {}, значков {}, ячеек {}, живых структур {}, общий кеш дерева {}, линза {}",
+            minute, used, String.format("%.0f", fps), textures,
+            staticSize("works.repka.ryscore.ui.Atlas", "PAGES"), staticSize("works.repka.ryscore.ui.Type", "GLYPHS"),
+            staticSize("works.repka.ryscore.ui.Shapes", "CACHE"), staticSize("works.repka.ryscore.ui.Icons", "CACHE"),
+            staticSize("works.repka.ryscore.ui.Tiles", "CACHE"), staticSize("works.repka.ryscope.jei.StructureRecipeView", "LIVE"),
+            staticSize("works.repka.ryscope.runtime.CraftTree", "MAP"), staticSize("works.repka.ryscope.ui.Lens", "found"));
+    }
+
+    /** Долгая игра: типичные действия по кругу, раз в минуту память, FPS и размеры кешей. */
+    private static void buildSoak() {
+        int minutes = Integer.getInteger("ryscope.soak.minutes", 25);
+        tickLimit = 20 * 60 * (minutes + 10);
+        step("soak: wait", () -> works.repka.ryscope.runtime.Foreign.get() != null
+            && works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY
+            && works.repka.ryscope.runtime.Indexer.snapshot().stacks.size() > 5000, () -> {
+                mc().options.enableVsync().set(false);
+                mc().options.framerateLimit().set(260);
+                mc().getWindow().updateVsync(false);
+            }, 40);
+        step("soak: start", () -> soakReport(0), 2);
+        String[] queries = {"iron", "железн", "@create", "меч", "piston", "gold", "$острота", "plate", "уголь", "gear"};
+        int cycle = 0;
+        for (int minute = 1; minute <= minutes; minute++) {
+            for (int k = 0; k < 6; k++, cycle++) {
+                final int c = cycle;
+                step("soak: inventory", () -> {
+                    mc().setScreen(new InventoryScreen(mc().player));
+                    Overlay.setSearch(queries[c % queries.length]);
+                }, 30);
+                step("soak: card", () -> {
+                    var stacks = works.repka.ryscope.runtime.Indexer.snapshot().stacks;
+                    Stack st = stacks.get((c * 7919) % stacks.size());
+                    RecipeScreen.open(st, c % 2 == 0 ? Lookup.Mode.RECIPES : Lookup.Mode.USES);
+                }, 20);
+                step("soak: page", () -> {
+                    if (mc().screen != null) mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT, 0, 0);
+                }, 15);
+                step("soak: tree", () -> works.repka.ryscope.ui.TreeScreen.open(new ItemRes(new ItemStack(c % 2 == 0 ? Items.PISTON : Items.DISPENSER))), 30);
+                if (c % 3 == 0) {
+                    step("soak: structure", () -> {
+                        try {
+                            Object item = Class.forName("es.degrassi.mmreborn.common.item.ControllerItem")
+                                .getMethod("makeMachineItem", net.minecraft.resources.ResourceLocation.class)
+                                .invoke(null, net.minecraft.resources.ResourceLocation.parse("repys:kinetic_foundry"));
+                            RecipeScreen.open(new ItemRes((ItemStack) item), Lookup.Mode.USES);
+                        } catch (ReflectiveOperationException e) {
+                            RYScope.LOG.error("[soak]", e);
+                        }
+                    }, 20);
+                    for (int t = 0; t < 4; t++) {
+                        step("soak: find structure", () -> {
+                            if (structureOnScreen() != null || mc().screen == null) return;
+                            mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+                        }, 20);
+                    }
+                    step("soak: watch structure", () -> {}, 60);
+                }
+                step("soak: close", () -> mc().setScreen(null), 10);
+            }
+            final int m = minute;
+            step("soak: report", () -> soakReport(m), 2);
+        }
+        shot("soak_end");
+        step("quit", () -> mc().stop(), 0);
+    }
+
     /** Быстрый крафт в обычном верстаке: обновляется ли слот результата. */
     private static void buildCraft() {
         step("craft: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
@@ -2833,7 +2945,7 @@ final class AutoTest {
 
     private static void tick() {
         if (index >= STEPS.size()) return;
-        if (++total > 20 * 600) {
+        if (++total > tickLimit) {
             RYScope.LOG.error("[autotest] превышено время, шаг {}", STEPS.get(index).name);
             index = STEPS.size();
             mc().stop();

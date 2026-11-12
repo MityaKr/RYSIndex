@@ -48,6 +48,7 @@ public final class RyscopeNeoForgeClient {
         });
         bus.addListener((ClientPlayerNetworkEvent.LoggingOut e) -> RyscopeClient.onLogout());
         bus.addListener((ClientTickEvent.Post e) -> RyscopeClient.onClientTick());
+        bus.addListener((net.neoforged.neoforge.client.event.RenderFrameEvent.Post e) -> works.repka.ryscope.client.FreezeWatch.frame());
 
         bus.addListener((ContainerScreenEvent.Render.Background e) ->
             RyscopeClient.renderContainerBackground(e.getContainerScreen(), e.getGuiGraphics(), e.getMouseX(), e.getMouseY(),
