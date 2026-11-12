@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("audit".equals(System.getProperty("ryscope.autotest"))) {
+            buildAudit();
+            return;
+        }
         if ("batch".equals(System.getProperty("ryscope.autotest"))) {
             buildBatch();
             return;
@@ -1457,6 +1461,118 @@ final class AutoTest {
         }
         step("history: report", () -> RYScope.LOG.info("[supply] история поиска:{}", seen), 2);
         step("history: done", () -> searchKey(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE), 2);
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    private static long auditStart;
+
+    /** Находки аудита: поиск, скрытие предмета, стрелка печи, быстрый крафт, новые окна. */
+    private static void buildAudit() {
+        step("audit: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
+            && works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY
+            && works.repka.ryscope.runtime.Indexer.snapshot().stacks.size() > 5000, () -> mc().setScreen(new InventoryScreen(mc().player)), 40);
+        for (String q : new String[] {"iron | uses:stick", "железо | uses:stick", "drop:zombie", "drop:зомби", "loot:chest", "has:x", "mechanicl", "piston"}) {
+            step("audit: search " + q, () -> {
+                auditStart = System.currentTimeMillis();
+                Overlay.setSearch(q);
+            }, 0);
+            step("audit: result " + q, () -> !works.repka.ryscope.runtime.SearchService.busy(), () -> {
+                var r = works.repka.ryscope.runtime.SearchService.results();
+                RYScope.LOG.info("[audit] поиск «{}»: найдено {}, поиск {} мс, первые: {}", q, r.stacks.size(), r.micros / 1000,
+                    r.stacks.stream().limit(4).map(st -> st.id().toString()).toList());
+            }, 5);
+        }
+        step("audit: hide diamond", () -> {
+            boolean hidden = works.repka.ryscope.runtime.HiddenItems.toggle(new ItemRes(new ItemStack(Items.DIAMOND)), false);
+            RYScope.LOG.info("[audit] алмаз скрыт: {}", hidden);
+        }, 10);
+        step("audit: hidden search", () -> works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY,
+            () -> Overlay.setSearch("diamond"), 30);
+        step("audit: hidden result", () -> !works.repka.ryscope.runtime.SearchService.busy(), () -> {
+            boolean present = works.repka.ryscope.runtime.SearchService.results().stacks.stream().anyMatch(st -> st.id().toString().equals("minecraft:diamond"));
+            RYScope.LOG.info("[audit] после скрытия алмаз в выдаче: {}", present);
+            works.repka.ryscope.runtime.HiddenItems.toggle(new ItemRes(new ItemStack(Items.DIAMOND)), false);
+            Overlay.setSearch("");
+        }, 30);
+        step("audit: furnace", () -> {
+            mc().setScreen(null);
+            command("setblock 3 -60 2 minecraft:furnace");
+        }, 15);
+        step("audit: open furnace", () -> use(new BlockPos(3, -60, 2), Direction.UP, new Vec3(3.5, -59, 2.5)), 25);
+        step("audit: furnace arrow", () -> {
+            if (!(mc().screen instanceof AbstractContainerScreen<?> acs)) {
+                RYScope.LOG.info("[audit] печь не открылась: {}", mc().screen);
+                return;
+            }
+            try {
+                java.lang.reflect.Field l = AbstractContainerScreen.class.getDeclaredField("leftPos"), t = AbstractContainerScreen.class.getDeclaredField("topPos");
+                l.setAccessible(true);
+                t.setAccessible(true);
+                double x = l.getInt(acs) + 79 + 12, y = t.getInt(acs) + 34 + 8;
+                boolean taken = works.repka.ryscope.client.RyscopeClient.mouseClicked(acs, x, y, 0) || works.repka.ryscope.ui.ClickAreas.click(acs, x, y, 0);
+                RYScope.LOG.info("[audit] клик по стрелке печи принят: {}", taken);
+            } catch (ReflectiveOperationException e) {
+                RYScope.LOG.error("[audit]", e);
+            }
+        }, 30);
+        step("audit: furnace card", () -> {
+            int groups = -1;
+            if (mc().screen instanceof RecipeScreen rs) {
+                try {
+                    java.lang.reflect.Field nav = RecipeScreen.class.getDeclaredField("nav");
+                    nav.setAccessible(true);
+                    Object n = nav.get(rs);
+                    java.lang.reflect.Field gf = n.getClass().getDeclaredField("groups");
+                    gf.setAccessible(true);
+                    groups = ((List<?>) gf.get(n)).size();
+                } catch (ReflectiveOperationException e) {
+                    RYScope.LOG.error("[audit]", e);
+                }
+            }
+            RYScope.LOG.info("[audit] после клика экран {}, категорий {}", mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName(), groups);
+        }, 2);
+        shot("audit_furnace_card");
+        step("audit: inventory", () -> {
+            // закрыть как игрок: setScreen(null) не сообщает серверу, и он считает печь открытой
+            mc().player.closeContainer();
+            command("clear @s");
+            command("give @s minecraft:oak_planks 8");
+        }, 15);
+        step("audit: open inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 15);
+        step("audit: quick craft", () -> {
+            try {
+                Class<?> qc = Class.forName("works.repka.ryscope.ui.QuickCraft");
+                java.lang.reflect.Method pick = qc.getDeclaredMethod("pick", works.repka.ryscope.model.Stack.class, AbstractContainerScreen.class);
+                pick.setAccessible(true);
+                Object chosen = pick.invoke(null, new ItemRes(new ItemStack(Items.CRAFTING_TABLE)), mc().screen);
+                if (chosen instanceof works.repka.ryscope.content.NativeRecipe nr) {
+                    RYScope.LOG.info("[audit] рецепт {}, в книге игрока: {}", nr.holder == null ? null : nr.holder.id(),
+                        nr.holder != null && mc().player.getRecipeBook().contains(nr.holder));
+                }
+                RYScope.LOG.info("[audit] быстрый крафт выбрал {}: {}", chosen == null ? "ничего" : chosen.getClass().getSimpleName(),
+                    chosen == null ? "" : ((works.repka.ryscope.model.RecipeView) chosen).transfer((AbstractContainerScreen<?>) mc().screen, false, true));
+                java.lang.reflect.Method run = qc.getDeclaredMethod("run", net.minecraft.client.gui.screens.Screen.class, works.repka.ryscope.model.Stack.class, boolean.class);
+                run.setAccessible(true);
+                Object handled = run.invoke(null, mc().screen, new ItemRes(new ItemStack(Items.CRAFTING_TABLE)), false);
+                RYScope.LOG.info("[audit] быстрый крафт верстака обработан: {}", handled);
+            } catch (ReflectiveOperationException e) {
+                RYScope.LOG.error("[audit]", e);
+            }
+        }, 20);
+        step("audit: grid wait", () -> {}, 40);
+        step("audit: grid", () -> {
+            var menu = mc().player.inventoryMenu;
+            List<String> grid = new ArrayList<>();
+            for (int i = 0; i <= 4; i++) grid.add(menu.getSlot(i).getItem().toString());
+            RYScope.LOG.info("[audit] сетка 2x2 и результат: {}", grid);
+        }, 2);
+        shot("audit_quick_craft");
+        step("audit: card", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 40);
+        shot("audit_card");
+        step("audit: tree", () -> works.repka.ryscope.ui.TreeScreen.open(new ItemRes(new ItemStack(Items.PISTON))), 80);
+        shot("audit_tree");
+        step("audit: settings", () -> mc().setScreen(new works.repka.ryscope.ui.SettingsScreen(null)), 30);
+        shot("audit_settings");
         step("quit", () -> mc().stop(), 0);
     }
 

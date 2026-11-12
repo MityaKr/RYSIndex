@@ -699,9 +699,19 @@ public final class JeiBridge implements Foreign.Source {
     public Foreign.ClickArea clickArea(Screen screen, double x, double y) {
         if (!(screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> acs)) return null;
         var screens = runtime.getScreenHelper();
+        // с выключенным интерфейсом JEI не регистрирует обработчик окон-контейнеров (JeiGuiPlugin.registerGuiHandlers),
+        // и свойства окна приходят пустыми: тогда положение берём у самого окна
         var props = screens.getGuiProperties(screen).orElse(null);
-        if (props == null) return null;
-        mezz.jei.api.gui.handlers.IGuiClickableArea area = screens.getGuiClickableArea(acs, x - props.guiLeft(), y - props.guiTop())
+        int left, top;
+        if (props != null) {
+            left = props.guiLeft();
+            top = props.guiTop();
+        } else {
+            int[] bounds = works.repka.ryscope.platform.Platform.get().screenBounds(acs);
+            left = bounds[0];
+            top = bounds[1];
+        }
+        mezz.jei.api.gui.handlers.IGuiClickableArea area = screens.getGuiClickableArea(acs, x - left, y - top)
             .findFirst().orElse(null);
         if (area == null) return null;
         return new Foreign.ClickArea() {
