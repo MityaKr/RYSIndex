@@ -11,16 +11,21 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import works.repka.ryscope.RYScope;
 import works.repka.ryscope.content.LootData;
+import works.repka.ryscope.content.OreData;
 import works.repka.ryscope.neoforge.net.LootPayload;
+import works.repka.ryscope.neoforge.net.OrePayload;
 
 /**
  * Общая точка входа. Серверная часть необязательна: без неё мод работает как чисто клиентский,
- * с ней клиент на выделенном сервере получает источники предметов (дроп, лут).
+ * с ней клиент на выделенном сервере получает источники предметов (дроп, лут) и генерацию руд.
  */
 @Mod(RYScope.MOD_ID)
 public final class RyscopeNeoForge {
     private static Object cachedFor;
     private static LootPayload cached;
+    /** Генерация руд: реестры генерации загружаются при запуске сервера и после /reload не меняются. */
+    private static Object oresFor;
+    private static OrePayload ores;
 
     public RyscopeNeoForge(IEventBus modBus) {
         RYScope.LOG.info("{} loading", RYScope.NAME);
@@ -36,6 +41,8 @@ public final class RyscopeNeoForge {
         var registrar = event.registrar("1").optional();
         registrar.playToClient(LootPayload.TYPE, LootPayload.CODEC,
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onLoot(payload)));
+        registrar.playToClient(OrePayload.TYPE, OrePayload.CODEC,
+            (payload, context) -> context.enqueueWork(() -> ClientPayloads.onOres(payload)));
         registrar.playToClient(works.repka.ryscope.neoforge.net.StageNoticePayload.TYPE, works.repka.ryscope.neoforge.net.StageNoticePayload.CODEC,
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onStageNotice(payload)));
         registrar.playToClient(works.repka.ryscope.neoforge.net.StagePayload.TYPE, works.repka.ryscope.neoforge.net.StagePayload.CODEC,
@@ -58,9 +65,21 @@ public final class RyscopeNeoForge {
         for (ServerPlayer player : players) {
             // хозяину одиночной игры пакет не нужен: его клиент читает таблицы напрямую
             if (server.isSingleplayerOwner(player.getGameProfile())) continue;
-            if (!player.connection.hasChannel(LootPayload.TYPE)) continue;
-            PacketDistributor.sendToPlayer(player, payload(server));
+            if (player.connection.hasChannel(LootPayload.TYPE)) PacketDistributor.sendToPlayer(player, payload(server));
+            // клиент старой версии этого канала не знает и остаётся на кеше одиночной игры
+            if (player.connection.hasChannel(OrePayload.TYPE)) PacketDistributor.sendToPlayer(player, ores(server));
         }
+    }
+
+    private static synchronized OrePayload ores(MinecraftServer server) {
+        Object key = server.registryAccess();
+        if (ores == null || oresFor != key) {
+            long start = System.nanoTime();
+            ores = new OrePayload(OreData.extract(server));
+            oresFor = key;
+            RYScope.LOG.info("Генерация руд подготовлена: {} блоков за {} мс", ores.ores().size(), (System.nanoTime() - start) / 1_000_000);
+        }
+        return ores;
     }
 
     private static synchronized LootPayload payload(MinecraftServer server) {

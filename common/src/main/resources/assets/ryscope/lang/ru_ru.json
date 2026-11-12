@@ -332,6 +332,8 @@
   "ryscope.ore.range": "Y %s…%s",
   "ryscope.ore.per_chunk": "жил на чанк: %s",
   "ryscope.ore.rare": "одна жила на %s чанков",
+  "ryscope.ore.cached": "по данным одиночной игры",
+  "ryscope.ore.unknown": "Руды видны после захода в одиночный мир с этой сборкой",
   "ryscope.copied.json": "JSON рецепта скопирован: %s",
   "ryscope.settings.profile": "Закладки и цели",
   "ryscope.settings.profile.global": "Общие",

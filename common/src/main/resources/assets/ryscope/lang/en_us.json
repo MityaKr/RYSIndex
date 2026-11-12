@@ -332,6 +332,8 @@
   "ryscope.ore.range": "Y %s…%s",
   "ryscope.ore.per_chunk": "veins per chunk: %s",
   "ryscope.ore.rare": "one vein in %s chunks",
+  "ryscope.ore.cached": "from singleplayer data",
+  "ryscope.ore.unknown": "Ores appear after you join a singleplayer world with this modpack",
   "ryscope.copied.json": "Recipe JSON copied: %s",
   "ryscope.settings.profile": "Bookmarks and goals",
   "ryscope.settings.profile.global": "Shared",

@@ -85,6 +85,7 @@ public final class RyscopeClient {
         Bookmarks.reset();
         works.repka.ryscope.runtime.RecipeDefaults.reset();
         works.repka.ryscope.runtime.LootSource.clear();
+        works.repka.ryscope.runtime.OreSource.clear();
         works.repka.ryscope.runtime.Board.reset();
         works.repka.ryscope.ui.RecipeScreen.clearTabs();
         works.repka.ryscope.runtime.Stages.reset();

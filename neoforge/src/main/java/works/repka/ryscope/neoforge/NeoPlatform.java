@@ -51,6 +51,13 @@ public final class NeoPlatform implements Platform {
     }
 
     @Override
+    public List<String> modVersions() {
+        List<String> out = new ArrayList<>();
+        for (IModInfo info : ModList.get().getMods()) out.add(info.getModId() + ":" + info.getVersion());
+        return out;
+    }
+
+    @Override
     public boolean isDevEnvironment() {
         return !FMLLoader.isProduction();
     }

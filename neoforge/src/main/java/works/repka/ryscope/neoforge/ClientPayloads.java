@@ -18,4 +18,8 @@ final class ClientPayloads {
     static void onLoot(LootPayload payload) {
         LootSource.setSynced(payload.tables());
     }
+
+    static void onOres(works.repka.ryscope.neoforge.net.OrePayload payload) {
+        works.repka.ryscope.runtime.OreSource.setSynced(payload.ores());
+    }
 }
