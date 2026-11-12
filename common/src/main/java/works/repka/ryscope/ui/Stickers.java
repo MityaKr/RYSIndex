@@ -13,6 +13,7 @@ import works.repka.ryscope.runtime.InventoryView;
 import works.repka.ryscore.theme.Theme;
 import works.repka.ryscore.ui.Anchors;
 import works.repka.ryscore.ui.Draw;
+import works.repka.ryscore.ui.Kit;
 import works.repka.ryscore.ui.Type.Weight;
 
 /** Стикеры целей из макета: название, сколько есть, сырьё и полоса. На экранах стоят рядом внизу слева. */
@@ -33,8 +34,18 @@ public final class Stickers {
         long have = Math.min(goal.amount, InventoryView.count(goal.stack));
         String title = title(goal), count = have + " / " + goal.amount;
         float text = Draw.labelWidth(title, 12.5f, Weight.SEMIBOLD) + 8 + Draw.labelWidth(count, 12.5f, Weight.REGULAR);
-        int tiles = tree == null ? 1 : Math.min(4, Math.max(1, tree.raw.size()));
-        return Math.max(tiles >= 4 ? 110 : 90, (int) Math.ceil(text) + PAD * 2);
+        int tiles = tree == null ? 1 : Math.min(4, Math.max(1, tree.raw.size() + tree.ordered.size()));
+        int width = Math.max(tiles >= 4 ? 110 : 90, (int) Math.ceil(text) + PAD * 2);
+        if (tree != null && !tree.ordered.isEmpty()) {
+            // место под «из них N закажет сеть» справа от плашек, хотя бы две плашки слева
+            float order = Draw.labelWidth(orderedLabel(tree), 12f, Weight.REGULAR);
+            width = Math.max(width, (int) Math.ceil(order) + 6 + 2 * (TILE + TILE_GAP) + PAD * 2);
+        }
+        return width;
+    }
+
+    private static String orderedLabel(CraftTree tree) {
+        return Component.translatable("ryscope.board.ordered", tree.ordered.size()).getString();
     }
 
     private static String title(Board.Goal goal) {
@@ -109,33 +120,51 @@ public final class Stickers {
         if (tree == null) {
             // первое дерево цели ещё строится по частям в тике
             Draw.label(g, Draw.ellipsize(Component.translatable("ryscope.board.computing").getString(), w - PAD * 2, 12f, Weight.REGULAR), x + PAD, ty + TILE / 2f, 12f, Weight.REGULAR, mutedColor);
-        } else if (tree.raw.isEmpty()) {
+        } else if (tree.raw.isEmpty() && tree.ordered.isEmpty()) {
             Draw.label(g, Component.translatable("ryscope.board.ready").getString(), x + PAD, ty + TILE / 2f, 12f, Weight.REGULAR, t.c("state.ok"));
         } else {
-            int fits = Math.max(1, (w - PAD * 2 + TILE_GAP) / (TILE + TILE_GAP));
+            int room = w - PAD * 2;
+            if (!tree.ordered.isEmpty()) {
+                // недостающее, которое сеть AE2 сделает сама: плашки с шестерёнкой и подпись справа
+                String label = orderedLabel(tree);
+                float lw = Draw.labelWidth(label, 12f, Weight.REGULAR);
+                Draw.label(g, label, x + w - PAD - lw, ty + TILE / 2f, 12f, Weight.REGULAR, t.c("state.order"));
+                room -= (int) Math.ceil(lw) + 6;
+            }
+            int fits = Math.max(1, (room + TILE_GAP) / (TILE + TILE_GAP));
             int i = 0;
             for (CraftTree.Raw raw : tree.raw.values()) {
                 if (i >= fits) break;
-                int tx = x + PAD + i * (TILE + TILE_GAP);
-                Draw.round(g, tx, ty, TILE, TILE, 3f, t.c("slot.bg"));
-                g.pose().pushPose();
-                g.pose().translate(tx + 1.5f, ty + 1.5f, 0);
-                g.pose().scale(0.75f, 0.75f, 1f);
-                raw.stack.render(g, 0, 0);
-                g.pose().popPose();
-                if (InventoryView.tracking() && InventoryView.count(raw.stack) == 0) {
-                    // чего нет совсем, приглушено, как в макете
-                    g.pose().pushPose();
-                    g.pose().translate(0, 0, 220);
-                    Draw.round(g, tx, ty, TILE, TILE, 3f, Draw.alpha(t.c("hud.bg"), 0.55f));
-                    g.pose().popPose();
-                }
+                tile(g, t, raw, x + PAD + i * (TILE + TILE_GAP), ty, false);
+                i++;
+            }
+            for (CraftTree.Raw raw : tree.ordered.values()) {
+                if (i >= fits) break;
+                tile(g, t, raw, x + PAD + i * (TILE + TILE_GAP), ty, true);
                 i++;
             }
         }
         int barY = y + H - 6 - 2, barW = w - PAD * 2;
         Draw.round(g, x + PAD, barY, barW, 2, 1f, t.c("slot.bg"));
         if (have > 0) Draw.round(g, x + PAD, barY, Math.max(2f, (float) barW * have / goal.amount), 2, 1f, t.c("accent"));
+    }
+
+    private static void tile(GuiGraphics g, Theme t, CraftTree.Raw raw, int tx, int ty, boolean order) {
+        Draw.round(g, tx, ty, TILE, TILE, 3f, t.c("slot.bg"));
+        g.pose().pushPose();
+        g.pose().translate(tx + 1.5f, ty + 1.5f, 0);
+        g.pose().scale(0.75f, 0.75f, 1f);
+        raw.stack.render(g, 0, 0);
+        g.pose().popPose();
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 220);
+        if (order) {
+            Kit.indicator(g, t, tx + TILE - 5.5f, ty + 0.5f, 5f, Kit.State.ORDER, -1, -1);
+        } else if (InventoryView.tracking() && InventoryView.count(raw.stack) == 0) {
+            // чего нет совсем, приглушено, как в макете
+            Draw.round(g, tx, ty, TILE, TILE, 3f, Draw.alpha(t.c("hud.bg"), 0.55f));
+        }
+        g.pose().popPose();
     }
 
     @Nullable

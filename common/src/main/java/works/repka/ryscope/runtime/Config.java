@@ -47,6 +47,8 @@ public final class Config {
     public boolean replaceFtbSidebar = true;
     /** Учитывать в дереве крафта и на доске то, что игрок видел в хранилищах рядом. */
     public boolean countStorages = true;
+    /** Дерево крафта не раскрывает то, что умеет делать сеть AE2, а пишет это в «Заказать в сети». */
+    public boolean treeAutocraft = true;
     /** Радиус в блоках, в котором запомненные хранилища считаются доступными. */
     public int storageRadius = 32;
     /** Сохранённые поисковые запросы. */

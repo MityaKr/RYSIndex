@@ -101,6 +101,8 @@ public final class Planner {
         tree.apply(route);
         // планируем производство с нуля: то, что лежит в инвентаре, поток не обеспечит
         tree.useInventory = false;
+        // и сеть AE2 поток не обеспечит: план считает все шаги
+        tree.autocraft = false;
         tree.setAmount(rate);
         pass = 0;
         ready = false;

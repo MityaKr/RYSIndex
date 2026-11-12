@@ -67,6 +67,8 @@ public final class Board {
     private static final List<Goal> GOALS = new ArrayList<>();
     private static boolean loaded;
     private static int age;
+    /** Признак входных данных деревьев ({@link CraftTree#inputsVersion}), по которому построены нынешние деревья. */
+    private static long inputs = Long.MIN_VALUE;
 
     private Board() {}
 
@@ -154,9 +156,15 @@ public final class Board {
         boolean periodic = ++age % 20 == 0;
         if (Indexer.state() != Indexer.State.READY) return;
         long deadline = System.nanoTime() + TICK_NANOS;
+        // сменились настройка автокрафта или данные «сеть сделает»: деревья строятся заново сразу, а не через секунду.
+        // Найденные рецепты от этого не устаревают, поэтому перенимаются
+        long now = CraftTree.inputsVersion();
+        boolean inputsChanged = now != inputs;
+        inputs = now;
         for (Goal g : GOALS) {
             try {
-                boolean due = g.stale || periodic || (g.tree == null && !g.failed);
+                if (inputsChanged) g.building = null;
+                boolean due = g.stale || periodic || inputsChanged || (g.tree == null && !g.failed);
                 if (g.building == null && due) {
                     CraftTree next = new CraftTree(g.stack, TICK_NANOS);
                     // рецепты прежнего дерева годятся, только пока не сменился снимок

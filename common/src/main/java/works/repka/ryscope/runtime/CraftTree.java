@@ -54,6 +54,8 @@ public final class CraftTree {
         public String sources = "";
         /** Рецепт выбран, но ветка не раскрыта: дерево упёрлось в предел глубины или числа узлов. */
         public boolean truncated;
+        /** Остаток не крафтится вручную: его закажет сеть AE2 (на предмет есть шаблон), ветка не раскрывается. */
+        public boolean ordered;
 
         Node(Stack stack, Node parent) {
             this.stack = stack;
@@ -188,6 +190,15 @@ public final class CraftTree {
     public long amount = 1;
     public boolean useInventory = true;
     public final Map<Object, Raw> raw = new LinkedHashMap<>();
+    /** Что закажет сеть AE2: остаток после инвентаря и хранилищ, по предметам. */
+    public final Map<Object, Raw> ordered = new LinkedHashMap<>();
+    /**
+     * Учитывать автокрафт AE2, если он включён в настройках ({@link Config#treeAutocraft}). План выключает:
+     * он считает производство с нуля.
+     */
+    public boolean autocraft = true;
+    /** Когда прочитаны данные «сеть сделает», по которым посчитан {@link #ordered}, мс; 0, если не учитывались. */
+    public long orderedAt;
     public final Set<Category> stations = new LinkedHashSet<>();
     public int steps;
     public int maxDepth;
@@ -198,6 +209,8 @@ public final class CraftTree {
     /** Сколько узлов уже обойдено под каждым раскрытым узлом: у каждой раскрытой ветки свой предел MAX_NODES / 2. */
     private final Map<Node, Integer> expandedCount = new java.util.IdentityHashMap<>();
     private Map<Object, Long> pool;
+    /** Что сеть умеет делать, на время одного прохода: весь проход считает по одним данным. */
+    private Set<Item> craftSet = Set.of();
 
     /** Сколько времени за один вызов можно тратить на поиск рецептов, когда дерево строится по частям. */
     private static final long SLICE_NANOS = 10_000_000L;
@@ -282,6 +295,9 @@ public final class CraftTree {
 
     private void compute() {
         raw.clear();
+        ordered.clear();
+        craftSet = autocraft && Config.get().treeAutocraft ? Ae2Terminal.craftableNow() : Set.of();
+        orderedAt = craftSet.isEmpty() ? 0 : Ae2Terminal.craftableAt();
         stations.clear();
         steps = 0;
         maxDepth = 0;
@@ -306,6 +322,7 @@ public final class CraftTree {
         maxDepth = Math.max(maxDepth, node.depth);
         Object key = node.stack.key();
         node.fromInventory = 0;
+        node.ordered = false;
         if (takeFromInventory) {
             long have = pool.getOrDefault(key, 0L);
             long use = Math.min(have, node.needed);
@@ -318,6 +335,16 @@ public final class CraftTree {
         if (remaining == 0) {
             node.children.clear();
             node.crafts = 0;
+            return;
+        }
+        // сеть делает этот предмет сама: остаток заказывается, ветка не раскрывается. Сам целевой предмет
+        // раскрывается всегда: игрок спрашивает, из чего он делается
+        if (node.parent != null && key instanceof Item item && craftSet.contains(item)) {
+            node.ordered = true;
+            node.truncated = false;
+            node.children.clear();
+            node.crafts = 0;
+            ordered.computeIfAbsent(key, k -> new Raw(node.stack)).need += remaining;
             return;
         }
         if (node.options == null) loadOptions(node);
@@ -704,6 +731,8 @@ public final class CraftTree {
     private int steps(Stack stack, int depth, Set<Object> path, boolean target) {
         Object key = stack.key();
         if (!target && pool != null && pool.getOrDefault(key, 0L) > 0) return 0;
+        // то, что закажет сеть, шагов игрока не требует
+        if (!target && craftSet.contains(key)) return 0;
         Integer known = costMemo.get(key);
         if (known != null) return known;
         if (depth >= SHORT_DEPTH || path.contains(key)) return FAR;
@@ -807,5 +836,15 @@ public final class CraftTree {
 
     public int missingKinds() {
         return raw.size();
+    }
+
+    /**
+     * Всё, от чего зависит выбор и раскрытие узлов помимо рецептов и инвентаря: настройка автокрафта и данные
+     * «сеть сделает». Деревья целей и общая сумма пересобираются, когда это число меняется.
+     */
+    public static long inputsVersion() {
+        long h = Config.get().treeAutocraft ? 1 : 0;
+        h = h * 1_000_003L + Ae2Terminal.craftableVersion();
+        return h;
     }
 }

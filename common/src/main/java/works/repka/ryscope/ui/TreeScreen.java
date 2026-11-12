@@ -4,6 +4,7 @@ import works.repka.ryscore.ui.ScaledScreen;
 import works.repka.ryscore.ui.Draw;
 import works.repka.ryscore.ui.Kit;
 import works.repka.ryscore.ui.Loading;
+import works.repka.ryscore.ui.Numbers;
 import works.repka.ryscore.ui.Type.Weight;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,8 @@ public final class TreeScreen extends ScaledScreen {
     private static final int PAD = Kit.PAD;
     private static final int HEADER = Kit.HEADER_H + Kit.TABS_H + 4;
     private static final int FOOTER = 52;
+    /** Блок «Заказать в сети» над итогом: подпись и ряд плашек. */
+    private static final int ORDER_H = 36;
 
     private record Row(Node node, int y) {}
 
@@ -160,7 +163,7 @@ public final class TreeScreen extends ScaledScreen {
 
         List<Node> nodes = new ArrayList<>();
         flatten(tree.root, nodes);
-        int bodyY = py + HEADER, bodyH = ph - HEADER - FOOTER;
+        int bodyY = py + HEADER, bodyH = ph - HEADER - footerH();
         float max = Math.max(0, nodes.size() * ROW - bodyH);
         scroll = scroller.update(max);
         rows.clear();
@@ -178,6 +181,8 @@ public final class TreeScreen extends ScaledScreen {
         hits.unclip();
 
         Stack rawHover = renderFooter(g, theme, mx, my);
+        Stack orderHover = renderOrdered(g, theme, mx, my);
+        if (rawHover == null) rawHover = orderHover;
         g.pose().pushPose();
         g.pose().translate(0, 0, 300);
         CraftTree.Raw hoveredRaw = rawHover == null ? null : tree.raw.get(rawHover.key());
@@ -188,9 +193,18 @@ public final class TreeScreen extends ScaledScreen {
             g.renderComponentTooltip(Minecraft.getInstance().font, lines, mx, my);
         } else if (rawHover != null) rawHover.renderTooltip(g, mx, my);
         else if (hovered != null && over(mx, my, px + PAD + hovered.depth * 12 + 9, 0, 18, height)) hovered.stack.renderTooltip(g, mx, my);
+        else if (autocraftHot) Kit.tooltip(g, theme, List.of(tr("ryscope.tree.autocraft.tip")), mx, my);
         g.pose().popPose();
         Overlay.renderToast(this, g);
     }
+
+    /** Высота итога внизу окна: с блоком «Заказать в сети», если сеть что-то закажет. */
+    private int footerH() {
+        return FOOTER + (tree.ready() && !tree.ordered.isEmpty() ? ORDER_H : 0);
+    }
+
+    /** Под курсором переключатель автокрафта: показать подсказку. */
+    private boolean autocraftHot;
 
     private void renderHeader(GuiGraphics g, Theme t, int mx, int my) {
         int iconX = px + PAD, iconY = py + 12;
@@ -213,13 +227,30 @@ public final class TreeScreen extends ScaledScreen {
         int x = px + PAD;
         x += Kit.sectionTab(g, t, hits, x, y, Kit.TABS_H, tr("ryscope.tree.tab"), true, mx, my, () -> {}) + 2;
         x += Kit.sectionTab(g, t, hits, x, y, Kit.TABS_H, tr("ryscope.tree.plan"), false, mx, my, () -> PlannerScreen.open(tree.root.stack, tree.route(true))) + 2;
-        compareTab(g, t, hits, x, y, tree.root.options != null && tree.root.options.size() > 1, mx, my, () -> CompareScreen.open(tree.root.stack));
+        x += compareTab(g, t, hits, x, y, tree.root.options != null && tree.root.options.size() > 1, mx, my, () -> CompareScreen.open(tree.root.stack));
         String label = tr("ryscope.tree.shortest");
         int w = (int) Math.ceil(Draw.labelWidth(label, 12.5f, Weight.MEDIUM)) + 12;
-        Kit.pill(g, t, hits, px + pw - PAD - w, y + 1, label, tree.shortest(), mx, my, () -> {
+        int pillX = px + pw - PAD - w;
+        Kit.pill(g, t, hits, pillX, y + 1, label, tree.shortest(), mx, my, () -> {
             tree.setShortest(!tree.shortest());
             scroller.reset();
         });
+        autocraftHot = false;
+        // переключатель есть, только если сеть хоть что-то умеет делать: иначе переключать нечего
+        if (works.repka.ryscope.runtime.Ae2Terminal.anyCraftableKnown()) {
+            String ae = tr("ryscope.tree.autocraft");
+            boolean on = works.repka.ryscope.runtime.Config.get().treeAutocraft;
+            int aw = (int) Math.ceil(Draw.labelWidth(ae, 12.5f, on ? Weight.MEDIUM : Weight.REGULAR)) + 12;
+            int ax = pillX - 4 - aw;
+            if (ax > x + 4) {
+                Kit.pill(g, t, hits, ax, y + 1, ae, on, mx, my, () -> {
+                    works.repka.ryscope.runtime.Config.get().treeAutocraft = !on;
+                    works.repka.ryscope.runtime.Config.save();
+                    tree.recompute();
+                });
+                autocraftHot = over(mx, my, ax, y + 1, aw, 14);
+            }
+        }
     }
 
     private static String tr(String key) {
@@ -250,6 +281,9 @@ public final class TreeScreen extends ScaledScreen {
         if (have) {
             state = tr("ryscope.tree.have");
             stateColor = t.c("state.ok");
+        } else if (n.ordered) {
+            state = Component.translatable("ryscope.tree.ordered", Numbers.compact(n.remaining())).getString();
+            stateColor = t.c("state.order");
         } else if (n.chosen() == null) {
             state = tr(n.parent == null ? "ryscope.tree.no_recipe" : "ryscope.tree.raw");
             if (!n.sources.isEmpty()) state += " · " + Draw.ellipsize(n.sources, 110f, 12, Weight.REGULAR);
@@ -261,7 +295,7 @@ public final class TreeScreen extends ScaledScreen {
             state = Component.translatable("ryscope.tree.have_part", n.fromInventory).getString();
             stateColor = t.c("state.ok");
         }
-        if (n.options != null && !n.options.isEmpty() && !have) {
+        if (n.options != null && !n.options.isEmpty() && !have && !n.ordered) {
             String sw = (n.choice + 1) + " / " + n.options.size();
             float sww = Draw.labelWidth(sw, 13, Weight.REGULAR);
             float nextX = right - 5, prevX = nextX - sww - 10 - 5;
@@ -294,6 +328,47 @@ public final class TreeScreen extends ScaledScreen {
         String label = n.needed + "× " + n.stack.name().getString();
         Draw.label(g, Draw.ellipsize(label, right - (x + 29), 13, Weight.REGULAR), x + 29, cy, 13, Weight.REGULAR, have ? t.c("text.muted") : t.c("text.body"));
         return hov;
+    }
+
+    /** Блок «Заказать в сети: N» над итогом: что сеть сделает сама, с временем данных. @return предмет под курсором */
+    @Nullable
+    private Stack renderOrdered(GuiGraphics g, Theme t, int mx, int my) {
+        if (tree.ordered.isEmpty()) return null;
+        int oy = py + ph - FOOTER - ORDER_H;
+        Kit.divider(g, t, px + 0.5f, oy, pw - 1);
+        String caption = Component.translatable("ryscope.tree.to_order", tree.ordered.size()).getString();
+        if (tree.orderedAt > 0) caption += " · " + Component.translatable("ryscope.tree.order_at", clock(tree.orderedAt)).getString();
+        Kit.section(g, t, Draw.ellipsize(caption, pw - PAD * 2, 12, Weight.REGULAR), px + PAD, oy + 9);
+        return tiles(g, t, tree.ordered.values(), px + PAD, oy + 14, px + pw - PAD, true, mx, my);
+    }
+
+    /** Время данных «сеть сделает»: ЧЧ:ММ. */
+    static String clock(long millis) {
+        return java.time.LocalTime.ofInstant(java.time.Instant.ofEpochMilli(millis), java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+    }
+
+    /** Ряд плашек сырья или заказа: предмет, количество, отметка. @return предмет под курсором */
+    @Nullable
+    private Stack tiles(GuiGraphics g, Theme t, java.util.Collection<CraftTree.Raw> list, int rx, int ry, int end, boolean order, int mx, int my) {
+        Stack hover = null;
+        for (CraftTree.Raw r : list) {
+            if (rx + 20 > end - 8) {
+                Draw.label(g, "…", rx + 2, ry + 10, 13, Weight.REGULAR, t.c("text.dim"));
+                break;
+            }
+            boolean hot = over(mx, my, rx, ry, 20, 20);
+            Kit.tile(g, t, rx, ry, hot);
+            r.stack.render(g, rx + 2, ry + 2);
+            Kit.count(g, r.need >= 1000 ? (r.need / 1000) + "k" : Long.toString(r.need), rx, ry);
+            if (order) Kit.indicator(g, t, rx + 14.5f, ry + 1f, 4.5f, Kit.State.ORDER, -1, -1);
+            else if (r.truncated) Kit.indicator(g, t, rx + 14.5f, ry + 1f, 4.5f, Kit.State.PARTIAL, -1, -1);
+            if (hot) hover = r.stack;
+            Stack stack = r.stack;
+            hits.add(rx, ry, 20, 20, b -> RecipeScreen.open(stack, b == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES));
+            rx += 23;
+        }
+        return hover;
     }
 
     private Stack renderFooter(GuiGraphics g, Theme t, int mx, int my) {
@@ -331,7 +406,8 @@ public final class TreeScreen extends ScaledScreen {
         }
         Stack rawHover = null;
         if (tree.raw.isEmpty()) {
-            Draw.label(g, tr("ryscope.tree.all_have"), px + PAD, fy + 14, 13, Weight.REGULAR, t.c("state.ok"));
+            String done = tr(tree.ordered.isEmpty() ? "ryscope.tree.all_have" : "ryscope.tree.all_have_order");
+            Draw.label(g, Draw.ellipsize(done, tilesEnd - px - PAD - 8, 13, Weight.REGULAR), px + PAD, fy + 14, 13, Weight.REGULAR, t.c("state.ok"));
         } else {
             String pin = tr("ryscope.tree.pin");
             int bw = (int) Math.ceil(Kit.buttonWidth(pin, 12)), by = gy + 24;
@@ -346,22 +422,7 @@ public final class TreeScreen extends ScaledScreen {
             if (!InventoryView.tracking()) caption += " · " + tr("ryscope.tree.creative");
             else if (works.repka.ryscope.runtime.Storages.inRange() > 0) caption += " · " + Component.translatable("ryscope.tree.storages", works.repka.ryscope.runtime.Storages.inRange()).getString();
             Kit.section(g, t, Draw.ellipsize(caption, tilesEnd - px - PAD - 8, 12, Weight.REGULAR), px + PAD, fy + 11);
-            int rx = px + PAD, ry = fy + 23;
-            for (CraftTree.Raw r : tree.raw.values()) {
-                if (rx + 20 > tilesEnd - 8) {
-                    Draw.label(g, "…", rx + 2, ry + 10, 13, Weight.REGULAR, t.c("text.dim"));
-                    break;
-                }
-                boolean hot = over(mx, my, rx, ry, 20, 20);
-                Kit.tile(g, t, rx, ry, hot);
-                r.stack.render(g, rx + 2, ry + 2);
-                Kit.count(g, r.need >= 1000 ? (r.need / 1000) + "k" : Long.toString(r.need), rx, ry);
-                if (r.truncated) Kit.indicator(g, t, rx + 14.5f, ry + 1f, 4.5f, Kit.State.PARTIAL, -1, -1);
-                if (hot) rawHover = r.stack;
-                Stack stack = r.stack;
-                hits.add(rx, ry, 20, 20, b -> RecipeScreen.open(stack, b == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES));
-                rx += 23;
-            }
+            rawHover = tiles(g, t, tree.raw.values(), px + PAD, fy + 23, tilesEnd, false, mx, my);
         }
         return rawHover;
     }
@@ -372,7 +433,7 @@ public final class TreeScreen extends ScaledScreen {
 
     @Nullable
     private Node nodeAt(double mx, double my) {
-        int bodyY = py + HEADER, bodyH = ph - HEADER - FOOTER;
+        int bodyY = py + HEADER, bodyH = ph - HEADER - footerH();
         if (my < bodyY || my >= bodyY + bodyH) return null;
         for (Row r : rows) if (my >= r.y && my < r.y + ROW && mx >= px + 4 && mx < px + pw - 4) return r.node;
         return null;
@@ -380,9 +441,16 @@ public final class TreeScreen extends ScaledScreen {
 
     @Override
     public void tick() {
-        // инвентарь меняется, пока игрок собирает: пересчитываем раз в секунду
-        if (tree.ready() && ++refresh % 20 == 0) tree.recompute();
+        // инвентарь меняется, пока игрок собирает: пересчитываем раз в секунду; при новых данных «сеть сделает»
+        // сразу
+        long now = CraftTree.inputsVersion();
+        boolean changed = now != inputs;
+        inputs = now;
+        if (tree.ready() && (++refresh % 20 == 0 || changed)) tree.recompute();
     }
+
+    /** Признак входных данных дерева, по которому оно посчитано в последний раз. */
+    private long inputs = CraftTree.inputsVersion();
 
     @Override
     protected boolean onClick(double mx, double my, int button) {
