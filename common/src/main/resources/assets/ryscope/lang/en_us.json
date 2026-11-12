@@ -62,6 +62,7 @@
   "ryscope.tree.title": "Crafting tree",
   "ryscope.tree.summary": "Steps: %s · Depth: %s",
   "ryscope.tree.have": "have it",
+  "ryscope.tree.from_surplus": "left over from another craft",
   "ryscope.tree.have_part": "have %s",
   "ryscope.tree.raw": "raw material",
   "ryscope.tree.no_recipe": "no recipe",

@@ -62,6 +62,7 @@
   "ryscope.tree.title": "Дерево крафта",
   "ryscope.tree.summary": "Шагов: %s · Глубина: %s",
   "ryscope.tree.have": "есть",
+  "ryscope.tree.from_surplus": "из остатка другого крафта",
   "ryscope.tree.have_part": "есть %s",
   "ryscope.tree.raw": "сырьё",
   "ryscope.tree.no_recipe": "рецепта нет",

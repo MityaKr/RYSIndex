@@ -263,7 +263,8 @@ public final class Board {
             if (inputsChanged) combinedBuilding = null;
             boolean due = combinedDirty || combinedStale || periodic || inputsChanged || (combined == null && !combinedFailed);
             if (combinedBuilding == null && due) {
-                CraftTree next = new CraftTree(GOALS, TICK_NANOS);
+                // свой бюджет, вдвое меньше: деревья целей раз в секунду забирают весь общий, и сумма не строилась бы вовсе
+                CraftTree next = new CraftTree(GOALS, TICK_NANOS / 2);
                 if (!combinedStale) {
                     // найденные рецепты годятся, пока не сменился снимок: у прежней суммы и у деревьев целей
                     if (combined != null) next.inherit(combined);
@@ -273,7 +274,7 @@ public final class Board {
                 combinedDirty = false;
                 combinedStale = false;
             }
-            if (combinedBuilding == null || System.nanoTime() > deadline) return;
+            if (combinedBuilding == null) return;
             combinedBuilding.recompute();
             if (combinedBuilding.ready()) {
                 combined = combinedBuilding;

@@ -1486,10 +1486,17 @@ final class AutoTest {
             var all = works.repka.ryscope.runtime.Board.combined();
             long sum = 0, separate = 0;
             if (all != null) for (var r : all.raw.values()) sum += r.need;
+            List<String> perGoal = new ArrayList<>();
             for (var g : works.repka.ryscope.runtime.Board.goals()) {
-                var t = g.tree();
-                if (t != null) for (var r : t.raw.values()) separate += r.need;
+                // отдельное дерево цели считаем здесь же, синхронно: дерево доски может быть ещё не готово
+                var t = new works.repka.ryscope.runtime.CraftTree(g.stack, false);
+                t.setAmount(g.amount);
+                long own = 0;
+                for (var r : t.raw.values()) own += r.need;
+                separate += own;
+                perGoal.add(g.stack.id().getPath() + "×" + g.amount + "=" + own);
             }
+            RYScope.LOG.info("[next] сырьё по целям: {}", perGoal);
             RYScope.LOG.info("[next] сырьё суммой {}, по целям отдельно {}, целей {}, неполный {}", sum, separate,
                 all == null ? -1 : all.goalCount(), all != null && all.incomplete);
             if (all != null) {
@@ -1498,11 +1505,44 @@ final class AutoTest {
                 RYScope.LOG.info("[next] сырьё суммы: {}", raw);
             }
         }, 5);
-        step("next: sticks", () -> command("give @s minecraft:stick 2"), 40);
+        step("next: sticks", () -> {
+            nextCombinedBefore = System.identityHashCode(works.repka.ryscope.runtime.Board.combined());
+            command("give @s minecraft:stick 2");
+        }, 200);
+        step("next: combined state", () -> {
+            try {
+                java.lang.reflect.Field building = works.repka.ryscope.runtime.Board.class.getDeclaredField("combinedBuilding");
+                java.lang.reflect.Field failed = works.repka.ryscope.runtime.Board.class.getDeclaredField("combinedFailed");
+                building.setAccessible(true);
+                failed.setAccessible(true);
+                Object b = building.get(null);
+                var all = works.repka.ryscope.runtime.Board.combined();
+                if (all != null) {
+                    List<String> dump = new ArrayList<>();
+                    java.util.ArrayDeque<works.repka.ryscope.runtime.CraftTree.Node> q = new java.util.ArrayDeque<>(all.root.children);
+                    while (!q.isEmpty()) {
+                        var n = q.poll();
+                        if (n.depth > 3) continue;
+                        if (n.depth == 1 && !n.stack.id().getPath().startsWith("wooden")) continue;
+                        dump.add(n.depth + ":" + n.stack.id().getPath() + " нужно " + n.needed + " инв " + n.fromInventory + " изл " + n.fromSurplus + " крафтов " + n.crafts + " выбор " + n.choice);
+                        q.addAll(n.children);
+                    }
+                    RYScope.LOG.info("[next] ветки кирки и лопаты: {}", dump);
+                }
+                RYScope.LOG.info("[next] сумма сменилась: {}, строится: {}, готова ли строящаяся: {}, сбой: {}, просмотрено {}",
+                    nextCombinedBefore != System.identityHashCode(works.repka.ryscope.runtime.Board.combined()), b != null,
+                    b != null && ((works.repka.ryscope.runtime.CraftTree) b).ready(), failed.get(null), works.repka.ryscope.runtime.Board.combinedExamined());
+            } catch (ReflectiveOperationException e) {
+                RYScope.LOG.error("[next]", e);
+            }
+        }, 2);
         step("next: sticks counted", () -> {
             var all = works.repka.ryscope.runtime.Board.combined();
             var leaf = all == null ? null : all.leaves.get(Items.STICK);
-            RYScope.LOG.info("[next] палки в итоге суммы: из инвентаря {}", leaf == null ? "нет строки" : leaf.inventory);
+            RYScope.LOG.info("[next] палки в итоге суммы: из инвентаря {}; учёт инвентаря {}, палок в инвентаре {}, строки итога {}",
+                leaf == null ? "нет строки" : leaf.inventory, works.repka.ryscope.runtime.InventoryView.tracking(),
+                works.repka.ryscope.runtime.InventoryView.count(new ItemRes(new ItemStack(Items.STICK))),
+                all == null ? null : all.leaves.values().stream().map(l -> l.stack.id().getPath() + ":" + l.need + "/" + l.inventory).toList());
         }, 2);
         step("next: all goals screen", works.repka.ryscope.ui.TreeScreen::openAll, 40);
         step("next: all goals state", () -> RYScope.LOG.info("[next] экран «Все цели»: {}",
@@ -1516,7 +1556,8 @@ final class AutoTest {
             while (!queue.isEmpty()) {
                 var n = queue.poll();
                 var o = n.chosen();
-                if (o != null) cats.add(n.stack.id().getPath() + "→" + o.category.id + (n.stationMissing ? "(нет станции)" : ""));
+                if (o != null) cats.add(n.stack.id().getPath() + "→" + o.category.id + " " + o.recipe.id()
+                    + " src=" + n.sources + (n.stationMissing ? " (нет станции)" : ""));
                 queue.addAll(n.children);
             }
             List<String> missing = new ArrayList<>();
@@ -1539,6 +1580,7 @@ final class AutoTest {
     }
 
     private static long auditStart;
+    private static int nextCombinedBefore;
 
     /** Находки аудита: поиск, скрытие предмета, стрелка печи, быстрый крафт, новые окна. */
     private static void buildAudit() {

@@ -45,6 +45,8 @@ public final class CraftTree {
         public long fromInventory;
         /** Часть {@link #fromInventory}, взятая из запомненных хранилищ, а не из инвентаря. */
         public long fromStorage;
+        /** Часть потребности, закрытая излишком крафта в другой ветке (палки делаются по 4, а нужно 2). */
+        public long fromSurplus;
         /** Сколько раз выполнить выбранный рецепт. */
         public long crafts;
         public List<Option> options;
@@ -74,7 +76,7 @@ public final class CraftTree {
         }
 
         public long remaining() {
-            return Math.max(0, needed - fromInventory);
+            return Math.max(0, needed - fromInventory - fromSurplus);
         }
 
         public boolean satisfied() {
@@ -471,6 +473,7 @@ public final class CraftTree {
         expandedCount.clear();
         pool = new HashMap<>();
         inventoryPool = new HashMap<>();
+        surplus.clear();
         if (useInventory && InventoryView.tracking()) {
             for (Map.Entry<Item, Integer> e : InventoryView.snapshot().entrySet()) pool.put(e.getKey(), (long) e.getValue());
             inventoryPool.putAll(pool);
@@ -521,9 +524,13 @@ public final class CraftTree {
         }
     }
 
+    /** Излишки крафтов по ресурсу: их забирают следующие по обходу узлы с тем же ресурсом. */
+    private final Map<Object, Long> surplus = new HashMap<>();
+
     private Leaf leaf(Node node) {
         Leaf leaf = leaves.computeIfAbsent(node.stack.key(), k -> new Leaf(node.stack));
-        leaf.need += node.needed;
+        // закрытое излишком уже посчитано у крафта, который его дал
+        leaf.need += node.needed - node.fromSurplus;
         leaf.inventory += node.fromInventory - node.fromStorage;
         leaf.storage += node.fromStorage;
         return leaf;
@@ -538,6 +545,7 @@ public final class CraftTree {
         Object key = node.stack.key();
         node.fromInventory = 0;
         node.fromStorage = 0;
+        node.fromSurplus = 0;
         node.ordered = false;
         node.routeFrom = null;
         node.stationMissing = false;
@@ -554,11 +562,20 @@ public final class CraftTree {
                 node.fromStorage = use - fromInventory;
             }
         }
+        if (!isTop(node)) {
+            // излишек крафта в другой ветке: общий промежуточный предмет не крафтится второй раз
+            long spare = surplus.getOrDefault(key, 0L);
+            long use = Math.min(spare, node.needed - node.fromInventory);
+            if (use > 0) {
+                surplus.put(key, spare - use);
+                node.fromSurplus = use;
+            }
+        }
         long remaining = node.remaining();
         if (remaining == 0) {
             node.children.clear();
             node.crafts = 0;
-            leaf(node);
+            if (node.fromInventory > 0) leaf(node);
             return;
         }
         // сеть делает этот предмет сама: остаток заказывается, ветка не раскрывается. Сам целевой предмет
@@ -603,6 +620,15 @@ public final class CraftTree {
             }
         }
         node.crafts = (remaining + perCraft - 1) / perCraft;
+        if (node.fromInventory > 0) {
+            // часть взята из запасов, остальное крафтится: взятое тоже строка итога, иначе столбец «Инвентарь» его теряет
+            Leaf taken = leaves.computeIfAbsent(key, k -> new Leaf(node.stack));
+            taken.need += node.fromInventory;
+            taken.inventory += node.fromInventory - node.fromStorage;
+            taken.storage += node.fromStorage;
+        }
+        long extra = node.crafts * perCraft - remaining;
+        if (extra > 0) surplus.merge(key, extra, Long::sum);
         steps++;
         stations.add(option.category);
         if (Stations.state(option.category) == Stations.State.MISSING) {
@@ -936,9 +962,21 @@ public final class CraftTree {
             }
             if (total > 0 && have == total) return i;
         }
+        // руда генерируется в мире, но в sources (дроп, лут) её нет: без этого правила блок руды «делался»
+        // линзой шахтёра или комбайнером, и дерево раздатчика уходило в экзотику
+        if (!isTop(node) && isOre(node.stack)) return -1;
         if (best >= 0 && bestScore % 2 == 0) return best;
         if (!anyOwn && !isTop(node) && node.sources != null && !node.sources.isEmpty()) return -1;
         return best;
+    }
+
+    private static final net.minecraft.tags.TagKey<net.minecraft.world.item.Item> ORES =
+        net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.ITEM, net.minecraft.resources.ResourceLocation.parse("c:ores"));
+
+    /** Блок руды: добывается в мире, а не делается. */
+    private static boolean isOre(Stack stack) {
+        net.minecraft.world.item.ItemStack item = stack.item();
+        return !item.isEmpty() && item.is(ORES);
     }
 
     // --- кратчайший путь ---

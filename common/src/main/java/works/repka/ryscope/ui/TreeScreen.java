@@ -356,10 +356,14 @@ public final class TreeScreen extends ScaledScreen {
         hits.add(x + 9, y, 18, ROW, b -> RecipeScreen.open(n.stack, b == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES));
         float right = px + pw - PAD;
         boolean have = n.parent != null && n.satisfied();
+        boolean spare = n.parent != null && !have && n.remaining() == 0 && n.fromSurplus > 0;
         String state = "";
         int stateColor = 0;
         if (have) {
             state = tr("ryscope.tree.have");
+            stateColor = t.c("state.ok");
+        } else if (spare) {
+            state = tr("ryscope.tree.from_surplus");
             stateColor = t.c("state.ok");
         } else if (n.ordered) {
             state = Component.translatable("ryscope.tree.ordered", Numbers.compact(n.remaining())).getString();
