@@ -245,6 +245,15 @@ public final class GridPanel {
     }
 
     /** Перетаскивание полосы прокрутки и клики по ней. */
+    /** Ресурсы, которые сейчас видны в сетке: для модов, которые спрашивают об этом через JEI. */
+    public List<Stack> visibleItems() {
+        if (!visible() || cols <= 0 || cell <= 0) return List.of();
+        int first = (int) (scroll / cell);
+        int last = paged ? first + rowsPerPage() - 1 : (int) ((scroll + gridH) / cell);
+        int from = Math.max(0, first * cols), to = Math.min(items.size(), (last + 1) * cols);
+        return from >= to ? List.of() : List.copyOf(items.subList(from, to));
+    }
+
     public boolean scrollbarDrag(double mx, double my) {
         float max = maxScroll();
         if (max <= 0 || paged) return false;

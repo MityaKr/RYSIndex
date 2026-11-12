@@ -116,19 +116,22 @@ public final class RyscopeJeiPlugin implements IModPlugin {
 
         @Override
         public <T> List<T> getVisibleIngredients(IIngredientType<T> type) {
-            return List.of();
+            List<T> out = new ArrayList<>();
+            for (Stack s : Overlay.visibleListStacks()) typed(s).flatMap(t -> t.getIngredient(type)).ifPresent(out::add);
+            return out;
         }
     }
 
+    /** Моды спрашивают, что под курсором в закладках (клавиша поиска лексикона Botania): отвечаем нашими закладками. */
     private static final class BookmarkOverlay implements IBookmarkOverlay {
         @Override
         public Optional<ITypedIngredient<?>> getIngredientUnderMouse() {
-            return Optional.empty();
+            return typed(Overlay.markStackUnderMouse());
         }
 
         @Override
         public <T> T getIngredientUnderMouse(IIngredientType<T> type) {
-            return null;
+            return getIngredientUnderMouse().flatMap(t -> t.getIngredient(type)).orElse(null);
         }
     }
 
@@ -150,16 +153,23 @@ public final class RyscopeJeiPlugin implements IModPlugin {
         public void showTypes(List<RecipeType<?>> types) {
             JeiBridge b = bridge;
             if (b == null) return;
+            // все категории одной карточкой, как вкладки в окне JEI: печь просит и «Плавку», и «Топливо»
+            List<Lookup.Group> groups = new ArrayList<>();
             for (RecipeType<?> type : types) {
                 Category own = Indexer.snapshot().category(type.getUid());
                 Category category = own != null ? own : b.categoryByUid(type.getUid());
-                if (category != null && RecipeScreen.openCategory(category)) return;
+                if (category != null) groups.addAll(Lookup.category(category));
             }
+            RecipeScreen.openGroups(groups);
         }
 
         @Override
         public <T> void showRecipes(IRecipeCategory<T> category, List<T> recipes, List<IFocus<?>> focuses) {
-            showTypes(List.of(category.getRecipeType()));
+            JeiBridge b = bridge;
+            if (b == null) return;
+            // только переданные рецепты (Jade, справочники): игрок просил один рецепт, а не всю категорию
+            Lookup.Group group = recipes.isEmpty() ? null : b.groupOf(category, recipes, focuses);
+            if (group == null || !RecipeScreen.openGroups(List.of(group))) showTypes(List.of(category.getRecipeType()));
         }
 
         @Override

@@ -148,6 +148,7 @@ public final class Indexer {
         List<ClientLanguage> languages = languages(mc);
         Platform platform = Platform.get();
         Strings strings = new Strings();
+        stacks = ListSort.apply(stacks, platform);
         int n = stacks.size();
         for (int i = 0; i < n; i++) {
             if ((i & 255) == 0) {
@@ -276,6 +277,11 @@ public final class Indexer {
         if (shownMod != null && !shownMod.equals(namespace)) {
             namespace += " " + shownMod;
             modName += " " + platform.modName(shownMod).toLowerCase(Locale.ROOT);
+        }
+        if (foreign != null) {
+            // псевдонимы, которые моды зарегистрировали в JEI: по ним ищет и JEI
+            for (String alias : foreign.aliases(s)) if (!alias.equals(name) && !alt.contains(alias)) alt.add(alias);
+            for (String alias : foreign.modAliases(id.getNamespace())) modName += " " + alias.toLowerCase(Locale.ROOT);
         }
         return new SearchEntry(index, name, alt.toArray(new String[0]), id.getPath(), strings.of(namespace), strings.of(modName), strings.tags(s));
     }

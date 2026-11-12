@@ -64,6 +64,23 @@ public final class JeiBridge implements Foreign.Source {
         } catch (Throwable t) {
             RYScope.LOG.debug("Подписка на видимость ингредиентов JEI недоступна: {}", t.toString());
         }
+        try {
+            // моды убирают и добавляют ингредиенты во время игры (KubeJS, almostunified): об этом JEI сообщает
+            // только этим слушателям, без них в списке оставались дубликаты руд и не появлялись новые предметы
+            runtime.getIngredientManager().registerIngredientListener(new IIngredientManager.IIngredientListener() {
+                @Override
+                public <V> void onIngredientsAdded(mezz.jei.api.ingredients.IIngredientHelper<V> helper, java.util.Collection<ITypedIngredient<V>> ingredients) {
+                    Indexer.request("JEI добавил ингредиенты");
+                }
+
+                @Override
+                public <V> void onIngredientsRemoved(mezz.jei.api.ingredients.IIngredientHelper<V> helper, java.util.Collection<ITypedIngredient<V>> ingredients) {
+                    Indexer.request("JEI убрал ингредиенты");
+                }
+            });
+        } catch (Throwable t) {
+            RYScope.LOG.debug("Подписка на список ингредиентов JEI недоступна: {}", t.toString());
+        }
     }
 
     /** Сам JEI: нужен сверке и замерам в автотесте. */
@@ -137,48 +154,101 @@ public final class JeiBridge implements Foreign.Source {
 
     // --- список ресурсов ---
 
+    /** Ресурсы последнего списка, которые игрок скрыл через общий список JEI: те самые объекты, что ушли в индекс. */
+    private volatile java.util.Set<Stack> playerHidden = java.util.Set.of();
+
     @Override
     public List<Stack> stacks() {
         IIngredientManager im = runtime.getIngredientManager();
         IIngredientVisibility visibility = runtime.getIngredientVisibility();
         List<Stack> out = new ArrayList<>();
+        java.util.Set<Stack> hidden = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         for (ItemStack s : im.getAllItemStacks()) {
             if (s.isEmpty()) continue;
+            boolean byPlayer = false;
             try {
-                if (!visibility.isIngredientVisible(VanillaTypes.ITEM_STACK, s)) continue;
+                // скрытое игроком остаётся в индексе: его прячет поиск, а при «показывать скрытые» его можно вернуть
+                if (!visibility.isIngredientVisible(VanillaTypes.ITEM_STACK, s)) {
+                    byPlayer = im.createTypedIngredient(VanillaTypes.ITEM_STACK, s).map(this::hiddenByPlayer).orElse(false);
+                    if (!byPlayer) continue;
+                }
             } catch (Throwable ignored) {
                 // если видимость определить не удалось, показываем
             }
-            out.add(new ItemRes(s));
+            ItemRes res = new ItemRes(s);
+            out.add(res);
+            if (byPlayer) hidden.add(res);
         }
         for (IIngredientType<?> type : im.getRegisteredIngredientTypes()) {
             if (type == VanillaTypes.ITEM_STACK) continue;
-            addAll(out, im, visibility, type);
+            addAll(out, hidden, im, visibility, type);
         }
+        playerHidden = hidden;
         return out;
     }
 
-    private <V> void addAll(List<Stack> out, IIngredientManager im, IIngredientVisibility visibility, IIngredientType<V> type) {
+    private <V> void addAll(List<Stack> out, java.util.Set<Stack> hidden, IIngredientManager im, IIngredientVisibility visibility, IIngredientType<V> type) {
         try {
             java.util.Set<Object> fluids = new java.util.HashSet<>();
             for (V ingredient : im.getAllIngredients(type)) {
                 Optional<ITypedIngredient<V>> typed = im.createTypedIngredient(type, ingredient);
-                if (typed.isEmpty() || !visibility.isIngredientVisible(typed.get())) continue;
+                if (typed.isEmpty()) continue;
+                boolean byPlayer = !visibility.isIngredientVisible(typed.get());
+                if (byPlayer && !hiddenByPlayer(typed.get())) continue;
                 Stack fluid = fluidFrom(typed.get());
                 if (fluid != null) {
-                    if (fluids.add(fluid.key())) out.add(fluid.withAmount(1000));
+                    if (fluids.add(fluid.key())) {
+                        Stack res = fluid.withAmount(1000);
+                        out.add(res);
+                        if (byPlayer) hidden.add(res);
+                    }
                     continue;
                 }
-                out.add(new JeiRes<>(typed.get(), im.getIngredientHelper(type), im.getIngredientRenderer(type)));
+                Stack res = new JeiRes<>(typed.get(), im.getIngredientHelper(type), im.getIngredientRenderer(type));
+                out.add(res);
+                if (byPlayer) hidden.add(res);
             }
         } catch (Throwable t) {
             RYScope.LOG.warn("Ингредиенты JEI типа {} пропущены: {}", type.getUid(), t.toString());
         }
     }
 
+    /**
+     * Скрыт игроком через общий список JEI (blacklist.json). Такие ресурсы остаются в индексе, чтобы их можно было
+     * вернуть. Ответ по объектам последнего списка: смена blacklist.json всё равно переиндексирует список.
+     */
     @Override
     public boolean isHidden(Stack stack) {
-        return false;
+        return playerHidden.contains(stack);
+    }
+
+    private boolean hiddenByPlayer(ITypedIngredient<?> typed) {
+        try {
+            return runtime.getEditModeConfig().isIngredientHiddenUsingConfigFile(typed);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @Override
+    public Boolean toggleHidden(Stack stack, boolean allVariants) {
+        Optional<ITypedIngredient<?>> typed = toTyped(stack);
+        if (typed.isEmpty()) return null;
+        try {
+            var config = runtime.getEditModeConfig();
+            java.util.Set<mezz.jei.api.runtime.IEditModeConfig.HideMode> modes = config.getIngredientHiddenUsingConfigFile(typed.get());
+            if (!modes.isEmpty()) {
+                // скрытый любым способом возвращается целиком; слушатель видимости сам переиндексирует список
+                for (var mode : modes) config.showIngredientUsingConfigFile(typed.get(), mode);
+                return false;
+            }
+            config.hideIngredientUsingConfigFile(typed.get(), allVariants
+                ? mezz.jei.api.runtime.IEditModeConfig.HideMode.WILDCARD : mezz.jei.api.runtime.IEditModeConfig.HideMode.SINGLE);
+            return true;
+        } catch (Throwable t) {
+            RYScope.LOG.warn("JEI не скрыл ингредиент: {}", t.toString());
+            return null;
+        }
     }
 
     // --- рецепты ---
@@ -325,6 +395,54 @@ public final class JeiBridge implements Foreign.Source {
         return !found.isEmpty();
     }
 
+    /**
+     * Сначала обработчики, которые умеют quickMove сами (как в JEI). Если таких нет, предмет идёт в первую цель
+     * перетаскивания, под которой пустой слот: занятый фильтр не перезаписывается.
+     */
+    @Override
+    public boolean quickMove(Screen screen, Stack stack) {
+        Optional<ITypedIngredient<?>> typed = toTyped(stack);
+        if (typed.isEmpty()) return false;
+        for (var handler : runtime.getScreenHelper().getGhostIngredientHandlers(screen)) {
+            try {
+                if (handler.quickMove(screen, typed.get())) return true;
+            } catch (Throwable t) {
+                RYScope.LOG.debug("quickMove обработчика не сработал: {}", t.toString());
+            }
+        }
+        if (!ghostStart(screen, stack)) return false;
+        try {
+            Ghost target = freeTarget(screen);
+            if (target == null) return false;
+            var a = target.target().getArea();
+            return ghostDrop(a.getX() + a.getWidth() / 2.0, a.getY() + a.getHeight() / 2.0);
+        } finally {
+            ghostEnd();
+        }
+    }
+
+    @Nullable
+    private Ghost freeTarget(Screen screen) {
+        if (!(screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> acs)) return ghosts.isEmpty() ? null : ghosts.get(0);
+        int[] b = works.repka.ryscope.platform.Platform.get().screenBounds(acs);
+        boolean anySlot = false;
+        for (Ghost g : ghosts) {
+            var a = g.target().getArea();
+            net.minecraft.world.inventory.Slot under = null;
+            for (net.minecraft.world.inventory.Slot slot : acs.getMenu().slots) {
+                if (a.contains(b[0] + slot.x + 8, b[1] + slot.y + 8)) {
+                    under = slot;
+                    break;
+                }
+            }
+            if (under == null) continue;
+            anySlot = true;
+            if (!under.hasItem()) return g;
+        }
+        // цели без слотов игры (свои виджеты мода): тогда первая
+        return anySlot || ghosts.isEmpty() ? null : ghosts.get(0);
+    }
+
     private static <I> void collectGhosts(mezz.jei.api.gui.handlers.IGhostIngredientHandler<Screen> handler, Screen screen, ITypedIngredient<I> typed, List<Ghost> out) {
         for (var target : handler.getTargetsTyped(screen, typed, true)) out.add(new Ghost(target, typed.getIngredient()));
     }
@@ -380,6 +498,66 @@ public final class JeiBridge implements Foreign.Source {
     }
 
     @Override
+    public List<String> aliases(Stack stack) {
+        try {
+            Optional<ITypedIngredient<?>> typed = toTyped(stack);
+            if (typed.isEmpty()) return List.of();
+            // JEI уже переводит ключи псевдонимов на язык игры
+            java.util.Collection<String> raw = runtime.getIngredientManager().getIngredientAliases(typed.get());
+            if (raw.isEmpty()) return List.of();
+            List<String> out = new ArrayList<>(raw.size());
+            for (String alias : raw) if (alias != null && !alias.isBlank()) out.add(alias.toLowerCase(java.util.Locale.ROOT));
+            return out;
+        } catch (Throwable t) {
+            return List.of();
+        }
+    }
+
+    /** Та же метка, что пишет клавиша JEI «поделиться в чат»: JEI получателя заменяет её ссылкой на ресурс. */
+    @Override
+    public String chatMarker(Stack stack) {
+        try {
+            Optional<ITypedIngredient<?>> typed = toTyped(stack);
+            return typed.map(this::marker).orElse(null);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private String marker(ITypedIngredient<?> typed) {
+        IIngredientType type = typed.getType();
+        mezz.jei.api.ingredients.IIngredientHelper helper = runtime.getIngredientManager().getIngredientHelper(type);
+        Object uid = helper.getUid(typed, mezz.jei.api.ingredients.subtypes.UidContext.Ingredient);
+        return "[JEI:v1:" + type.getUid() + ";" + uidString(uid) + "] ";
+    }
+
+    /** Как JeiChatItemLinks.getIngredientUidString: иначе JEI получателя не найдёт ресурс по метке. */
+    private static String uidString(Object uid) {
+        if (uid instanceof ResourceLocation rl) return rl.toString();
+        if (uid instanceof net.minecraft.world.item.Item item) return net.minecraft.core.registries.BuiltInRegistries.ITEM.wrapAsHolder(item).getRegisteredName();
+        if (uid instanceof net.minecraft.world.level.material.Fluid fluid) return net.minecraft.core.registries.BuiltInRegistries.FLUID.wrapAsHolder(fluid).getRegisteredName();
+        if (uid instanceof Iterable<?> iterable) return iterableString(iterable);
+        if (uid instanceof Object[] array) return iterableString(java.util.Arrays.asList(array));
+        return String.valueOf(uid);
+    }
+
+    private static String iterableString(Iterable<?> values) {
+        java.util.StringJoiner joiner = new java.util.StringJoiner(",", "(", ")");
+        for (Object value : values) joiner.add(uidString(value));
+        return joiner.toString();
+    }
+
+    @Override
+    public java.util.Collection<String> modAliases(String modId) {
+        try {
+            return runtime.getJeiHelpers().getModIdHelper().getModAliases(modId);
+        } catch (Throwable t) {
+            return List.of();
+        }
+    }
+
+    @Override
     public String displayModId(Stack stack) {
         if (!(stack instanceof ItemRes item)) return null;
         try {
@@ -407,6 +585,60 @@ public final class JeiBridge implements Foreign.Source {
         IFocusGroup empty = runtime.getJeiHelpers().getFocusFactory().getEmptyFocusGroup();
         List<RecipeView> views = views(runtime.getRecipeManager(), jc.category, List.of(), empty, Snapshot.EMPTY);
         return views.isEmpty() ? List.of() : List.of(new Lookup.Group(jc, views));
+    }
+
+    /**
+     * Только эти рецепты категории (мод через showRecipes просит показать один рецепт). Рецепт, который у нас
+     * показан своей раскладкой, берётся нашим, остальные оборачиваются как обычно. @return null, если показать нечего
+     */
+    @Nullable
+    public <T> Lookup.Group groupOf(IRecipeCategory<T> c, List<T> recipes, List<IFocus<?>> focuses) {
+        Snapshot snap = Indexer.snapshot();
+        ResourceLocation uid = c.getRecipeType().getUid();
+        IFocusGroup group = runtime.getJeiHelpers().getFocusFactory().createFocusGroup(focuses);
+        Category own = snap.category(uid);
+        java.util.Set<ResourceLocation> ownIds = own == null ? java.util.Set.of() : nativeIds(snap, uid);
+        List<RecipeView> views = new ArrayList<>();
+        for (T recipe : recipes) {
+            ResourceLocation id;
+            try {
+                id = c.getRegistryName(recipe);
+            } catch (Throwable t) {
+                id = null;
+            }
+            RecipeView mine = null;
+            if (id != null && ownIds.contains(id)) {
+                for (RecipeView r : snap.recipes(own)) {
+                    if (id.equals(r.id())) {
+                        mine = r;
+                        break;
+                    }
+                }
+            }
+            if (mine == null) {
+                RecipeView structure = StructureRecipeView.of(recipe);
+                mine = structure != null ? structure : new JeiRecipeView<>(this, c, recipe, group);
+            }
+            views.add(mine);
+        }
+        return views.isEmpty() ? null : new Lookup.Group(own != null ? own : category(c), views);
+    }
+
+    /** Как сортировка категорий JEI: есть ли обработчик переноса этой категории в открытое окно. */
+    @Override
+    public Boolean transfersTo(net.minecraft.world.inventory.AbstractContainerMenu menu, Category category) {
+        try {
+            Category known = category instanceof JeiCategory ? category : categoryByUid(category.id);
+            if (!(known instanceof JeiCategory jc)) return null;
+            // без аддона AE2 для JEI терминал всё равно принимает рецепты (см. JeiRecipeView.transfer)
+            return hasTransferHandler(menu, jc.category) || works.repka.ryscope.runtime.Ae2Terminal.isTerminal(menu);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private <C extends net.minecraft.world.inventory.AbstractContainerMenu, R> boolean hasTransferHandler(C menu, IRecipeCategory<R> c) {
+        return runtime.getRecipeTransferManager().getRecipeTransferHandler(menu, c).isPresent();
     }
 
     @Nullable
@@ -460,6 +692,31 @@ public final class JeiBridge implements Foreign.Source {
             if (r != null) out.add(new int[] {r.getX(), r.getY(), r.getWidth(), r.getHeight()});
         });
         return out;
+    }
+
+    /** Как в JEI: курсор переводится в координаты окна, область берётся у обработчиков модов и самого JEI. */
+    @Override
+    public Foreign.ClickArea clickArea(Screen screen, double x, double y) {
+        if (!(screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> acs)) return null;
+        var screens = runtime.getScreenHelper();
+        var props = screens.getGuiProperties(screen).orElse(null);
+        if (props == null) return null;
+        mezz.jei.api.gui.handlers.IGuiClickableArea area = screens.getGuiClickableArea(acs, x - props.guiLeft(), y - props.guiTop())
+            .findFirst().orElse(null);
+        if (area == null) return null;
+        return new Foreign.ClickArea() {
+            @Override
+            public List<net.minecraft.network.chat.Component> tooltip() {
+                if (!area.isTooltipEnabled()) return List.of();
+                List<net.minecraft.network.chat.Component> lines = TooltipLines.collect(area::getTooltip);
+                return lines.isEmpty() ? List.of(net.minecraft.network.chat.Component.translatable("ryscope.click_area.show")) : lines;
+            }
+
+            @Override
+            public void click() {
+                area.onClick(runtime.getJeiHelpers().getFocusFactory(), runtime.getRecipesGui());
+            }
+        };
     }
 
     @Override

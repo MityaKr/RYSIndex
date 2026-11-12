@@ -181,7 +181,6 @@ public final class SearchService {
         for (int i : r.indices) {
             if (mask != null && mask[i]) continue;
             Stack s = snap.stacks.get(i);
-            if (foreign != null && foreign.isHidden(s)) continue;
             if (hideLocked && Stages.lockOf(s) != null) continue;
             out.add(s);
         }
@@ -194,13 +193,26 @@ public final class SearchService {
     private static String hiddenKey = "";
     private static boolean[] hiddenMask;
 
-    /** Что скрыто запросами игрока. Пересчитывается при смене списка запросов или снимка. */
+    /**
+     * Что скрыто игроком: запросами и по одному предмету (общий список JEI или свой).
+     * Пересчитывается при смене списков или снимка: скрытие в JEI и так переиндексирует список.
+     */
     private static boolean[] hiddenMask(Snapshot snap) {
         List<String> queries = Config.get().hiddenQueries;
-        if (queries.isEmpty()) return null;
-        String key = String.join("\n", queries);
+        List<String> items = Config.get().hiddenItems;
+        Foreign.Source foreign = Foreign.get();
+        String key = String.join("\n", queries) + "\u0000" + String.join("\n", items) + "\u0000" + (foreign == null ? "" : foreign.name());
         if (snap == hiddenFor && key.equals(hiddenKey)) return hiddenMask;
         boolean[] mask = new boolean[snap.index.size()];
+        java.util.Set<String> itemKeys = new java.util.HashSet<>(items);
+        for (int i = 0; i < mask.length && i < snap.stacks.size(); i++) {
+            Stack s = snap.stacks.get(i);
+            try {
+                mask[i] = (!itemKeys.isEmpty() && HiddenItems.hiddenLocally(s, itemKeys)) || (foreign != null && foreign.isHidden(s));
+            } catch (Throwable ignored) {
+                // чужой ресурс
+            }
+        }
         for (String text : new ArrayList<>(queries)) {
             Query q = Query.parse(text);
             if (q.isEmpty()) continue;

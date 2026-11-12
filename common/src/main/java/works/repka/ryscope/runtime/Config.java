@@ -70,7 +70,11 @@ public final class Config {
     public List<String> expandedGroups = new ArrayList<>();
     /** Поисковые запросы, результаты которых скрыты из списка (Ctrl+H по результатам поиска). */
     public List<String> hiddenQueries = new ArrayList<>();
+    /** Предметы, скрытые по одному, если JEI нет (с JEI они пишутся в его blacklist.json): id или id#компоненты. */
+    public List<String> hiddenItems = new ArrayList<>();
     public boolean showHidden = false;
+    /** Порядок списка: "mod" (как JEI по умолчанию), "name" или "source" (как отдаёт источник). */
+    public String listSort = "mod";
     /** Не показывать в списке предметы закрытых стадий (иначе они видны с замком). */
     public boolean hideLocked = false;
 
@@ -118,6 +122,7 @@ public final class Config {
             if (instance.searchLanguages == null) instance.searchLanguages = new ArrayList<>(List.of("en_us"));
             if (instance.expandedGroups == null) instance.expandedGroups = new ArrayList<>();
             if (instance.hiddenQueries == null) instance.hiddenQueries = new ArrayList<>();
+            if (instance.hiddenItems == null) instance.hiddenItems = new ArrayList<>();
         }
         return instance;
     }

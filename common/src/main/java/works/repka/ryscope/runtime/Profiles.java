@@ -29,5 +29,6 @@ public final class Profiles {
         Config.get().profileScope = "world".equals(Config.get().profileScope) ? "global" : "world";
         Bookmarks.reset();
         Board.reset();
+        RecipeDefaults.reset();
     }
 }

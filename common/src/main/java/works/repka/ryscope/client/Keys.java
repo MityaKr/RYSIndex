@@ -17,6 +17,27 @@ public final class Keys {
     public static KeyMapping THEME;
     public static KeyMapping BACK;
     public static KeyMapping TREE;
+    /** Скрыть предмет под курсором из списка или вернуть его; с Shift все его варианты. */
+    public static KeyMapping HIDE;
+    /** Скрыть всё, что нашёл текущий запрос. */
+    public static KeyMapping HIDE_QUERY;
+    public static KeyMapping SAVE_SEARCH;
+    public static KeyMapping COPY_ID;
+    /** Следующая вкладка истории карточки; с Shift предыдущая. */
+    public static KeyMapping NEXT_TAB;
+    public static KeyMapping CLOSE_TAB;
+    /** Страницы: в карточке листают рецепты, над списком листают список. */
+    public static KeyMapping PREV_PAGE;
+    public static KeyMapping NEXT_PAGE;
+    public static KeyMapping PREV_CATEGORY;
+    public static KeyMapping NEXT_CATEGORY;
+    public static KeyMapping FORWARD;
+    /** Показать предмет под курсором в чате. */
+    public static KeyMapping SHARE;
+    /** Разложить рецепт предмета под курсором в сетку открытого окна, не открывая карточку. */
+    public static KeyMapping CRAFT;
+    /** Снимок рецепта под курсором в PNG. */
+    public static KeyMapping SHOT;
 
     /** Только для автотеста: считать клавишу линзы зажатой. */
     public static boolean forceLens;

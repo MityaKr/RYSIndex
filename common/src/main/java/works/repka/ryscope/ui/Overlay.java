@@ -28,6 +28,7 @@ import works.repka.ryscope.platform.Platform;
 import works.repka.ryscope.runtime.Bookmarks;
 import works.repka.ryscope.runtime.Config;
 import works.repka.ryscope.runtime.Foreign;
+import works.repka.ryscope.runtime.Give;
 import works.repka.ryscope.runtime.Indexer;
 import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.SearchService;
@@ -772,6 +773,8 @@ public final class Overlay {
         if (Lens.held()) {
             Stack target = own != null ? own : hovered(screen, mx, my);
             if (target != null) Lens.renderCard(g, theme, target, mx, my, UiScale.width(), UiScale.height());
+        } else if (own != null && LIST.at(mx, my) != null && cheating() && carriedToDelete(own)) {
+            works.repka.ryscore.ui.Kit.tooltip(g, theme, List.of(Component.translatable("ryscope.cheat.delete").getString()), mx, my);
         } else if (own != null && savedRowAt(mx, my) < 0) {
             g.pose().pushPose();
             g.pose().translate(0, 0, 300);
@@ -784,6 +787,14 @@ public final class Overlay {
         renderHelp(g, theme);
         renderSaved(g, theme, mx, my);
         renderToast(screen, g);
+    }
+
+    /** На курсоре предмет, который клик по этой ячейке списка уберёт. */
+    private static boolean carriedToDelete(Stack under) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null || !(Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>)) return false;
+        ItemStack carried = player.containerMenu.getCarried();
+        return !carried.isEmpty() && !ItemStack.isSameItemSameComponents(under.item(), carried) && Give.serverSupports.getAsBoolean();
     }
 
     /** Перетаскиваемый предмет у курсора и подсветка фильтров, которые его примут. */
@@ -1207,13 +1218,15 @@ public final class Overlay {
     public static boolean foreignKey(Screen screen, int key, int scan) {
         boolean recipes = Keys.matches(Keys.RECIPES, key, scan), uses = Keys.matches(Keys.USES, key, scan);
         boolean bookmark = Keys.matches(Keys.BOOKMARK, key, scan), tree = Keys.matches(Keys.TREE, key, scan);
-        if (!recipes && !uses && !bookmark && !tree) return false;
+        boolean share = Keys.matches(Keys.SHARE, key, scan);
+        if (!recipes && !uses && !bookmark && !tree && !share) return false;
         if (typingElsewhere(screen)) return false;
         Stack stack = foreignStack(screen);
         if (stack == null) return false;
         if (recipes) RecipeScreen.open(stack, Lookup.Mode.RECIPES);
         else if (uses) RecipeScreen.open(stack, Lookup.Mode.USES);
         else if (bookmark) toggleBookmark(stack);
+        else if (share) Share.toChat(stack);
         else TreeScreen.open(stack);
         return true;
     }
@@ -1242,6 +1255,34 @@ public final class Overlay {
     @Nullable
     public static Stack listStackUnderMouse() {
         return LIST.at(mouseX(), mouseY());
+    }
+
+    /** Ресурс под курсором в закладках или в целях (клавиши Botania и других модов над закладками JEI). */
+    @Nullable
+    public static Stack markStackUnderMouse() {
+        if (!active(Minecraft.getInstance().screen)) return null;
+        Stack s = MARKS.at(mouseX(), mouseY());
+        if (s instanceof works.repka.ryscope.runtime.RecipeMark mark) return mark.output;
+        return s != null ? s : Stickers.stackAt(mouseX(), mouseY());
+    }
+
+    /** Видимая страница списка. */
+    public static List<Stack> visibleListStacks() {
+        return active(Minecraft.getInstance().screen) ? LIST.visibleItems() : List.of();
+    }
+
+    /**
+     * Shift+клик по списку кладёт предмет в фильтр окна без перетаскивания, как quickMove в JEI.
+     * @return true, если предмет положен
+     */
+    private static boolean quickMove(Screen screen, Stack stack) {
+        Foreign.Source foreign = Foreign.get();
+        if (foreign == null) return false;
+        try {
+            return foreign.quickMove(screen, stack);
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** Левый край правой панели: карточка рецептов встаёт перед ним. */
@@ -1361,6 +1402,13 @@ public final class Overlay {
             draggingScroll = true;
             return true;
         }
+        if (!carried.isEmpty() && screen instanceof AbstractContainerScreen<?> && cheating() && LIST.at(mx, my) != null) {
+            // режим читов, как в JEI: тот же предмет добавляется на курсор, другой предмет с курсора убирается
+            Stack under = LIST.at(mx, my);
+            if (button == 0 && ItemStack.isSameItemSameComponents(under.item(), carried)) give(under, Screen.hasShiftDown());
+            else if (button == 0) Give.deleteCarried();
+            return true;
+        }
         if (!carried.isEmpty() && screen instanceof AbstractContainerScreen<?>) {
             // предмет на курсоре: бросок на закладки закрепляет его, на список ничего не делает (и не выбрасывает)
             if (MARKS.contains(mx, my) || (LIST.contains(mx, my) && !MARKS.visible())) {
@@ -1408,7 +1456,10 @@ public final class Overlay {
             toggleBookmark(stack);
             return true;
         }
-        if (button == 0 && Config.get().cheatMode && player != null && player.isCreative() && LIST.at(mx, my) != null) {
+        if (button == 0 && Screen.hasShiftDown() && LIST.at(mx, my) != null && screen instanceof AbstractContainerScreen<?> && quickMove(screen, stack)) {
+            return true;
+        }
+        if (button == 0 && cheating() && (LIST.at(mx, my) != null || MARKS.at(mx, my) != null)) {
             give(stack, Screen.hasShiftDown());
             return true;
         }
@@ -1515,7 +1566,7 @@ public final class Overlay {
             else folderEdit.keyPressed(key, scan, mods);
             return true;
         }
-        if (key == GLFW.GLFW_KEY_H && Screen.hasControlDown() && LIST.visible() && (box.isFocused() || !typingElsewhere(screen))) {
+        if (Keys.matches(Keys.HIDE_QUERY, key, scan) && LIST.visible() && (box.isFocused() || !typingElsewhere(screen))) {
             hideCurrent(box);
             return true;
         }
@@ -1525,7 +1576,7 @@ public final class Overlay {
             return true;
         }
         if (box.isFocused()) {
-            if (key == GLFW.GLFW_KEY_S && Screen.hasControlDown()) {
+            if (Keys.matches(Keys.SAVE_SEARCH, key, scan)) {
                 toggleSaved(box.getValue().trim());
                 return true;
             }
@@ -1566,8 +1617,8 @@ public final class Overlay {
             }
             browsingHistory = false;
             if (key == GLFW.GLFW_KEY_TAB) autocomplete(box);
-            else if (key == GLFW.GLFW_KEY_PAGE_DOWN) LIST.pageBy(1);
-            else if (key == GLFW.GLFW_KEY_PAGE_UP) LIST.pageBy(-1);
+            else if (Keys.matches(Keys.NEXT_PAGE, key, scan)) LIST.pageBy(1);
+            else if (Keys.matches(Keys.PREV_PAGE, key, scan)) LIST.pageBy(-1);
             else box.keyPressed(key, scan, mods);
             // пока поле в фокусе, клавиши не должны доходить до экрана (иначе «E» закроет инвентарь)
             return true;
@@ -1591,21 +1642,33 @@ public final class Overlay {
             return true;
         }
         if (typingElsewhere(screen)) return false;
-        // в карточке PgUp/PgDn листают рецепты, список листается ими, только когда курсор над ним
-        boolean listPaging = LIST.visible() && (!(screen instanceof RecipeScreen) || LIST.contains(mouseX(), mouseY()));
-        if (key == GLFW.GLFW_KEY_PAGE_DOWN && listPaging) {
+        // в карточке рецептов страницы листают рецепты, а список только под курсором
+        boolean pagesList = LIST.visible() && (!(screen instanceof RecipeScreen) || LIST.contains(mouseX(), mouseY()));
+        if (Keys.matches(Keys.NEXT_PAGE, key, scan) && pagesList) {
             LIST.pageBy(1);
             return true;
         }
-        if (key == GLFW.GLFW_KEY_PAGE_UP && listPaging) {
+        if (Keys.matches(Keys.PREV_PAGE, key, scan) && pagesList) {
             LIST.pageBy(-1);
             return true;
         }
         double mx = mouseX(), my = mouseY();
         Stack stack = hovered(screen, mx, my);
         if (stack == null) return false;
-        if (key == GLFW.GLFW_KEY_C && Screen.hasControlDown()) {
+        if (Keys.matches(Keys.HIDE, key, scan)) {
+            toggleHidden(stack);
+            return true;
+        }
+        if (Keys.matches(Keys.SHARE, key, scan)) {
+            Share.toChat(stack);
+            return true;
+        }
+        if (Keys.matches(Keys.COPY_ID, key, scan)) {
             copy(stack.id().toString());
+            return true;
+        }
+        // Shift раскладывает максимум: клавиша проверяется без модификаторов
+        if (Keys.matchesRaw(Keys.CRAFT, key, scan) && !Screen.hasControlDown() && !Screen.hasAltDown() && QuickCraft.run(screen, stack, Screen.hasShiftDown())) {
             return true;
         }
         if (Keys.matches(Keys.RECIPES, key, scan)) {
@@ -1699,6 +1762,13 @@ public final class Overlay {
         toast(Component.translatable("ryscope.copied", text).getString());
     }
 
+    private static void toggleHidden(Stack stack) {
+        boolean all = Screen.hasShiftDown();
+        boolean hidden = works.repka.ryscope.runtime.HiddenItems.toggle(stack, all);
+        String name = stack.name().getString();
+        toast(Component.translatable(!hidden ? "ryscope.hidden.item.shown" : all ? "ryscope.hidden.item.all" : "ryscope.hidden.item", name).getString());
+    }
+
     static void toggleBookmark(Stack stack) {
         boolean added = Bookmarks.toggle(stack);
         toast(Component.translatable(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed").getString());
@@ -1734,19 +1804,22 @@ public final class Overlay {
         search().setValue(text);
     }
 
-    private static void give(Stack stack, boolean full) {
-        Minecraft mc = Minecraft.getInstance();
-        LocalPlayer player = mc.player;
+    /** Режим читов включён и выдавать можно: творческий режим или оператор при RYScope на сервере. */
+    static boolean cheating() {
+        return Config.get().cheatMode && Give.allowed();
+    }
+
+    /** Выдача, как в JEI: на курсор, с Alt в инвентарь; Shift даёт стак. */
+    static void give(Stack stack, boolean full) {
+        give(stack, full, !Screen.hasAltDown());
+    }
+
+    static void give(Stack stack, boolean full, boolean toCursor) {
         ItemStack item = stack.item();
-        if (player == null || mc.gameMode == null || item.isEmpty()) return;
-        ItemStack copy = item.copyWithCount(full ? item.getMaxStackSize() : 1);
-        int free = player.getInventory().getFreeSlot();
-        if (free < 0 || free >= 36) {
-            toast(Component.translatable("ryscope.cheat.full").getString());
-            return;
+        if (item.isEmpty()) return;
+        if (!Give.give(item, full ? item.getMaxStackSize() : 1, toCursor)) {
+            toast(Component.translatable("ryscope.cheat.denied").getString());
         }
-        player.getInventory().setItem(free, copy);
-        mc.gameMode.handleCreativeModeItemAdd(copy, free < 9 ? 36 + free : free);
     }
 
     static double mouseX() {

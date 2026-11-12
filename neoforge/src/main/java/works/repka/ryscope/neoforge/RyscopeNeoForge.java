@@ -40,6 +40,11 @@ public final class RyscopeNeoForge {
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onStageNotice(payload)));
         registrar.playToClient(works.repka.ryscope.neoforge.net.StagePayload.TYPE, works.repka.ryscope.neoforge.net.StagePayload.CODEC,
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onStages(payload)));
+        // выдача предметов из режима читов: творческий режим или оператор, проверяет сервер
+        registrar.playToServer(works.repka.ryscope.neoforge.net.GivePayload.TYPE, works.repka.ryscope.neoforge.net.GivePayload.CODEC,
+            (payload, context) -> context.enqueueWork(() -> {
+                if (context.player() instanceof ServerPlayer player) ServerGive.handle(player, payload);
+            }));
         // варианты рецепта для замещения в шаблонах обработки AE2
         registrar.playToServer(works.repka.ryscope.neoforge.net.ProcessingAlternativesPayload.TYPE, works.repka.ryscope.neoforge.net.ProcessingAlternativesPayload.CODEC,
             (payload, context) -> context.enqueueWork(() -> {

@@ -127,6 +127,15 @@ public final class Bookmarks {
         return true;
     }
 
+    /** Закладка на рецепт: результат рецепта со ссылкой на сам рецепт. @return null, если у рецепта нет id или результата-предмета */
+    @org.jetbrains.annotations.Nullable
+    public static RecipeMark markOf(works.repka.ryscope.model.Category category, works.repka.ryscope.model.RecipeView recipe) {
+        RecipeRef ref = RecipeRef.of(category, recipe);
+        if (ref == null) return null;
+        for (Stack out : recipe.outputs()) if (!out.item().isEmpty()) return new RecipeMark(out, ref);
+        return null;
+    }
+
     public static void move(int from, int to) {
         List<Stack> list = list();
         if (from < 0 || from >= list.size() || to < 0 || to >= list.size() || from == to) return;
@@ -180,6 +189,15 @@ public final class Bookmarks {
 
     private static void readItems(JsonArray array, DynamicOps<JsonElement> ops, Folder folder) {
         for (JsonElement e : array) {
+            if (e.isJsonObject() && e.getAsJsonObject().has("recipe") && e.getAsJsonObject().has("output")) {
+                // закладка на рецепт: результат для значка и ссылка на рецепт
+                RecipeRef ref = RecipeRef.fromJson(e);
+                if (ref == null) continue;
+                ItemStack.CODEC.parse(ops, e.getAsJsonObject().get("output")).result().ifPresent(s -> {
+                    if (!s.isEmpty()) folder.items.add(new RecipeMark(new ItemRes(s), ref));
+                });
+                continue;
+            }
             ItemStack.CODEC.parse(ops, e).result().ifPresent(s -> {
                 if (!s.isEmpty()) folder.items.add(new ItemRes(s));
             });
@@ -199,6 +217,12 @@ public final class Bookmarks {
                 for (Stack s : folder.items) {
                     ItemStack item = s.item();
                     if (item.isEmpty()) continue;
+                    if (s instanceof RecipeMark mark) {
+                        JsonObject o = mark.ref.toJson();
+                        ItemStack.CODEC.encodeStart(ops, item).result().ifPresent(out -> o.add("output", out));
+                        if (o.has("output")) items.add(o);
+                        continue;
+                    }
                     ItemStack.CODEC.encodeStart(ops, item).result().ifPresent(items::add);
                 }
                 fo.add("items", items);

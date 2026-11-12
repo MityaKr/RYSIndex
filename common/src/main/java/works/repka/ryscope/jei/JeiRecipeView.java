@@ -297,6 +297,21 @@ public final class JeiRecipeView<T> implements RecipeView {
         return Transfer.missing(lines.isEmpty() ? "ryscope.transfer.missing" : lines.get(0).getString());
     }
 
+    /** Все варианты ячейки под курсором: для плашки вариантов по Ctrl+клику. */
+    @Override
+    public Ing ingAt(int x, int y, int mouseX, int mouseY) {
+        IRecipeLayoutDrawable<T> l = layout();
+        if (l == null) return null;
+        return l.getRecipeSlotUnderMouse(mouseX, mouseY).map(slot -> {
+            List<Stack> options = new ArrayList<>();
+            slot.getAllIngredients().forEach(t -> {
+                Stack s = bridge.fromTyped(t);
+                if (s != null) options.add(s);
+            });
+            return options.isEmpty() ? null : new Ing(options, tagOf(slot));
+        }).orElse(null);
+    }
+
     /** Подсказку обработчики пишут то в старый метод, то в новый: собираем из нового, он вызывает и старый. */
     private static List<Component> tooltip(IRecipeTransferError error) {
         List<Component> out = new ArrayList<>();

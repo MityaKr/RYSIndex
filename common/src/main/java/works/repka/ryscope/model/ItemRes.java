@@ -56,9 +56,20 @@ public final class ItemRes extends Stack {
         return Screen.getTooltipFromItem(Minecraft.getInstance(), stack);
     }
 
+    /**
+     * Сейчас рисуется подсказка из наших панелей или карточки: модуль загрузчика тогда дописывает в неё мод,
+     * если его ещё нет (Jade дописывает сам), как JEI в своём списке.
+     */
+    public static boolean ourTooltip;
+
     @Override
     public void renderTooltip(GuiGraphics g, int mouseX, int mouseY) {
-        g.renderTooltip(Minecraft.getInstance().font, stack, mouseX, mouseY);
+        ourTooltip = true;
+        try {
+            g.renderTooltip(Minecraft.getInstance().font, stack, mouseX, mouseY);
+        } finally {
+            ourTooltip = false;
+        }
     }
 
     @Override
