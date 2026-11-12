@@ -532,7 +532,8 @@ public final class Overlay {
             if (filter == FILTER_CRAFTABLE) hints.add(Component.translatable("ryscope.list.empty.craftable").getString());
             int hidden = Config.get().hiddenQueries.size();
             if (hidden > 0 && !Config.get().showHidden) hints.add(Component.translatable("ryscope.list.empty.hidden", hidden).getString());
-            if (!results.query.isEmpty()) hints.add(Component.translatable("ryscope.list.empty.query").getString());
+            // results.query включает добавку вкладки («craftable»): про запрос советуем, только если игрок его ввёл
+            if (!Query.parse(SearchService.text()).isEmpty()) hints.add(Component.translatable("ryscope.list.empty.query").getString());
         }
         float y = LIST.gridY + 8;
         Draw.label(g, Component.translatable("ryscope.list.empty").getString(), LIST.gridX, y, 12, Weight.MEDIUM, t.c("text.muted"));
@@ -794,7 +795,7 @@ public final class Overlay {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null || !(Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>)) return false;
         ItemStack carried = player.containerMenu.getCarried();
-        return !carried.isEmpty() && !ItemStack.isSameItemSameComponents(under.item(), carried) && Give.serverSupports.getAsBoolean();
+        return !carried.isEmpty() && !ItemStack.isSameItemSameComponents(under.item(), carried) && Give.canDeleteCarried();
     }
 
     /** Перетаскиваемый предмет у курсора и подсветка фильтров, которые его примут. */
@@ -1402,8 +1403,10 @@ public final class Overlay {
             draggingScroll = true;
             return true;
         }
-        if (!carried.isEmpty() && screen instanceof AbstractContainerScreen<?> && cheating() && LIST.at(mx, my) != null) {
-            // режим читов, как в JEI: тот же предмет добавляется на курсор, другой предмет с курсора убирается
+        if (!carried.isEmpty() && screen instanceof AbstractContainerScreen<?> && cheating() && LIST.at(mx, my) != null
+            && (ItemStack.isSameItemSameComponents(LIST.at(mx, my).item(), carried) || Give.canDeleteCarried())) {
+            // режим читов, как в JEI: тот же предмет добавляется на курсор, другой предмет с курсора убирается;
+            // если убрать нельзя (нет RYScope на сервере), клик не поглощается
             Stack under = LIST.at(mx, my);
             if (button == 0 && ItemStack.isSameItemSameComponents(under.item(), carried)) give(under, Screen.hasShiftDown());
             else if (button == 0) Give.deleteCarried();
@@ -1432,8 +1435,7 @@ public final class Overlay {
             // левая кнопка открывает дерево крафта цели, правая снимает её с доски
             Stack goal = Stickers.stackAt(mx, my);
             if (button == 0) {
-                works.repka.ryscope.runtime.Board.Goal pinned = Stickers.goalAt(mx, my);
-                TreeScreen.open(goal, pinned.route, pinned.amount);
+                TreeScreen.openGoal(Stickers.goalAt(mx, my));
             } else if (button == 1) {
                 works.repka.ryscope.runtime.Board.toggle(goal, 1);
                 toast(Component.translatable("ryscope.goals.removed").getString());
@@ -1728,8 +1730,14 @@ public final class Overlay {
             toast(Component.translatable("ryscope.hidden.empty").getString());
             return;
         }
-        int count = SearchService.results().stacks.size();
-        int total = Indexer.snapshot().stacks.size();
+        // охват считается так же, как его потом скроет поиск: по самому запросу, без вкладки «Доступно» и без
+        // нечёткого прохода, а не по последнему готовому результату (он может быть от прошлого текста)
+        Query q = Query.parse(query);
+        works.repka.ryscope.runtime.Snapshot snap = Indexer.snapshot();
+        works.repka.ryscope.core.search.SearchIndex.Result found = q.isEmpty() ? null
+            : snap.index.search(q, () -> false, null, works.repka.ryscope.runtime.Operators.groupFilters(q, snap), false);
+        int count = found == null ? 0 : found.indices.length;
+        int total = snap.index.size();
         // запрос, который нашёл больше половины списка, почти наверняка опечатка или неработающий оператор
         if (total > 0 && count * 2 > total) {
             toast(Component.translatable("ryscope.hidden.too_many", count, total).getString(), 3000);

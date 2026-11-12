@@ -68,16 +68,14 @@ public final class Ing {
         return options.isEmpty();
     }
 
-    /** Вариант, который показывается сейчас: варианты сменяются раз в секунду, пока не зажат Shift. */
+    /**
+     * Вариант, который показывается сейчас: варианты сменяются раз в секунду, пока не зажат Shift.
+     * timeMs это сырое System.currentTimeMillis(): пауза по Shift учитывается только здесь.
+     */
     public Stack shown(long timeMs) {
         if (options.isEmpty()) return null;
         if (options.size() == 1) return options.get(0);
         return options.get((int) ((clock(timeMs) / 1000L) % options.size()));
-    }
-
-    /** Текущее время перебора вариантов: стоит, пока зажат Shift. */
-    public static long clock() {
-        return clock(System.currentTimeMillis());
     }
 
     private static long pausedAt = -1, pausedTotal;

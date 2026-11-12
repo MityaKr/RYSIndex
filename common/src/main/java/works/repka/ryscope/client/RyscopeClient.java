@@ -39,10 +39,10 @@ public final class RyscopeClient {
             long have = Math.min(goal.amount, InventoryView.count(goal.stack));
             lines.add(net.minecraft.network.chat.Component.literal(goal.stack.name().getString() + ": " + have + " / " + goal.amount));
         }
-        var first = goals.get(0).stack;
+        var first = goals.get(0);
         return new works.repka.ryscore.team.TeamCards.Card(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("ryscope", "scope"),
             net.minecraft.network.chat.Component.translatable("ryscope.goals"), lines,
-            net.minecraft.network.chat.Component.translatable("ryscope.goals.tree"), () -> works.repka.ryscope.ui.TreeScreen.open(first), false);
+            net.minecraft.network.chat.Component.translatable("ryscope.goals.tree"), () -> works.repka.ryscope.ui.TreeScreen.openGoal(first), false);
     }
 
     // --- данные ---
@@ -64,10 +64,22 @@ public final class RyscopeClient {
         indexDelay = recipesSeen && tagsSeen ? 2 : 200;
     }
 
+    /**
+     * Общие кеши, которые держат рецепты, мост JEI и снимок: при выходе из мира и при остановке JEI их отпускаем,
+     * иначе старый рантайм висит в памяти до следующего дерева или линзы.
+     */
+    public static void releaseCaches() {
+        works.repka.ryscope.runtime.CraftTree.clearShared();
+        works.repka.ryscope.ui.Lens.clear();
+        works.repka.ryscope.runtime.Operators.clearMemo();
+    }
+
     public static void onLogout() {
         recipesSeen = tagsSeen = false;
         indexDelay = -1;
         Indexer.clear();
+        releaseCaches();
+        works.repka.ryscope.ui.TreeScreen.clearRoutes();
         Bookmarks.reset();
         works.repka.ryscope.runtime.RecipeDefaults.reset();
         works.repka.ryscope.runtime.LootSource.clear();

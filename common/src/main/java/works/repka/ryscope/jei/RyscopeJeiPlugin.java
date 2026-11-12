@@ -85,6 +85,10 @@ public final class RyscopeJeiPlugin implements IModPlugin {
     public void onRuntimeUnavailable() {
         bridge = null;
         Foreign.set(null);
+        // старый мост отпускается и при перезапуске JEI внутри сессии; кеши трогаем в главном потоке
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.isSameThread()) works.repka.ryscope.client.RyscopeClient.releaseCaches();
+        else mc.execute(works.repka.ryscope.client.RyscopeClient::releaseCaches);
     }
 
     private static Optional<ITypedIngredient<?>> typed(Stack stack) {

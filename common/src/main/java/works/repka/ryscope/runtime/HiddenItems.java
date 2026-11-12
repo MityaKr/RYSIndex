@@ -12,7 +12,20 @@ public final class HiddenItems {
 
     /** @return скрыт ли ресурс теперь */
     public static boolean toggle(Stack stack, boolean allVariants) {
+        List<String> list = Config.get().hiddenItems;
+        String single = single(stack), all = stack.id().toString();
         Foreign.Source foreign = Foreign.get();
+        // сначала свой список: предмет, скрытый до установки JEI или когда JEI не смог, иначе не вернуть
+        if (list.remove(single) | list.remove(all)) {
+            Config.save();
+            SearchService.submit(SearchService.text());
+            if (foreign == null) return false;
+            try {
+                return foreign.isHidden(stack);
+            } catch (Throwable ignored) {
+                return false;
+            }
+        }
         if (foreign != null) {
             try {
                 Boolean hidden = foreign.toggleHidden(stack, allVariants);
@@ -21,18 +34,10 @@ public final class HiddenItems {
                 // источник не смог: остаётся свой список
             }
         }
-        List<String> list = Config.get().hiddenItems;
-        String single = single(stack), all = stack.id().toString();
-        boolean hidden;
-        if (list.remove(single) | list.remove(all)) {
-            hidden = false;
-        } else {
-            list.add(allVariants ? all : single);
-            hidden = true;
-        }
+        list.add(allVariants ? all : single);
         Config.save();
         SearchService.submit(SearchService.text());
-        return hidden;
+        return true;
     }
 
     /** Скрыт ли ресурс своим списком (без JEI). */

@@ -275,12 +275,17 @@ public final class Dock {
                 } else {
                     // кнопка чужого мода: значок автора на нейтральной плитке
                     Draw.round(g, bx, by, BUTTON, BUTTON, theme.beveled() ? 1f : 5f, hot ? theme.c("slot.hover") : theme.c("slot.bg"));
+                    // значок FTB рисуется через Tesselator мимо GuiGraphics: плитка из пачки должна лечь раньше него.
+                    // Сброс до enableBlend: он сам выключает смешивание
+                    works.repka.ryscore.ui.Batch.flush();
                     RenderSystem.enableBlend();
                     Ftb.drawIcon.invoke(entry.icon(), g, bx + 1, by + 1, 16, 16);
                 }
                 // значки поверх кнопки: например, счётчик непрочитанных квестов
                 Collection<?> overlays = (Collection<?>) Ftb.overlays.invoke(entry.button());
                 if (!overlays.isEmpty()) {
+                    // наложения FTB тоже могут рисовать мимо GuiGraphics
+                    works.repka.ryscore.ui.Batch.flush();
                     g.pose().pushPose();
                     g.pose().translate(bx + 1, by + 1, 10);
                     for (Object overlay : overlays) Ftb.renderOverlay.invoke(overlay, g, mc.font, 16);

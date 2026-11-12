@@ -51,6 +51,9 @@ public final class JeiRes<T> extends Stack {
     @Override
     public void render(GuiGraphics g, int x, int y) {
         int ox = (16 - renderer.getWidth()) / 2, oy = (16 - renderer.getHeight()) / 2;
+        // чужие рендеры ингредиентов (химикаты Mekanism и др.) рисуют мимо GuiGraphics: накопленные подложки кора
+        // должны лечь раньше. Пустая пачка сбрасывается сразу
+        works.repka.ryscore.ui.Batch.flush();
         renderer.render(g, typed.getIngredient(), x + ox, y + oy);
     }
 

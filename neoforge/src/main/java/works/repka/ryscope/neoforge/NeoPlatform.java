@@ -99,4 +99,12 @@ public final class NeoPlatform implements Platform {
     public long fluidAmount(Object fluidStack) {
         return fluidStack instanceof net.neoforged.neoforge.fluids.FluidStack stack && stack.getAmount() > 0 ? stack.getAmount() : 1000;
     }
+
+    @Override
+    public void renderTooltip(net.minecraft.client.gui.GuiGraphics g, net.minecraft.client.gui.Font font,
+                              List<net.minecraft.network.chat.Component> lines,
+                              java.util.Optional<net.minecraft.world.inventory.tooltip.TooltipComponent> image,
+                              net.minecraft.world.item.ItemStack stack, int x, int y) {
+        g.renderTooltip(font, lines, image, stack, x, y);
+    }
 }

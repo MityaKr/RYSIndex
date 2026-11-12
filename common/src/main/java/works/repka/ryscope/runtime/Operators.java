@@ -73,6 +73,13 @@ public final class Operators {
         }
     };
 
+    /** Забыть наборы операторов: ключи держат снимки прошлого мира. */
+    public static void clearMemo() {
+        synchronized (MEMO) {
+            MEMO.clear();
+        }
+    }
+
     private static Set<Object> keys(Query.Term t, Snapshot snap) {
         int inventory;
         switch (t.operator) {
