@@ -773,7 +773,6 @@ public final class Overlay {
     /** Шпаргалка по языку поиска: при наведении на значок «?» внизу списка. */
     private static void renderHelp(GuiGraphics g, Theme theme) {
         if (!LIST.visible() || !overInfo(helpIcon, Overlay.mouseX(), Overlay.mouseY())) return;
-        Font font = Minecraft.getInstance().font;
         List<String[]> lines = new ArrayList<>();
         int keyW = 0, textW = 0;
         for (int i = 1; net.minecraft.locale.Language.getInstance().has("ryscope.help." + i); i++) {
@@ -781,40 +780,41 @@ public final class Overlay {
             int split = raw.indexOf(" — ");
             String[] parts = split < 0 ? new String[] {raw, ""} : new String[] {raw.substring(0, split), raw.substring(split + 3)};
             lines.add(parts);
-            keyW = Math.max(keyW, Math.round(Draw.widthScaled(parts[0], 0.75f)));
-            textW = Math.max(textW, Math.round(Draw.widthScaled(parts[1], 0.75f)));
+            keyW = Math.max(keyW, (int) Math.ceil(Draw.labelWidth(parts[0], HELP_PX, Weight.MEDIUM)));
+            textW = Math.max(textW, (int) Math.ceil(Draw.labelWidth(parts[1], HELP_PX, Weight.REGULAR)));
         }
         int w = keyW + textW + 20, h = lines.size() * 9 + 10;
         int x = Math.max(4, LIST.x - w - 4), y = LIST.y;
         g.pose().pushPose();
         g.pose().translate(0, 0, 380);
         theme.tooltipBox(g, x, y, w, h);
-        int ly = y + 6;
+        float cy = y + 5 + 4.5f;
         for (String[] parts : lines) {
-            Draw.textScaled(g, parts[0], x + 6, ly, 0.75f, theme.c("accent"));
-            Draw.textScaled(g, parts[1], x + 12 + keyW, ly, 0.75f, theme.c("text.body"));
-            ly += 9;
+            // приёмы языка поиска тем же цветом, что и их чипы в поле
+            Draw.label(g, parts[0], x + 6, cy, HELP_PX, Weight.MEDIUM, theme.c("chip.fn.fg"));
+            Draw.label(g, parts[1], x + 12 + keyW, cy, HELP_PX, Weight.REGULAR, theme.c("tooltip.fg"));
+            cy += 9;
         }
         g.pose().popPose();
     }
+
+    private static final float HELP_PX = 11.5f, TOAST_PX = 12f;
 
     /** Короткое уведомление внизу экрана. Работает на любом экране мода. */
     public static void renderToast(Screen screen, GuiGraphics g) {
         if (toast == null || System.currentTimeMillis() >= toastUntil) return;
         Theme theme = ThemeManager.get();
-        Font font = Minecraft.getInstance().font;
-        int maxText = Math.max(80, UiScale.width() - 40);
-        List<String> lines = Draw.wrap(toast, maxText);
-        if (lines.size() > 3) lines = lines.subList(0, 3);
-        int textW = 0;
-        for (String line : lines) textW = Math.max(textW, Draw.width(line));
-        int w = textW + 16, h = 6 + lines.size() * 10;
+        float maxText = Math.max(80, UiScale.width() - 40);
+        List<String> lines = Draw.wrapLabel(toast, maxText, TOAST_PX, Weight.REGULAR, 3);
+        float textW = 0;
+        for (String line : lines) textW = Math.max(textW, Draw.labelWidth(line, TOAST_PX, Weight.REGULAR));
+        int w = (int) Math.ceil(textW) + 16, h = 6 + lines.size() * 10;
         int x = (UiScale.width() - w) / 2, y = UiScale.height() - 18 - h;
         g.pose().pushPose();
         g.pose().translate(0, 0, 400);
         theme.tooltipBox(g, x, y, w, h);
         for (int i = 0; i < lines.size(); i++) {
-            Draw.text(g, lines.get(i), x + 8, y + 4 + i * 10, theme.c("text.primary"));
+            Draw.label(g, lines.get(i), x + 8, y + 3 + i * 10 + 5, TOAST_PX, Weight.REGULAR, theme.c("tooltip.fg"));
         }
         g.pose().popPose();
     }
@@ -842,7 +842,7 @@ public final class Overlay {
                 Draw.rect(g, x - 1, y, 1, 16, theme.c("accent"));
                 Draw.rect(g, x + 16, y, 1, 16, theme.c("accent"));
             } else {
-                Draw.rect(g, x, y, 16, 16, 0xA0000000);
+                Draw.rect(g, x, y, 16, 16, theme.c("overlay"));
             }
         }
         g.pose().popPose();
@@ -901,6 +901,7 @@ public final class Overlay {
     // --- папки закладок: вкладки, как в браузере ---
 
     private static final int FOLDER_TAB_H = 12;
+    private static final float FOLDER_PX = 10.5f;
     private static final int FOLDER_TAB_MIN = 20;
     private static final int FOLDER_TAB_MAX = 64;
     /** Видимые вкладки: номер папки, левый край и ширина. */
@@ -916,7 +917,7 @@ public final class Overlay {
     }
 
     private static int folderNatural(int index) {
-        int w = Math.round(Draw.widthScaled(folderLabel(index), 0.75f)) + 10;
+        int w = Math.round(Draw.labelWidth(folderLabel(index), FOLDER_PX, Weight.REGULAR)) + 10;
         return Math.max(FOLDER_TAB_MIN, Math.min(FOLDER_TAB_MAX, w));
     }
 
@@ -984,9 +985,9 @@ public final class Overlay {
                 folderEdit.render(g, mx, my, 0);
                 continue;
             }
-            String label = Draw.ellipsize(folderLabel(index), (int) ((tw - 6) / 0.75f));
-            float textW = Draw.widthScaled(label, 0.75f);
-            Draw.textScaled(g, label, tx + (tw - textW) / 2f, top + 3, 0.75f, current ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
+            String label = Draw.ellipsize(folderLabel(index), tw - 6, FOLDER_PX, Weight.REGULAR);
+            float textW = Draw.labelWidth(label, FOLDER_PX, Weight.REGULAR);
+            Draw.label(g, label, tx + (tw - textW) / 2f, top + FOLDER_TAB_H / 2f, FOLDER_PX, Weight.REGULAR, current ? theme.c("tab.active.fg") : theme.c("tab.inactive.fg"));
         }
         int plusX = folderPlusX();
         boolean plusHot = overMarksHeader(mx, my) && mx >= plusX - 1 && mx < plusX + 11;
@@ -1085,8 +1086,8 @@ public final class Overlay {
         theme.tooltipBox(g, x, y, w, h);
         for (int i = 0; i < rows.size(); i++) {
             int ry = y + 2 + i * 10;
-            if (i == hover || i == savedIndex) Draw.rect(g, x + 1, ry, w - 2, 10, (theme.c("accent") & 0xFFFFFF) | 0x38000000);
-            Draw.textScaled(g, Draw.ellipsize(rows.get(i), (int) ((w - 8) / 0.75f)), x + 4, ry + 2, 0.75f, theme.c("text.body"));
+            if (i == hover || i == savedIndex) Draw.rect(g, x + 1, ry, w - 2, 10, Draw.alpha(theme.c("slot.hover"), 0.8f));
+            Draw.label(g, Draw.ellipsize(rows.get(i), w - 8, HELP_PX, Weight.REGULAR), x + 4, ry + 5, HELP_PX, Weight.REGULAR, theme.c("tooltip.fg"));
         }
         g.pose().popPose();
     }

@@ -96,8 +96,9 @@ public final class Stickers {
 
     private static void draw(GuiGraphics g, Theme t, Board.Goal goal, CraftTree tree, int x, int y, int w) {
         Draw.roundBox(g, x, y, w, H, t.beveled() ? 0 : 6f, Draw.alpha(t.c("hud.bg"), 0.92f), t.c("hud.border"));
-        int textColor = t.beveled() ? 0xFFFFFFFF : t.c("text.primary");
-        int mutedColor = t.beveled() ? 0xFFC0C0C0 : t.c("text.muted");
+        // в скошенной теме стикер тёмный, как подсказка: текст цветом HUD, приглушённый смешан с фоном
+        int textColor = t.beveled() ? t.c("hud.fg") : t.c("text.primary");
+        int mutedColor = t.beveled() ? Draw.mix(t.c("hud.fg"), t.c("hud.bg"), 0.25f) : t.c("text.muted");
         long have = Math.min(goal.amount, InventoryView.count(goal.stack));
         String count = have + " / " + goal.amount;
         float countW = Draw.labelWidth(count, 12.5f, Weight.REGULAR);
