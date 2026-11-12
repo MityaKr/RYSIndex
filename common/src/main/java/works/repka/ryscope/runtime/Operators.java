@@ -13,25 +13,42 @@ import works.repka.ryscope.model.Stack;
 
 /**
  * Операторы языка поиска, которым нужны рецепты, а не только названия:
- * {@code uses:X} (в рецепте есть X), {@code from:X} (делается из X), {@code in:категория},
+ * {@code uses:X} (из чего делается X: входы его рецептов), {@code from:X} (что делается из X), {@code in:категория},
+ * {@code drop:X} (выпадает из моба или блока X), {@code loot:X} (есть в любом источнике X, в том числе в сундуках),
  * {@code craftable} (всё есть в инвентаре), {@code almost} (не хватает одного).
  */
 public final class Operators {
     private Operators() {}
 
-    /** @return фильтр по номеру записи или null, если операторов в запросе нет. */
+    /** @return фильтр по номеру записи, все операторы запроса через И, или null, если операторов в запросе нет. */
     public static IntPredicate filter(Query query, Snapshot snap) {
-        List<Query.Term> ops = query.operators();
+        return filter(query.operators(), snap);
+    }
+
+    /**
+     * Операторы по группам ИЛИ: элемент проверяет запись вместе с остальными словами своей группы,
+     * поэтому «железо | uses:палка» находит и железо, и то, из чего делается палка.
+     * @return фильтры по номеру группы (null у группы без операторов) или null, если операторов в запросе нет.
+     */
+    public static IntPredicate[] groupFilters(Query query, Snapshot snap) {
+        if (query.operators().isEmpty()) return null;
+        IntPredicate[] out = new IntPredicate[query.groups.size()];
+        for (int g = 0; g < out.length; g++) {
+            List<Query.Term> ops = new ArrayList<>();
+            for (Query.Term t : query.groups.get(g)) if (t.kind == Query.Kind.OPERATOR) ops.add(t);
+            out[g] = filter(ops, snap);
+        }
+        return out;
+    }
+
+    private static IntPredicate filter(List<Query.Term> ops, Snapshot snap) {
         if (ops.isEmpty()) return null;
         List<Set<Object>> allowed = new ArrayList<>();
         List<Boolean> negated = new ArrayList<>();
         for (Query.Term t : ops) {
-            Set<Object> keys = keys(t, snap);
-            if (keys == null) continue;
-            allowed.add(keys);
+            allowed.add(keys(t, snap));
             negated.add(t.negated);
         }
-        if (allowed.isEmpty()) return null;
         return i -> {
             Object key = snap.stacks.get(i).key();
             for (int k = 0; k < allowed.size(); k++) {
@@ -59,6 +76,23 @@ public final class Operators {
                     for (Snapshot.Entry e : snap.producing(x)) {
                         if (!e.recipe().isCrafting()) continue;
                         for (Ing in : e.recipe().inputs()) for (Stack o : in.options) out.add(o.key());
+                    }
+                }
+                return out;
+            }
+            case "drop":
+            case "loot": {
+                // drop: только мобы и блоки, loot: любой источник, в том числе сундуки и рыбалка
+                boolean dropsOnly = t.operator.equals("drop");
+                if (t.text.isEmpty()) return out;
+                for (works.repka.ryscope.model.Category c : snap.categories) {
+                    if (dropsOnly && !c.id.equals(works.repka.ryscope.content.LootContent.MOBS)
+                        && !c.id.equals(works.repka.ryscope.content.LootContent.BLOCKS)) continue;
+                    for (works.repka.ryscope.model.RecipeView r : snap.recipes(c)) {
+                        if (!(r instanceof works.repka.ryscope.content.SourceView sv)) continue;
+                        String name = sv.name().getString().toLowerCase(java.util.Locale.ROOT);
+                        if (!name.contains(t.text) && !sv.id().toString().contains(t.text)) continue;
+                        for (Stack o : sv.outputs()) out.add(o.key());
                     }
                 }
                 return out;
@@ -118,7 +152,8 @@ public final class Operators {
                 return out;
             }
             default:
-                return null;
+                // неизвестный оператор ничего не находит: пустой результат честнее, чем весь список
+                return out;
         }
     }
 

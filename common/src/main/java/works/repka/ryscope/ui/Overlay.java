@@ -726,7 +726,7 @@ public final class Overlay {
         Font font = Minecraft.getInstance().font;
         List<String[]> lines = new ArrayList<>();
         int keyW = 0, textW = 0;
-        for (int i = 1; i <= 10; i++) {
+        for (int i = 1; net.minecraft.locale.Language.getInstance().has("ryscope.help." + i); i++) {
             String raw = Component.translatable("ryscope.help." + i).getString();
             int split = raw.indexOf(" — ");
             String[] parts = split < 0 ? new String[] {raw, ""} : new String[] {raw.substring(0, split), raw.substring(split + 3)};
@@ -1419,6 +1419,11 @@ public final class Overlay {
             hideCurrent(box);
             return true;
         }
+        if (key == GLFW.GLFW_KEY_Z && Screen.hasControlDown() && LIST.visible() && lastHidden != null
+            && System.currentTimeMillis() < lastHiddenUntil && (box.isFocused() || !typingElsewhere(screen))) {
+            undoHide(box);
+            return true;
+        }
         if (box.isFocused()) {
             if (key == GLFW.GLFW_KEY_S && Screen.hasControlDown()) {
                 toggleSaved(box.getValue().trim());
@@ -1553,10 +1558,32 @@ public final class Overlay {
             return;
         }
         int count = SearchService.results().stacks.size();
+        int total = Indexer.snapshot().stacks.size();
+        // запрос, который нашёл больше половины списка, почти наверняка опечатка или неработающий оператор
+        if (total > 0 && count * 2 > total) {
+            toast(Component.translatable("ryscope.hidden.too_many", count, total).getString(), 3000);
+            return;
+        }
         Config.get().hiddenQueries.add(query);
         Config.save();
         box.setValue("");
-        toast(Component.translatable("ryscope.hidden.added", count).getString());
+        lastHidden = query;
+        lastHiddenUntil = System.currentTimeMillis() + 30_000;
+        toast(Component.translatable("ryscope.hidden.added", count).getString(), 3000);
+    }
+
+    /** Последний скрытый запрос: Ctrl+Z в течение полуминуты возвращает его. */
+    @Nullable
+    private static String lastHidden;
+    private static long lastHiddenUntil;
+
+    private static void undoHide(EditBox box) {
+        String query = lastHidden;
+        lastHidden = null;
+        if (query == null || !Config.get().hiddenQueries.remove(query)) return;
+        Config.save();
+        box.setValue(query);
+        toast(Component.translatable("ryscope.hidden.undone", query).getString());
     }
 
     public static void copy(String text) {

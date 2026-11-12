@@ -151,7 +151,7 @@ public final class Query {
 
     private static boolean isOperator(String key) {
         return switch (key) {
-            case "mod", "tag", "id", "tip", "tooltip", "uses", "from", "in", "drop", "loot", "stage", "has" -> true;
+            case "mod", "tag", "id", "tip", "tooltip", "uses", "from", "in", "drop", "loot", "stage" -> true;
             default -> false;
         };
     }
