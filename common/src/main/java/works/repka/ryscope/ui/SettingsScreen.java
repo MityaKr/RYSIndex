@@ -221,6 +221,8 @@ public final class SettingsScreen extends ScaledScreen {
             Draw.round(g, px + pw - 4, thumbY, 2, thumbH, 1f, t.c("scroll.thumb"));
         }
         Overlay.renderToast(this, g);
+        // у порядка списка своё пояснение на каждое значение
+        if ("ryscope.settings.sort.note".equals(note)) note = note + "." + works.repka.ryscope.runtime.ListSort.current();
         if (note != null) {
             g.pose().pushPose();
             g.pose().translate(0, 0, 300);

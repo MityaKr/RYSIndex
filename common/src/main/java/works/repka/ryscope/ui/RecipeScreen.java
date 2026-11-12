@@ -127,6 +127,8 @@ public final class RecipeScreen extends ScaledScreen {
     private final List<StationSpot> stations = new ArrayList<>();
     private final List<StationSpot> historySpots = new ArrayList<>();
     private final List<Placed> placed = new ArrayList<>();
+    /** Версии инвентаря и сети AE2 при последнем пересчёте «+» и статусов. */
+    private int transferInputs = Integer.MIN_VALUE;
     private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
     private final Map<RecipeView, Status> statuses = new IdentityHashMap<>();
     private int transferAge;
@@ -1463,8 +1465,12 @@ public final class RecipeScreen extends ScaledScreen {
                 // чужой рецепт
             }
         }
-        // раз в 10 тиков; statuses пуст сразу после смены страницы, тогда считаем немедленно
-        if (transferAge++ % 10 != 0 && !statuses.isEmpty()) return;
+        // пересчёт сразу, как изменились инвентарь или содержимое сети AE2, и раз в секунду на всякий случай
+        // (у чужих окон состояние может зависеть от другого); statuses пуст сразу после смены страницы
+        int inputs = works.repka.ryscope.runtime.InventoryView.version() * 31 + works.repka.ryscope.runtime.Ae2Terminal.networkVersion();
+        boolean changed = inputs != transferInputs;
+        transferInputs = inputs;
+        if (transferAge++ % 20 != 0 && !changed && !statuses.isEmpty()) return;
         for (Placed p : placed) {
             try {
                 statuses.put(p.recipe, statusOf(p.recipe));

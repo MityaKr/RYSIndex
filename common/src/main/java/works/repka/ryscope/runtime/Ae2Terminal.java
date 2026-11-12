@@ -116,11 +116,30 @@ public final class Ae2Terminal {
         return active != null;
     }
 
+    /** Растёт на каждое обновление клиентского списка сети (перехват Repo.handleUpdate). */
+    private static volatile int repoVersion;
+    private static boolean repoHooked;
+    private static int cachedRepo = -1;
+
+    /** Вызывает перехват AE2: сервер прислал изменения содержимого сети. */
+    public static void onRepoUpdate() {
+        repoHooked = true;
+        repoVersion++;
+    }
+
+    /** Номер содержимого сети: меняется, когда сервер прислал изменения. Для пересчёта отметок по событию. */
+    public static int networkVersion() {
+        return repoVersion;
+    }
+
     private static void refresh() {
         long now = System.currentTimeMillis();
-        if (active == cachedFor && now - cachedAt < REFRESH_MS) return;
+        // с перехватом список перечитывается ровно тогда, когда он изменился; без него по таймеру, как раньше
+        boolean fresh = repoHooked ? cachedRepo == repoVersion : now - cachedAt < REFRESH_MS;
+        if (active == cachedFor && fresh) return;
         cachedFor = active;
         cachedAt = now;
+        cachedRepo = repoVersion;
         Map<Item, Long> have = new HashMap<>();
         Set<Item> craft = new java.util.HashSet<>();
         try {

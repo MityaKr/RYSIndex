@@ -85,8 +85,10 @@ public final class ClickTransfer {
         if (!menu.getCarried().isEmpty()) return Transfer.missing("ryscope.transfer.cursor");
         if (simulate) return Transfer.OK;
 
-        // 1. книга рецептов: сервер раскладывает сам
-        if (recipe.holder != null && menu instanceof RecipeBookMenu<?, ?> && player.getRecipeBook().contains(recipe.holder)) {
+        // 1. книга рецептов: сервер раскладывает сам. Не для сеток крафта: в верстаке сервер кладёт результат,
+        // а клиенту слот результата не приходит, и он остаётся пустым до следующего действия; клики дают его сразу
+        if (recipe.kind != NativeRecipe.Kind.CRAFTING && recipe.holder != null && menu instanceof RecipeBookMenu<?, ?>
+            && player.getRecipeBook().contains(recipe.holder)) {
             mc.gameMode.handlePlaceRecipe(menu.containerId, recipe.holder, max);
             return Transfer.OK;
         }

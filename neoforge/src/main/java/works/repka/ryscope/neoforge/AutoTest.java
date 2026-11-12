@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("craft".equals(System.getProperty("ryscope.autotest"))) {
+            buildCraft();
+            return;
+        }
         if ("next".equals(System.getProperty("ryscope.autotest"))) {
             buildNext();
             return;
@@ -1579,7 +1583,53 @@ final class AutoTest {
         step("quit", () -> mc().stop(), 0);
     }
 
-    private static long auditStart;
+    /** Быстрый крафт в обычном верстаке: обновляется ли слот результата. */
+    private static void buildCraft() {
+        step("craft: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
+            && works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY, () -> {
+                command("clear @s");
+                command("setblock 4 -60 2 minecraft:crafting_table");
+            }, 40);
+        for (String mode : new String[] {"book", "clicks"}) {
+            step("craft: give " + mode, () -> {
+                command("clear @s");
+                command("give @s minecraft:oak_planks 16");
+                if (mode.equals("clicks")) command("recipe take @s minecraft:chest");
+                else command("recipe give @s minecraft:chest");
+            }, 15);
+            step("craft: open " + mode, () -> use(new BlockPos(4, -60, 2), Direction.UP, new Vec3(4.5, -59, 2.5)), 25);
+            step("craft: run " + mode, () -> {
+                try {
+                    Class<?> qc = Class.forName("works.repka.ryscope.ui.QuickCraft");
+                    java.lang.reflect.Method run = qc.getDeclaredMethod("run", net.minecraft.client.gui.screens.Screen.class, works.repka.ryscope.model.Stack.class, boolean.class);
+                    run.setAccessible(true);
+                    RYScope.LOG.info("[craft] {}: экран {}, обработан {}", mode, mc().screen == null ? null : mc().screen.getClass().getSimpleName(),
+                        run.invoke(null, mc().screen, new ItemRes(new ItemStack(Items.CHEST)), false));
+                } catch (ReflectiveOperationException e) {
+                    RYScope.LOG.error("[craft]", e);
+                }
+            }, 20);
+            step("craft: result " + mode, () -> {
+                var menu = mc().player.containerMenu;
+                List<String> grid = new ArrayList<>();
+                for (int i = 0; i <= 9 && i < menu.slots.size(); i++) grid.add(menu.getSlot(i).getItem().getCount() + "×" + menu.getSlot(i).getItem().getItem());
+                RYScope.LOG.info("[craft] {}: клиент, результат и сетка {}", mode, grid);
+                var server = mc().getSingleplayerServer();
+                var uuid = mc().player.getUUID();
+                server.execute(() -> {
+                    var sp = server.getPlayerList().getPlayer(uuid);
+                    List<String> sg = new ArrayList<>();
+                    for (int i = 0; i <= 9 && i < sp.containerMenu.slots.size(); i++) sg.add(sp.containerMenu.getSlot(i).getItem().getCount() + "×" + sp.containerMenu.getSlot(i).getItem().getItem());
+                    RYScope.LOG.info("[craft] {}: сервер, результат и сетка {}", mode, sg);
+                });
+            }, 10);
+            shot("craft_" + mode);
+            step("craft: close " + mode, () -> mc().player.closeContainer(), 10);
+        }
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    private static long auditStart, liveBefore, liveStart;
     private static int nextCombinedBefore;
 
     /** Находки аудита: поиск, скрытие предмета, стрелка печи, быстрый крафт, новые окна. */
@@ -2110,7 +2160,22 @@ final class AutoTest {
                 mc().player.getInventory().countItem(Items.RED_SAND));
             quickMoveAll(Items.RED_SAND);
         }, 20);
-        step("subst: close terminal", () -> mc().player.closeContainer(), 10);
+        // скорость отметок: сколько проходит от изменения сети до того, как его видит RYScope
+        step("live: give", () -> command("give @s minecraft:cobblestone 7"), 10);
+        step("live: start", () -> {
+            works.repka.ryscope.runtime.Ae2Terminal.setActive(mc().player.containerMenu);
+            liveBefore = works.repka.ryscope.runtime.Ae2Terminal.amounts().getOrDefault(Items.COBBLESTONE, 0L);
+            liveStart = System.currentTimeMillis();
+            quickMoveAll(Items.COBBLESTONE);
+        }, 0);
+        step("live: seen", () -> works.repka.ryscope.runtime.Ae2Terminal.amounts().getOrDefault(Items.COBBLESTONE, 0L) != liveBefore
+            || System.currentTimeMillis() - liveStart > 5000, () -> RYScope.LOG.info("[live] булыжник в сети виден через {} мс: было {}, стало {}, версия сети {}",
+            System.currentTimeMillis() - liveStart, liveBefore, works.repka.ryscope.runtime.Ae2Terminal.amounts().getOrDefault(Items.COBBLESTONE, 0L),
+            works.repka.ryscope.runtime.Ae2Terminal.networkVersion()), 2);
+        step("subst: close terminal", () -> {
+            works.repka.ryscope.runtime.Ae2Terminal.setActive(null);
+            mc().player.closeContainer();
+        }, 10);
         step("subst: plan", () -> {
             var server = mc().getSingleplayerServer();
             server.execute(() -> {
