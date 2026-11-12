@@ -134,6 +134,10 @@ public final class RecipeScreen extends ScaledScreen {
     private int pageScroll, recipeTop, recipeBottom = Integer.MAX_VALUE, pageContent;
     @Nullable
     private String pendingTip;
+    /** «+N» у станций категории и плашка со всеми станциями: x, y, w, h; w = 0, если «+N» нет. */
+    private final int[] stationsChip = new int[4], stationsPopup = new int[4];
+    private boolean stationsOpen;
+    private final List<StationSpot> popupSpots = new ArrayList<>();
 
     private RecipeScreen(@Nullable Screen parent, Nav nav) {
         super(Component.translatable("ryscope.recipes.title"));
@@ -195,7 +199,17 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     public static boolean openCategory(Category category) {
-        List<Group> groups = Lookup.category(category);
+        return openGroups(Lookup.category(category));
+    }
+
+    /**
+     * Несколько категорий одной карточкой, вкладками на рейке: так моды просят показать рецепты машины
+     * (печь отдаёт «Плавку» и «Топливо»), а клик по стрелке в окне открывает все её категории.
+     */
+    public static boolean openGroups(List<Group> all) {
+        List<Group> groups = new ArrayList<>();
+        java.util.Set<Category> seen = new java.util.HashSet<>();
+        for (Group g : all) if (!g.recipes().isEmpty() && seen.add(g.category())) groups.add(g);
         if (groups.isEmpty()) return false;
         Map<Section, List<Group>> sections = new EnumMap<>(Section.class);
         for (Section s : Section.values()) sections.put(s, s == Section.RECIPES ? groups : List.of());
@@ -395,6 +409,7 @@ public final class RecipeScreen extends ScaledScreen {
         renderCategoryRow(g, t, mx, my, y);
         y += ROW_H;
         renderRecipes(g, t, mx, my, partialTick, y);
+        renderStationsPopup(g, t, mx, my);
         Overlay.renderTop(this, g, mx, my, partialTick);
         renderTooltips(g, t, mx, my, hoveredCategory);
     }
@@ -596,16 +611,71 @@ public final class RecipeScreen extends ScaledScreen {
         hits.add(nextX - 2, y - 2, 10, 11, b -> setPage(nav.page + 1));
         float titleRoom = prevX - 4 - pageW - 6 - textX;
         String title = Draw.ellipsize(group.category().title.getString(), titleRoom, 12.5f, Weight.REGULAR);
-        Draw.label(g, title, textX, cy, 12.5f, Weight.REGULAR, t.c("text.primary"));
-        // остальные станции, на которых делается то же самое
-        float stx = textX + Draw.labelWidth(title, 12.5f, Weight.REGULAR) + 5;
-        for (int i = 1; i < group.category().stations.size() && stations.size() < 6; i++) {
-            if (stx + 8 > prevX - 4 - pageW - 5) break;
-            Stack station = group.category().stations.get(i);
+        // заголовок открывает все рецепты категории, как в JEI
+        float titleW = Draw.labelWidth(title, 12.5f, Weight.REGULAR);
+        boolean titleHot = over(mx, my, (int) textX, y - 2, (int) Math.ceil(titleW), 11);
+        Draw.label(g, title, textX, cy, 12.5f, Weight.REGULAR, titleHot ? t.c("accent") : t.c("text.primary"));
+        Category shownCategory = group.category();
+        hits.add((int) textX, y - 2, (int) Math.ceil(titleW), 11, b -> {
+            if (b == 0) openCategory(shownCategory);
+        });
+        if (titleHot) pendingTip = tr("ryscope.recipes.category_all");
+        // остальные станции, на которых делается то же самое; что не влезло, собрано в «+N»
+        float stx = textX + titleW + 5;
+        List<Stack> all = group.category().stations;
+        float limit = prevX - 4 - pageW - 5;
+        int rest = all.size() - 1, fit = rest;
+        if (rest > 5 || stx + rest * 10 - 2 > limit) {
+            float chipW = Draw.labelWidth("+" + rest, 11.5f, Weight.REGULAR) + 3;
+            fit = Math.max(0, Math.min(5, (int) ((limit - stx - chipW) / 10)));
+        }
+        for (int i = 1; i <= fit; i++) {
+            Stack station = all.get(i);
             renderScaled(g, station, stx, y, 0.4375f);
             stations.add(new StationSpot(station, (int) stx, y, 8));
             stx += 10;
         }
+        stationsChip[2] = 0;
+        if (fit < rest) {
+            String more = "+" + (rest - fit);
+            float moreW = Draw.labelWidth(more, 11.5f, Weight.REGULAR);
+            if (stx + moreW <= limit + 5) {
+                stationsChip[0] = (int) stx - 1;
+                stationsChip[1] = y - 2;
+                stationsChip[2] = (int) Math.ceil(moreW) + 2;
+                stationsChip[3] = 11;
+                boolean hot = stationsOpen || over(mx, my, stationsChip[0], stationsChip[1], stationsChip[2], stationsChip[3]);
+                Draw.label(g, more, stx, cy, 11.5f, Weight.REGULAR, hot ? t.c("accent") : t.c("text.muted"));
+            }
+        }
+    }
+
+    /** Все станции категории значками в полный размер: по наведению на «+N», пока курсор над ним или над плашкой. */
+    private void renderStationsPopup(GuiGraphics g, Theme t, int mx, int my) {
+        popupSpots.clear();
+        boolean overChip = stationsChip[2] > 0 && over(mx, my, stationsChip[0], stationsChip[1], stationsChip[2], stationsChip[3]);
+        boolean overPopup = stationsOpen && over(mx, my, stationsPopup[0], stationsPopup[1], stationsPopup[2], stationsPopup[3]);
+        stationsOpen = overChip || overPopup;
+        if (!stationsOpen) return;
+        List<Stack> all = group().category().stations;
+        int cell = 18, cols = Math.min(8, all.size()), rows = (all.size() + cols - 1) / cols;
+        int w = cols * cell + 8, h = rows * cell + 8;
+        int x = Math.max(cardX + 4, Math.min(stationsChip[0], cardX + cardW - 4 - w));
+        int y = stationsChip[1] + stationsChip[3] + 1;
+        stationsPopup[0] = x;
+        stationsPopup[1] = y - 2;
+        stationsPopup[2] = w;
+        stationsPopup[3] = h + 2;
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 350);
+        Draw.roundBox(g, x, y, w, h, 5f, t.c("panel.bg"), t.c("panel.border"));
+        for (int i = 0; i < all.size(); i++) {
+            int sx = x + 4 + (i % cols) * cell, sy = y + 4 + (i / cols) * cell;
+            t.slot(g, sx, sy, cell, over(mx, my, sx, sy, cell, cell));
+            all.get(i).render(g, sx + 1, sy + 1);
+            popupSpots.add(new StationSpot(all.get(i), sx, sy, cell));
+        }
+        g.pose().popPose();
     }
 
     // --- рецепты ---
@@ -915,7 +985,7 @@ public final class RecipeScreen extends ScaledScreen {
         g.pose().translate(0, 0, 300);
         Stack hovered = recipeStackAt(mx, my);
         boolean byRecipe = false;
-        if (hovered != null && !Lens.held()) {
+        if (hovered != null && !Lens.held() && popupStackAt(mx, my) == null) {
             for (Placed p : placed) {
                 if (over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height())) {
                     try {
@@ -980,7 +1050,15 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     @Nullable
+    private Stack popupStackAt(double mx, double my) {
+        for (StationSpot s : popupSpots) if (over(mx, my, s.x, s.y, s.size, s.size)) return s.stack;
+        return null;
+    }
+
+    @Nullable
     private Stack recipeStackAt(int mx, int my) {
+        Stack popup = popupStackAt(mx, my);
+        if (popup != null) return popup;
         for (Placed p : placed) {
             if (!inRecipes(my)) break;
             if (!over(mx, my, p.x - 4, p.y - 4, p.recipe.width() + 8, p.recipe.height() + 8)) continue;
@@ -1070,6 +1148,12 @@ public final class RecipeScreen extends ScaledScreen {
     @Override
     protected boolean onClick(double mx, double my, int button) {
         if (Overlay.mouseClicked(this, mx, my, button)) return true;
+        if (stationsOpen && over(mx, my, stationsPopup[0], stationsPopup[1], stationsPopup[2], stationsPopup[3])) {
+            Stack station = popupStackAt(mx, my);
+            if (station != null && button == 2) toggleMark(station);
+            else if (station != null) open(station, button == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
+            return true;
+        }
         if (hits.click(mx, my, button)) return true;
         if (Overlay.cardCollapsed()) return true;
         for (Placed p : placed) {
@@ -1078,8 +1162,7 @@ public final class RecipeScreen extends ScaledScreen {
         Stack stack = recipeStackAt((int) mx, (int) my);
         if (stack != null) {
             if (button == 2) {
-                boolean added = Bookmarks.toggle(stack);
-                Overlay.toast(tr(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed"));
+                toggleMark(stack);
             } else {
                 open(stack, button == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
             }
@@ -1093,6 +1176,11 @@ public final class RecipeScreen extends ScaledScreen {
         }
         if (!over(mx, my, cardX, cardY, cardW, cardH) && !Overlay.isOver(mx, my) && button == 0) onClose();
         return true;
+    }
+
+    private static void toggleMark(Stack stack) {
+        boolean added = Bookmarks.toggle(stack);
+        Overlay.toast(tr(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed"));
     }
 
     private void doTransfer(AbstractContainerScreen<?> acs, RecipeView recipe, boolean max) {

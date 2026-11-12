@@ -152,14 +152,20 @@ public final class RyscopeClient {
         panelsDrawn = false;
         if (container(screen)) {
             Overlay.renderContainerMarks(screen, g);
-            UiScale.render(g, scaled -> Overlay.renderTop(screen, scaled, uiMouseX(), uiMouseY(), partialTick));
+            UiScale.render(g, scaled -> {
+                Overlay.renderTop(screen, scaled, uiMouseX(), uiMouseY(), partialTick);
+                works.repka.ryscope.ui.ClickAreas.renderTooltip(screen, scaled, uiMouseX(), uiMouseY());
+            });
         } else if (foreign(screen)) {
             UiScale.render(g, scaled -> Overlay.renderForeign(screen, scaled, uiMouseX(), uiMouseY()));
         }
     }
 
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
-        return container(screen) && Overlay.mouseClicked(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button);
+        if (!container(screen)) return false;
+        if (Overlay.mouseClicked(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button)) return true;
+        // стрелка печи или машины открывает её рецепты, как в JEI
+        return works.repka.ryscope.ui.ClickAreas.click(screen, mx, my, button);
     }
 
     public static boolean mouseReleased(Screen screen, double mx, double my, int button) {

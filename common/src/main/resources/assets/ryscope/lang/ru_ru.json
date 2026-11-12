@@ -307,5 +307,7 @@
   "ryscope.settings.reports.note": "Конфликты рецептов, дубли и предметы, которые нельзя получить известным моду способом",
   "ryscope.ore.above_bottom": "дно+%s",
   "ryscope.ore.below_top": "верх−%s",
-  "ryscope.stage.blocked": "Рецепт закрыт стадией «%s»"
+  "ryscope.stage.blocked": "Рецепт закрыт стадией «%s»",
+  "ryscope.click_area.show": "Показать рецепты",
+  "ryscope.recipes.category_all": "Все рецепты категории"
 }

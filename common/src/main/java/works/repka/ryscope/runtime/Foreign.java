@@ -77,6 +77,23 @@ public final class Foreign {
         default java.util.Set<net.minecraft.resources.ResourceLocation> hiddenRecipeIds() {
             return java.util.Set.of();
         }
+
+        /**
+         * Нажимаемое место окна под курсором, которое моды объявили для JEI: стрелка печи, верстака, машины.
+         * Координаты в единицах GUI игры. @return null, если курсор не над таким местом
+         */
+        @Nullable
+        default ClickArea clickArea(Screen screen, double x, double y) {
+            return null;
+        }
+    }
+
+    /** Нажимаемое место чужого окна: по клику открываются рецепты его категорий. */
+    public interface ClickArea {
+        /** Подсказка при наведении; пустая, если мод её выключил. */
+        List<net.minecraft.network.chat.Component> tooltip();
+
+        void click();
     }
 
     private static volatile Source source;

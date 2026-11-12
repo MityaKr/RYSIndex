@@ -150,16 +150,23 @@ public final class RyscopeJeiPlugin implements IModPlugin {
         public void showTypes(List<RecipeType<?>> types) {
             JeiBridge b = bridge;
             if (b == null) return;
+            // все категории одной карточкой, как вкладки в окне JEI: печь просит и «Плавку», и «Топливо»
+            List<Lookup.Group> groups = new ArrayList<>();
             for (RecipeType<?> type : types) {
                 Category own = Indexer.snapshot().category(type.getUid());
                 Category category = own != null ? own : b.categoryByUid(type.getUid());
-                if (category != null && RecipeScreen.openCategory(category)) return;
+                if (category != null) groups.addAll(Lookup.category(category));
             }
+            RecipeScreen.openGroups(groups);
         }
 
         @Override
         public <T> void showRecipes(IRecipeCategory<T> category, List<T> recipes, List<IFocus<?>> focuses) {
-            showTypes(List.of(category.getRecipeType()));
+            JeiBridge b = bridge;
+            if (b == null) return;
+            // только переданные рецепты (Jade, справочники): игрок просил один рецепт, а не всю категорию
+            Lookup.Group group = recipes.isEmpty() ? null : b.groupOf(category, recipes, focuses);
+            if (group == null || !RecipeScreen.openGroups(List.of(group))) showTypes(List.of(category.getRecipeType()));
         }
 
         @Override

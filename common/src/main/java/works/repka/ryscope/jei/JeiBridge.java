@@ -64,6 +64,23 @@ public final class JeiBridge implements Foreign.Source {
         } catch (Throwable t) {
             RYScope.LOG.debug("Подписка на видимость ингредиентов JEI недоступна: {}", t.toString());
         }
+        try {
+            // моды убирают и добавляют ингредиенты во время игры (KubeJS, almostunified): об этом JEI сообщает
+            // только этим слушателям, без них в списке оставались дубликаты руд и не появлялись новые предметы
+            runtime.getIngredientManager().registerIngredientListener(new IIngredientManager.IIngredientListener() {
+                @Override
+                public <V> void onIngredientsAdded(mezz.jei.api.ingredients.IIngredientHelper<V> helper, java.util.Collection<ITypedIngredient<V>> ingredients) {
+                    Indexer.request("JEI добавил ингредиенты");
+                }
+
+                @Override
+                public <V> void onIngredientsRemoved(mezz.jei.api.ingredients.IIngredientHelper<V> helper, java.util.Collection<ITypedIngredient<V>> ingredients) {
+                    Indexer.request("JEI убрал ингредиенты");
+                }
+            });
+        } catch (Throwable t) {
+            RYScope.LOG.debug("Подписка на список ингредиентов JEI недоступна: {}", t.toString());
+        }
     }
 
     /** Сам JEI: нужен сверке и замерам в автотесте. */
@@ -409,6 +426,43 @@ public final class JeiBridge implements Foreign.Source {
         return views.isEmpty() ? List.of() : List.of(new Lookup.Group(jc, views));
     }
 
+    /**
+     * Только эти рецепты категории (мод через showRecipes просит показать один рецепт). Рецепт, который у нас
+     * показан своей раскладкой, берётся нашим, остальные оборачиваются как обычно. @return null, если показать нечего
+     */
+    @Nullable
+    public <T> Lookup.Group groupOf(IRecipeCategory<T> c, List<T> recipes, List<IFocus<?>> focuses) {
+        Snapshot snap = Indexer.snapshot();
+        ResourceLocation uid = c.getRecipeType().getUid();
+        IFocusGroup group = runtime.getJeiHelpers().getFocusFactory().createFocusGroup(focuses);
+        Category own = snap.category(uid);
+        java.util.Set<ResourceLocation> ownIds = own == null ? java.util.Set.of() : nativeIds(snap, uid);
+        List<RecipeView> views = new ArrayList<>();
+        for (T recipe : recipes) {
+            ResourceLocation id;
+            try {
+                id = c.getRegistryName(recipe);
+            } catch (Throwable t) {
+                id = null;
+            }
+            RecipeView mine = null;
+            if (id != null && ownIds.contains(id)) {
+                for (RecipeView r : snap.recipes(own)) {
+                    if (id.equals(r.id())) {
+                        mine = r;
+                        break;
+                    }
+                }
+            }
+            if (mine == null) {
+                RecipeView structure = StructureRecipeView.of(recipe);
+                mine = structure != null ? structure : new JeiRecipeView<>(this, c, recipe, group);
+            }
+            views.add(mine);
+        }
+        return views.isEmpty() ? null : new Lookup.Group(own != null ? own : category(c), views);
+    }
+
     @Nullable
     public Category categoryByUid(ResourceLocation uid) {
         JeiCategory cached = categories.get(uid);
@@ -460,6 +514,31 @@ public final class JeiBridge implements Foreign.Source {
             if (r != null) out.add(new int[] {r.getX(), r.getY(), r.getWidth(), r.getHeight()});
         });
         return out;
+    }
+
+    /** Как в JEI: курсор переводится в координаты окна, область берётся у обработчиков модов и самого JEI. */
+    @Override
+    public Foreign.ClickArea clickArea(Screen screen, double x, double y) {
+        if (!(screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> acs)) return null;
+        var screens = runtime.getScreenHelper();
+        var props = screens.getGuiProperties(screen).orElse(null);
+        if (props == null) return null;
+        mezz.jei.api.gui.handlers.IGuiClickableArea area = screens.getGuiClickableArea(acs, x - props.guiLeft(), y - props.guiTop())
+            .findFirst().orElse(null);
+        if (area == null) return null;
+        return new Foreign.ClickArea() {
+            @Override
+            public List<net.minecraft.network.chat.Component> tooltip() {
+                if (!area.isTooltipEnabled()) return List.of();
+                List<net.minecraft.network.chat.Component> lines = TooltipLines.collect(area::getTooltip);
+                return lines.isEmpty() ? List.of(net.minecraft.network.chat.Component.translatable("ryscope.click_area.show")) : lines;
+            }
+
+            @Override
+            public void click() {
+                area.onClick(runtime.getJeiHelpers().getFocusFactory(), runtime.getRecipesGui());
+            }
+        };
     }
 
     @Override
