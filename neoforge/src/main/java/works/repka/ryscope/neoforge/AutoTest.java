@@ -306,6 +306,10 @@ final class AutoTest {
             buildPerf();
             return;
         }
+        if ("next".equals(System.getProperty("ryscope.autotest"))) {
+            buildNext();
+            return;
+        }
         if ("audit".equals(System.getProperty("ryscope.autotest"))) {
             buildAudit();
             return;
@@ -1464,6 +1468,76 @@ final class AutoTest {
         step("quit", () -> mc().stop(), 0);
     }
 
+    /** Пункт 5: общая сумма по целям, станции, кеш руд. */
+    private static void buildNext() {
+        step("next: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
+            && works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY
+            && works.repka.ryscope.runtime.Indexer.snapshot().stacks.size() > 5000, () -> {
+                command("clear @s");
+                command("gamemode survival @s");
+            }, 40);
+        ItemRes pick = new ItemRes(new ItemStack(Items.WOODEN_PICKAXE)), shovel = new ItemRes(new ItemStack(Items.WOODEN_SHOVEL));
+        step("next: goals", () -> {
+            works.repka.ryscope.runtime.Board.set(pick, 1, null);
+            works.repka.ryscope.runtime.Board.set(shovel, 1, null);
+            works.repka.ryscope.runtime.Config.get().stickerMode = "sum";
+        }, 10);
+        step("next: combined", () -> works.repka.ryscope.runtime.Board.combined() != null || stuck > 2000, () -> {
+            var all = works.repka.ryscope.runtime.Board.combined();
+            long sum = 0, separate = 0;
+            if (all != null) for (var r : all.raw.values()) sum += r.need;
+            for (var g : works.repka.ryscope.runtime.Board.goals()) {
+                var t = g.tree();
+                if (t != null) for (var r : t.raw.values()) separate += r.need;
+            }
+            RYScope.LOG.info("[next] сырьё суммой {}, по целям отдельно {}, целей {}, неполный {}", sum, separate,
+                all == null ? -1 : all.goalCount(), all != null && all.incomplete);
+            if (all != null) {
+                List<String> raw = new ArrayList<>();
+                for (var r : all.raw.values()) raw.add(r.stack.id() + " x" + r.need);
+                RYScope.LOG.info("[next] сырьё суммы: {}", raw);
+            }
+        }, 5);
+        step("next: sticks", () -> command("give @s minecraft:stick 2"), 40);
+        step("next: sticks counted", () -> {
+            var all = works.repka.ryscope.runtime.Board.combined();
+            var leaf = all == null ? null : all.leaves.get(Items.STICK);
+            RYScope.LOG.info("[next] палки в итоге суммы: из инвентаря {}", leaf == null ? "нет строки" : leaf.inventory);
+        }, 2);
+        step("next: all goals screen", works.repka.ryscope.ui.TreeScreen::openAll, 40);
+        step("next: all goals state", () -> RYScope.LOG.info("[next] экран «Все цели»: {}",
+            mc().screen instanceof works.repka.ryscope.ui.TreeScreen ts && ts.showsAll()), 2);
+        shot("next_all_goals");
+        step("next: stations", () -> {
+            mc().setScreen(null);
+            var tree = new works.repka.ryscope.runtime.CraftTree(new ItemRes(new ItemStack(Items.DISPENSER)), false);
+            List<String> cats = new ArrayList<>();
+            java.util.ArrayDeque<works.repka.ryscope.runtime.CraftTree.Node> queue = new java.util.ArrayDeque<>(List.of(tree.root));
+            while (!queue.isEmpty()) {
+                var n = queue.poll();
+                var o = n.chosen();
+                if (o != null) cats.add(n.stack.id().getPath() + "→" + o.category.id + (n.stationMissing ? "(нет станции)" : ""));
+                queue.addAll(n.children);
+            }
+            List<String> missing = new ArrayList<>();
+            for (var c : tree.missingStations) missing.add(c.id.toString());
+            RYScope.LOG.info("[next] раздатчик: шагов {}, выбор {}, нужны станции {}", tree.steps, cats, missing);
+        }, 5);
+        step("next: ores cache", () -> {
+            java.io.File f = new java.io.File(mc().gameDirectory, "config/ryscope/ores-cache.json");
+            RYScope.LOG.info("[next] кеш руд: есть {}, размер {}", f.exists(), f.length());
+        }, 2);
+        step("next: ore card", () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.IRON_ORE)), Lookup.Mode.RECIPES), 40);
+        shot("next_ore_card");
+        step("next: cleanup", () -> {
+            works.repka.ryscope.runtime.Board.remove(pick);
+            works.repka.ryscope.runtime.Board.remove(shovel);
+            works.repka.ryscope.runtime.Config.get().stickerMode = "goals";
+            command("gamemode creative @s");
+        }, 5);
+        step("quit", () -> mc().stop(), 0);
+    }
+
     private static long auditStart;
 
     /** Находки аудита: поиск, скрытие предмета, стрелка печи, быстрый крафт, новые окна. */
@@ -2066,6 +2140,27 @@ final class AutoTest {
                 RYScope.LOG.info("[subst] в сундуке у провайдера: {}", items);
             });
         }, 10);
+        step("next: ae2 craftable", () -> {
+            RYScope.LOG.info("[next] сеть умеет: стекло {}, всего крафтуемых {}, данные на {}",
+                works.repka.ryscope.runtime.Ae2Terminal.craftableKnown(Items.GLASS), works.repka.ryscope.runtime.Storages.craftable().size(),
+                works.repka.ryscope.runtime.Storages.craftableAt());
+            var cfg = works.repka.ryscope.runtime.Config.get();
+            boolean saved = cfg.treeAutocraft;
+            cfg.treeAutocraft = true;
+            var tree = new works.repka.ryscope.runtime.CraftTree(new ItemRes(new ItemStack(Items.GLASS_PANE, 16)), false);
+            tree.setAmount(16);
+            List<String> ordered = new ArrayList<>();
+            for (var r : tree.ordered.values()) ordered.add(r.stack.id() + " x" + r.need);
+            int withAuto = tree.steps;
+            cfg.treeAutocraft = false;
+            var plain = new works.repka.ryscope.runtime.CraftTree(new ItemRes(new ItemStack(Items.GLASS_PANE, 16)), false);
+            plain.setAmount(16);
+            cfg.treeAutocraft = saved;
+            RYScope.LOG.info("[next] дерево стеклянной панели: с автокрафтом шагов {}, закажет сеть {}; без автокрафта шагов {}, заказов {}",
+                withAuto, ordered, plain.steps, plain.ordered.size());
+        }, 5);
+        step("next: ae2 tree screen", () -> works.repka.ryscope.ui.TreeScreen.open(new ItemRes(new ItemStack(Items.GLASS_PANE))), 60);
+        shot("next_ae2_tree");
         step("cycle: open", () -> {
             parkMouse();
             try {
