@@ -396,7 +396,7 @@ public final class TreeScreen extends ScaledScreen {
             if (Keys.matches(Keys.RECIPES, key, scan)) return RecipeScreen.open(n.stack, Lookup.Mode.RECIPES);
             if (Keys.matches(Keys.USES, key, scan)) return RecipeScreen.open(n.stack, Lookup.Mode.USES);
             if (Keys.matches(Keys.BOOKMARK, key, scan)) {
-                Bookmarks.toggle(n.stack);
+                Overlay.toggleBookmark(n.stack);
                 return true;
             }
             if (key == GLFW.GLFW_KEY_LEFT) {

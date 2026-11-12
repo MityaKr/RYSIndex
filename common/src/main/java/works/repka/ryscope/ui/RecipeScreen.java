@@ -137,6 +137,8 @@ public final class RecipeScreen extends ScaledScreen {
     private int pageScroll, recipeTop, recipeBottom = Integer.MAX_VALUE, pageContent;
     @Nullable
     private String pendingTip;
+    /** Курсор над значком подсказки в шапке: показать клавиши карточки. */
+    private boolean hintHover;
 
     private RecipeScreen(@Nullable Screen parent, Nav nav) {
         super(Component.translatable("ryscope.recipes.title"));
@@ -203,7 +205,9 @@ public final class RecipeScreen extends ScaledScreen {
                 return false;
             }
             if (section == Section.USES || wanted == Section.USES) {
-                Overlay.toast(tr(mode == Lookup.Mode.RECIPES ? "ryscope.recipes.only_uses" : "ryscope.recipes.only_recipes"));
+                Overlay.toast(tr(mode == Lookup.Mode.RECIPES ? "ryscope.recipes.only_uses"
+                    : section == Section.SOURCES ? "ryscope.recipes.only_sources"
+                    : section == Section.HELP ? "ryscope.recipes.only_help" : "ryscope.recipes.only_recipes"));
             }
         }
         remember(focus, section == Section.USES ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
@@ -390,6 +394,7 @@ public final class RecipeScreen extends ScaledScreen {
         Theme t = ThemeManager.get();
         hits.clear();
         pendingTip = null;
+        hintHover = false;
         placed.clear();
         stations.clear();
         historySpots.clear();
@@ -552,8 +557,12 @@ public final class RecipeScreen extends ScaledScreen {
             Icons.draw(g, Icons.Shape.STAR, starX + 3.5f, buttonY + 3.5f, 8f, marked || starHot ? t.c("accent") : t.c("button.fg"));
             hits.add(starX, buttonY, 15, 15, b -> Overlay.toast(tr(Bookmarks.toggle(nav.focus) ? "ryscope.bookmark.added" : "ryscope.bookmark.removed")));
         }
+        // клавиши карточки: значок с подсказкой вместо строки внизу окна
+        int infoX = shown != null ? starX - 14 : starX + 3, infoY = buttonY + 2;
+        hintHover = mx >= infoX - 1 && mx < infoX + 11 && my >= infoY - 1 && my < infoY + 11;
+        Draw.info(g, infoX, infoY, hintHover ? t.c("accent") : t.c("text.dim"));
         float textX = left + 20 + 6;
-        float room = starX - 6 - textX;
+        float room = infoX - 6 - textX;
         String title = shown != null ? shown.name().getString() : group().category().title.getString();
         Draw.label(g, Draw.ellipsize(title, room, 17, Weight.SEMIBOLD), textX, iconY + 5.5f, 17, Weight.SEMIBOLD, t.c("text.primary"));
         String full = subtitle();
@@ -614,7 +623,18 @@ public final class RecipeScreen extends ScaledScreen {
         hits.add(nextX - 2, y - 2, 10, 11, b -> setPage(nav.page + 1));
         float titleRoom = prevX - 4 - pageW - 6 - textX;
         String title = Draw.ellipsize(group.category().title.getString(), titleRoom, 12.5f, Weight.REGULAR);
-        Draw.label(g, title, textX, cy, 12.5f, Weight.REGULAR, t.c("text.primary"));
+        float titleW = Draw.labelWidth(title, 12.5f, Weight.REGULAR);
+        // название категории открывает все её рецепты, как в JEI; в самом просмотре категории не нужно
+        boolean titleLink = nav.focus != null;
+        boolean titleHot = titleLink && over(mx, my, (int) textX, y - 2, (int) Math.ceil(titleW), 11);
+        Draw.label(g, title, textX, cy, 12.5f, Weight.REGULAR, titleHot ? t.c("accent") : t.c("text.primary"));
+        if (titleLink) {
+            Category category = group.category();
+            hits.add((int) textX, y - 2, (int) Math.ceil(titleW), 11, b -> {
+                if (b == 0) openCategory(category);
+            });
+            if (titleHot) pendingTip = tr("ryscope.recipes.all_in_category");
+        }
         // остальные станции, на которых делается то же самое
         float stx = textX + Draw.labelWidth(title, 12.5f, Weight.REGULAR) + 5;
         for (int i = 1; i < group.category().stations.size() && stations.size() < 6; i++) {
@@ -734,9 +754,16 @@ public final class RecipeScreen extends ScaledScreen {
         return r.isCrafting();
     }
 
+    /** Стадия, которая не даёт выполнить рецепт на сервере (блокирующая, enforce), или null. */
+    @Nullable
+    private works.repka.ryscope.runtime.Stages.Stage blockingStage(RecipeView r) {
+        works.repka.ryscope.runtime.Stages.Stage lock = works.repka.ryscope.runtime.Stages.lockOf(r, group().category());
+        return lock != null && lock.enforce ? lock : null;
+    }
+
     /** Перенос можно нажать: окно над станцией, проверка готова и рецепт туда раскладывается. */
     private boolean transferEnabled(RecipeView r) {
-        if (host == null) return false;
+        if (host == null || blockingStage(r) != null) return false;
         Transfer tr = transfers.get(r);
         return tr != null && tr.status() != Transfer.Status.UNSUPPORTED;
     }
@@ -949,6 +976,8 @@ public final class RecipeScreen extends ScaledScreen {
             if (!Lens.held() && !byRecipe) hovered.renderTooltip(g, mx, my);
         } else if (hoveredCategory != null) {
             Kit.tooltip(g, t, List.of(hoveredCategory.title.getString()), mx, my);
+        } else if (hintHover) {
+            Kit.tooltip(g, t, List.of(tr("ryscope.recipes.hint").split(" · ")), mx, my);
         } else if (pendingTip != null) {
             Kit.tooltip(g, t, List.of(pendingTip), mx, my);
         } else {
@@ -975,7 +1004,10 @@ public final class RecipeScreen extends ScaledScreen {
         if (showsTransfer(p.recipe)) {
             Transfer tr = transfers.get(p.recipe);
             boolean overPlus = over(mx, my, x - 9, y - 2, BUTTON + 11, BUTTON + 4);
-            if (overPlus && host == null) {
+            works.repka.ryscope.runtime.Stages.Stage blocking = overPlus ? blockingStage(p.recipe) : null;
+            if (blocking != null) {
+                Kit.tooltip(g, t, List.of(tr("ryscope.stage.blocked", blocking.title().getString())), mx, my);
+            } else if (overPlus && host == null) {
                 Kit.tooltip(g, t, List.of(tr("ryscope.transfer.unsupported")), mx, my);
             } else if (overPlus && tr == null) {
                 Kit.tooltip(g, t, List.of(tr("ryscope.transfer.checking")), mx, my);
@@ -1034,7 +1066,8 @@ public final class RecipeScreen extends ScaledScreen {
                 // чужой рецепт
             }
         }
-        if (transferAge++ % 10 != 0 && !transfers.isEmpty()) return;
+        // раз в 10 тиков; statuses пуст сразу после смены страницы, тогда считаем немедленно
+        if (transferAge++ % 10 != 0 && !statuses.isEmpty()) return;
         for (Placed p : placed) {
             try {
                 statuses.put(p.recipe, statusOf(p.recipe));
@@ -1223,6 +1256,15 @@ public final class RecipeScreen extends ScaledScreen {
         switch (key) {
             case GLFW.GLFW_KEY_LEFT -> setPage(nav.page - 1);
             case GLFW.GLFW_KEY_RIGHT -> setPage(nav.page + 1);
+            // как в JEI: PgUp/PgDn листают рецепты, с Shift переключают категорию
+            case GLFW.GLFW_KEY_PAGE_UP -> {
+                if (hasShiftDown()) setGroup(nav.group - 1);
+                else setPage(nav.page - 1);
+            }
+            case GLFW.GLFW_KEY_PAGE_DOWN -> {
+                if (hasShiftDown()) setGroup(nav.group + 1);
+                else setPage(nav.page + 1);
+            }
             case GLFW.GLFW_KEY_UP -> setGroup(nav.group - 1);
             case GLFW.GLFW_KEY_DOWN, GLFW.GLFW_KEY_TAB -> setGroup(nav.group + (hasShiftDown() ? -1 : 1));
             default -> {

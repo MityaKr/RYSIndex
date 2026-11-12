@@ -1325,7 +1325,15 @@ public final class Overlay {
         if (!carried.isEmpty() && screen instanceof AbstractContainerScreen<?>) {
             // предмет на курсоре: бросок на закладки закрепляет его, на список ничего не делает (и не выбрасывает)
             if (MARKS.contains(mx, my) || (LIST.contains(mx, my) && !MARKS.visible())) {
-                if (Bookmarks.toggle(new ItemRes(carried))) toast(Component.translatable("ryscope.bookmark.added").getString());
+                ItemRes dropped = new ItemRes(carried);
+                if (Bookmarks.contains(dropped)) {
+                    List<Stack> marks = Bookmarks.list();
+                    for (int i = 0; i < marks.size(); i++) if (marks.get(i).same(dropped)) MARKS.reveal(i);
+                    toast(Component.translatable("ryscope.bookmark.already").getString());
+                } else {
+                    Bookmarks.toggle(dropped);
+                    toast(Component.translatable("ryscope.bookmark.added").getString());
+                }
             }
             return true;
         }
@@ -1544,11 +1552,13 @@ public final class Overlay {
             return true;
         }
         if (typingElsewhere(screen)) return false;
-        if (key == GLFW.GLFW_KEY_PAGE_DOWN && LIST.visible()) {
+        // в карточке PgUp/PgDn листают рецепты, список листается ими, только когда курсор над ним
+        boolean listPaging = LIST.visible() && (!(screen instanceof RecipeScreen) || LIST.contains(mouseX(), mouseY()));
+        if (key == GLFW.GLFW_KEY_PAGE_DOWN && listPaging) {
             LIST.pageBy(1);
             return true;
         }
-        if (key == GLFW.GLFW_KEY_PAGE_UP && LIST.visible()) {
+        if (key == GLFW.GLFW_KEY_PAGE_UP && listPaging) {
             LIST.pageBy(-1);
             return true;
         }
@@ -1650,7 +1660,7 @@ public final class Overlay {
         toast(Component.translatable("ryscope.copied", text).getString());
     }
 
-    private static void toggleBookmark(Stack stack) {
+    static void toggleBookmark(Stack stack) {
         boolean added = Bookmarks.toggle(stack);
         toast(Component.translatable(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed").getString());
     }
