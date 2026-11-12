@@ -432,7 +432,7 @@ public final class Overlay {
     private static void renderSidebar(GuiGraphics g, Theme t, int mx, int my, float partialTick, boolean animate) {
         SearchService.updateCraftable();
         SearchService.Results results = SearchService.results();
-        LIST.setItems(filter == FILTER_BOOKMARKS ? Bookmarks.list() : results.stacks);
+        LIST.setItems(filter == FILTER_BOOKMARKS ? shownBookmarks(results) : results.stacks);
         t.sidebar(g, LIST.x, LIST.y, LIST.w, LIST.h);
 
         // поиск
@@ -463,6 +463,7 @@ public final class Overlay {
             works.repka.ryscore.ui.Loading.render(g, t, LIST.gridX, LIST.gridY, LIST.gridW, LIST.gridH, "ryscope.search.loading", SearchService.examined());
         } else {
             LIST.render(g, t, mx, my, animate);
+            if (LIST.items().isEmpty() && Indexer.state() != Indexer.State.BUILDING) renderEmpty(g, t, results);
         }
 
         // подвал: счётчик и страницы
@@ -499,6 +500,51 @@ public final class Overlay {
         }
 
         if (MARKS.visible() && !marksLeft) renderMarks(g, t, mx, my, animate);
+    }
+
+    private static List<Stack> bookmarksShown = List.of();
+    private static SearchService.Results bookmarkKeysFor;
+    private static java.util.Set<Object> bookmarkKeys = java.util.Set.of();
+
+    /** Вкладка «Закладки» при запросе показывает только закладки, которые он нашёл. Список меняется, только если изменился состав. */
+    private static List<Stack> shownBookmarks(SearchService.Results results) {
+        List<Stack> marks = Bookmarks.list();
+        if (results.query.isEmpty()) return marks;
+        if (bookmarkKeysFor != results) {
+            java.util.Set<Object> keys = new java.util.HashSet<>();
+            for (Stack s : results.stacks) keys.add(s.key());
+            bookmarkKeys = keys;
+            bookmarkKeysFor = results;
+        }
+        List<Stack> out = new ArrayList<>();
+        for (Stack s : marks) if (bookmarkKeys.contains(s.key())) out.add(s);
+        boolean same = out.size() == bookmarksShown.size();
+        for (int i = 0; same && i < out.size(); i++) same = out.get(i) == bookmarksShown.get(i);
+        if (!same) bookmarksShown = out;
+        return bookmarksShown;
+    }
+
+    /** Пустой список: что найдено ноль и что можно поправить. */
+    private static void renderEmpty(GuiGraphics g, Theme t, SearchService.Results results) {
+        List<String> hints = new ArrayList<>();
+        if (filter == FILTER_BOOKMARKS && Bookmarks.list().isEmpty()) {
+            hints.add(Component.translatable("ryscope.bookmarks.empty", Keys.label(Keys.BOOKMARK)).getString());
+        } else {
+            if (filter == FILTER_CRAFTABLE) hints.add(Component.translatable("ryscope.list.empty.craftable").getString());
+            int hidden = Config.get().hiddenQueries.size();
+            if (hidden > 0 && !Config.get().showHidden) hints.add(Component.translatable("ryscope.list.empty.hidden", hidden).getString());
+            if (!results.query.isEmpty()) hints.add(Component.translatable("ryscope.list.empty.query").getString());
+        }
+        float y = LIST.gridY + 8;
+        Draw.label(g, Component.translatable("ryscope.list.empty").getString(), LIST.gridX, y, 12, Weight.MEDIUM, t.c("text.muted"));
+        y += 13;
+        for (String hint : hints) {
+            for (String line : Draw.wrapLabel(hint, LIST.gridW, 11, Weight.REGULAR, 3)) {
+                Draw.label(g, line, LIST.gridX, y, 11, Weight.REGULAR, t.c("text.dim"));
+                y += 11;
+            }
+            y += 4;
+        }
     }
 
     private static String plural(String key, int n, String shown) {
@@ -678,7 +724,11 @@ public final class Overlay {
 
     /** Подсказки, линза и уведомления: поверх всего экрана. */
     public static void renderTop(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
-        if (!active(screen)) return;
+        if (!active(screen)) {
+            // панели выключены, но уведомление «Ctrl+O вернёт» должно быть видно
+            renderToast(screen, g);
+            return;
+        }
         Theme theme = ThemeManager.get();
         Stack own = ownStackAt(mx, my);
         if (Lens.held()) {
@@ -1402,6 +1452,8 @@ public final class Overlay {
         if (host && Keys.matches(Keys.TOGGLE, key, scan) && !searchFocused() && !typingElsewhere(screen)) {
             Config.get().overlayEnabled = !Config.get().overlayEnabled;
             Config.save();
+            toast(Config.get().overlayEnabled ? Component.translatable("ryscope.overlay.shown").getString()
+                : Component.translatable("ryscope.overlay.hidden", Keys.label(Keys.TOGGLE)).getString(), 3000);
             // виджет FTB убирается при создании экрана: пересоздаём, чтобы он вернулся или исчез
             if (screen instanceof AbstractContainerScreen<?> && Dock.available()) {
                 screen.resize(Minecraft.getInstance(), screen.width, screen.height);
@@ -1471,6 +1523,12 @@ public final class Overlay {
             else if (key == GLFW.GLFW_KEY_PAGE_UP) LIST.pageBy(-1);
             else box.keyPressed(key, scan, mods);
             // пока поле в фокусе, клавиши не должны доходить до экрана (иначе «E» закроет инвентарь)
+            return true;
+        }
+        if (Keys.matches(Keys.SEARCH, key, scan) && !LIST.visible() && !typingElsewhere(screen)) {
+            // список свёрнут ради карточки: раскрыть его; не поместился: молчащая клавиша выглядела бы поломкой
+            if (sidebarCollapsed) sidebarWanted = true;
+            else toast(Component.translatable("ryscope.list.no_room").getString(), 3000);
             return true;
         }
         if (Keys.matches(Keys.SEARCH, key, scan) && LIST.visible()) {
