@@ -28,6 +28,7 @@ import works.repka.ryscope.platform.Platform;
 import works.repka.ryscope.runtime.Bookmarks;
 import works.repka.ryscope.runtime.Config;
 import works.repka.ryscope.runtime.Foreign;
+import works.repka.ryscope.runtime.Give;
 import works.repka.ryscope.runtime.Indexer;
 import works.repka.ryscope.runtime.Lookup;
 import works.repka.ryscope.runtime.SearchService;
@@ -684,6 +685,8 @@ public final class Overlay {
         if (Lens.held()) {
             Stack target = own != null ? own : hovered(screen, mx, my);
             if (target != null) Lens.renderCard(g, theme, target, mx, my, UiScale.width(), UiScale.height());
+        } else if (own != null && LIST.at(mx, my) != null && cheating() && carriedToDelete(own)) {
+            works.repka.ryscore.ui.Kit.tooltip(g, theme, List.of(Component.translatable("ryscope.cheat.delete").getString()), mx, my);
         } else if (own != null && savedRowAt(mx, my) < 0) {
             g.pose().pushPose();
             g.pose().translate(0, 0, 300);
@@ -696,6 +699,14 @@ public final class Overlay {
         renderHelp(g, theme);
         renderSaved(g, theme, mx, my);
         renderToast(screen, g);
+    }
+
+    /** На курсоре предмет, который клик по этой ячейке списка уберёт. */
+    private static boolean carriedToDelete(Stack under) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null || !(Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>)) return false;
+        ItemStack carried = player.containerMenu.getCarried();
+        return !carried.isEmpty() && !ItemStack.isSameItemSameComponents(under.item(), carried) && Give.serverSupports.getAsBoolean();
     }
 
     /** Перетаскиваемый предмет у курсора и подсветка фильтров, которые его примут. */
@@ -1274,6 +1285,13 @@ public final class Overlay {
             draggingScroll = true;
             return true;
         }
+        if (!carried.isEmpty() && screen instanceof AbstractContainerScreen<?> && cheating() && LIST.at(mx, my) != null) {
+            // режим читов, как в JEI: тот же предмет добавляется на курсор, другой предмет с курсора убирается
+            Stack under = LIST.at(mx, my);
+            if (button == 0 && ItemStack.isSameItemSameComponents(under.item(), carried)) give(under, Screen.hasShiftDown());
+            else if (button == 0) Give.deleteCarried();
+            return true;
+        }
         if (!carried.isEmpty() && screen instanceof AbstractContainerScreen<?>) {
             // предмет на курсоре: бросок на закладки закрепляет его, на список ничего не делает (и не выбрасывает)
             if (MARKS.contains(mx, my) || (LIST.contains(mx, my) && !MARKS.visible())) {
@@ -1312,7 +1330,7 @@ public final class Overlay {
             toggleBookmark(stack);
             return true;
         }
-        if (button == 0 && Config.get().cheatMode && player != null && player.isCreative() && LIST.at(mx, my) != null) {
+        if (button == 0 && cheating() && (LIST.at(mx, my) != null || MARKS.at(mx, my) != null)) {
             give(stack, Screen.hasShiftDown());
             return true;
         }
@@ -1622,19 +1640,22 @@ public final class Overlay {
         search().setValue(text);
     }
 
-    private static void give(Stack stack, boolean full) {
-        Minecraft mc = Minecraft.getInstance();
-        LocalPlayer player = mc.player;
+    /** Режим читов включён и выдавать можно: творческий режим или оператор при RYScope на сервере. */
+    static boolean cheating() {
+        return Config.get().cheatMode && Give.allowed();
+    }
+
+    /** Выдача, как в JEI: на курсор, с Alt в инвентарь; Shift даёт стак. */
+    static void give(Stack stack, boolean full) {
+        give(stack, full, !Screen.hasAltDown());
+    }
+
+    static void give(Stack stack, boolean full, boolean toCursor) {
         ItemStack item = stack.item();
-        if (player == null || mc.gameMode == null || item.isEmpty()) return;
-        ItemStack copy = item.copyWithCount(full ? item.getMaxStackSize() : 1);
-        int free = player.getInventory().getFreeSlot();
-        if (free < 0 || free >= 36) {
-            toast(Component.translatable("ryscope.cheat.full").getString());
-            return;
+        if (item.isEmpty()) return;
+        if (!Give.give(item, full ? item.getMaxStackSize() : 1, toCursor)) {
+            toast(Component.translatable("ryscope.cheat.denied").getString());
         }
-        player.getInventory().setItem(free, copy);
-        mc.gameMode.handleCreativeModeItemAdd(copy, free < 9 ? 36 + free : free);
     }
 
     static double mouseX() {

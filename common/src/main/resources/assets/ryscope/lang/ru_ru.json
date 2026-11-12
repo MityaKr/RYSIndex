@@ -100,8 +100,8 @@
   "ryscope.settings.languages.all": "Все установленные",
   "ryscope.settings.languages.note": "Все языки: первая индексация дольше, поиск работает на любом языке",
   "ryscope.settings.keep_search": "Запоминать текст поиска",
-  "ryscope.settings.cheat": "Выдавать предметы по клику (творческий)",
-  "ryscope.settings.cheat.note": "Только в творческом режиме: клик по предмету в списке кладёт его в инвентарь",
+  "ryscope.settings.cheat": "Выдавать предметы по клику",
+  "ryscope.settings.cheat.note": "В творческом режиме, а оператору и в выживании, если RYScope стоит на сервере. Клик кладёт предмет на курсор, Shift: стак, Alt: в инвентарь; клик предметом с курсора по списку убирает его",
   "ryscope.settings.replace_jei": "Заменять интерфейс JEI",
   "ryscope.settings.replace_jei.note": "Вступает в силу после перезапуска игры",
   "ryscope.settings.footer": "Клавиши настраиваются в Настройки → Управление → RYScope",
@@ -343,5 +343,7 @@
   "ryscope.recipe_default.is": "Рецепт по умолчанию (клик снимает)",
   "ryscope.recipe_default.set": "%s теперь делается этим рецептом",
   "ryscope.recipe_default.cleared": "Рецепт по умолчанию для «%s» снят",
-  "ryscope.craft.none": "Для «%s» нет рецепта, который раскладывается в это окно"
+  "ryscope.craft.none": "Для «%s» нет рецепта, который раскладывается в это окно",
+  "ryscope.cheat.denied": "Выдавать предметы можно в творческом режиме, а оператору и в выживании, если RYScope стоит на сервере",
+  "ryscope.cheat.delete": "Клик: убрать предмет с курсора"
 }

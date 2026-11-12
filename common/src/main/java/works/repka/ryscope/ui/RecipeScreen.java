@@ -1468,6 +1468,9 @@ public final class RecipeScreen extends ScaledScreen {
         if (stack != null) {
             if (button == 2) {
                 toggleMark(stack);
+            } else if (button == 0 && Overlay.cheating() && !stack.item().isEmpty()) {
+                // режим читов, как в JEI: клик по предмету рецепта выдаёт его; курсора над карточкой не видно, поэтому в инвентарь
+                Overlay.give(stack, hasShiftDown(), false);
             } else {
                 open(stack, button == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES);
             }

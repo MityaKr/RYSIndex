@@ -93,6 +93,18 @@ public final class RyscopeNeoForgeClient {
             }
         });
 
+        // выдача в режиме читов идёт через сервер, если там тоже стоит RYScope
+        works.repka.ryscope.runtime.Give.serverSupports = () -> {
+            var connection = Minecraft.getInstance().getConnection();
+            return connection != null && connection.hasChannel(works.repka.ryscope.neoforge.net.GivePayload.TYPE);
+        };
+        works.repka.ryscope.runtime.Give.sender = (stack, mode) -> {
+            var connection = Minecraft.getInstance().getConnection();
+            if (connection == null || !connection.hasChannel(works.repka.ryscope.neoforge.net.GivePayload.TYPE)) return false;
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(new works.repka.ryscope.neoforge.net.GivePayload(stack, mode.ordinal()));
+            return true;
+        };
+
         if (net.neoforged.fml.ModList.get().isLoaded("ae2")) {
             works.repka.ryscope.neoforge.ae2.Ae2ClientHooks.register(bus);
         }
