@@ -62,6 +62,8 @@
   "ryscope.tree.have_part": "есть %s",
   "ryscope.tree.raw": "сырьё",
   "ryscope.tree.no_recipe": "рецепта нет",
+  "ryscope.tree.truncated": "не раскрыто · клик раскроет",
+  "ryscope.tree.truncated.tip": "Есть рецепт: ветка не раскрыта, раскройте её в дереве",
   "ryscope.tree.all_have": "Всё нужное уже есть",
   "ryscope.tree.to_gather": "Осталось добыть",
   "ryscope.tree.pin": "Сырьё в закладки",

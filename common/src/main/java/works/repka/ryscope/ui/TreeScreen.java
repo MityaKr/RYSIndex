@@ -166,7 +166,13 @@ public final class TreeScreen extends ScaledScreen {
         Stack rawHover = renderFooter(g, theme, mx, my);
         g.pose().pushPose();
         g.pose().translate(0, 0, 300);
-        if (rawHover != null) rawHover.renderTooltip(g, mx, my);
+        CraftTree.Raw hoveredRaw = rawHover == null ? null : tree.raw.get(rawHover.key());
+        if (hoveredRaw != null && hoveredRaw.truncated) {
+            // не настоящее сырьё: у предмета есть рецепт, дерево просто не раскрыло ветку
+            List<Component> lines = new ArrayList<>(rawHover.tooltipLines());
+            lines.add(Component.translatable("ryscope.tree.truncated.tip").withStyle(net.minecraft.ChatFormatting.GRAY));
+            g.renderComponentTooltip(Minecraft.getInstance().font, lines, mx, my);
+        } else if (rawHover != null) rawHover.renderTooltip(g, mx, my);
         else if (hovered != null && over(mx, my, px + PAD + hovered.depth * 12 + 9, 0, 18, height)) hovered.stack.renderTooltip(g, mx, my);
         g.pose().popPose();
         Overlay.renderToast(this, g);
@@ -214,6 +220,7 @@ public final class TreeScreen extends ScaledScreen {
         for (int d = 1; d <= n.depth; d++) Draw.round(g, px + PAD + d * 12 - 7, y, 0.5f, ROW, 0.02f, Draw.alpha(t.c("text.dim"), 0.45f));
         hits.add(px + 4, y, pw - 8, ROW, b -> {
             if (!n.children.isEmpty()) n.collapsed = !n.collapsed;
+            else if (n.truncated) tree.expand(n);
         });
         if (!n.children.isEmpty()) {
             int c = t.c("text.muted");
@@ -232,6 +239,9 @@ public final class TreeScreen extends ScaledScreen {
         } else if (n.chosen() == null) {
             state = tr(n.parent == null ? "ryscope.tree.no_recipe" : "ryscope.tree.raw");
             if (!n.sources.isEmpty()) state += " · " + Draw.ellipsize(n.sources, 110f, 12, Weight.REGULAR);
+            stateColor = t.c("state.warn");
+        } else if (n.truncated) {
+            state = tr("ryscope.tree.truncated");
             stateColor = t.c("state.warn");
         } else if (n.fromInventory > 0) {
             state = Component.translatable("ryscope.tree.have_part", n.fromInventory).getString();
@@ -327,6 +337,7 @@ public final class TreeScreen extends ScaledScreen {
                 Kit.tile(g, t, rx, ry, hot);
                 r.stack.render(g, rx + 2, ry + 2);
                 Kit.count(g, r.need >= 1000 ? (r.need / 1000) + "k" : Long.toString(r.need), rx, ry);
+                if (r.truncated) Kit.indicator(g, t, rx + 14.5f, ry + 1f, 4.5f, Kit.State.PARTIAL, -1, -1);
                 if (hot) rawHover = r.stack;
                 Stack stack = r.stack;
                 hits.add(rx, ry, 20, 20, b -> RecipeScreen.open(stack, b == 1 ? Lookup.Mode.USES : Lookup.Mode.RECIPES));

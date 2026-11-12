@@ -52,6 +52,8 @@ public final class CraftTree {
         public boolean collapsed;
         /** Откуда добывается сырьё: названия мобов, блоков или сундуков. */
         public String sources = "";
+        /** Рецепт выбран, но ветка не раскрыта: дерево упёрлось в предел глубины или числа узлов. */
+        public boolean truncated;
 
         Node(Stack stack, Node parent) {
             this.stack = stack;
@@ -159,6 +161,8 @@ public final class CraftTree {
     public static final class Raw {
         public final Stack stack;
         public long need;
+        /** Хотя бы часть пришла из нераскрытой ветки: у предмета есть рецепт, это не настоящее сырьё. */
+        public boolean truncated;
 
         Raw(Stack stack) {
             this.stack = stack;
@@ -173,6 +177,10 @@ public final class CraftTree {
     public int steps;
     public int maxDepth;
     private int nodeCount;
+    /** Предел узлов: растёт, когда игрок раскрывает обрезанную ветку. */
+    private int nodeBudget = MAX_NODES;
+    /** Узлы, раскрытые игроком: глубина под ними считается заново. */
+    private final Set<Node> expanded = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     private Map<Object, Long> pool;
 
     /** Сколько времени за один вызов можно тратить на поиск рецептов, когда дерево строится по частям. */
@@ -280,11 +288,14 @@ public final class CraftTree {
         if (node.options == null) loadOptions(node);
         if (node.choice == -2) node.choice = initialChoice(node);
         Option option = node.chosen();
-        if (option == null || node.depth >= MAX_DEPTH || nodeCount >= MAX_NODES) {
+        boolean cut = option != null && (node.depth - expandedBase(node) >= MAX_DEPTH || nodeCount >= nodeBudget);
+        node.truncated = cut;
+        if (option == null || cut) {
             node.children.clear();
             node.crafts = 0;
             Raw r = raw.computeIfAbsent(key, k -> new Raw(node.stack));
             r.need += remaining;
+            r.truncated |= cut;
             return;
         }
         long perCraft = 1;
@@ -385,6 +396,21 @@ public final class CraftTree {
             recompute();
             return;
         }
+    }
+
+    /** Глубина ближайшего раскрытого игроком узла над этим (или его самого), 0, если такого нет. */
+    private int expandedBase(Node node) {
+        if (expanded.isEmpty()) return 0;
+        for (Node n = node; n != null; n = n.parent) if (expanded.contains(n)) return n.depth;
+        return 0;
+    }
+
+    /** Раскрыть обрезанную ветку: под узлом снова доступна полная глубина и ещё порция узлов. */
+    public void expand(Node node) {
+        if (!node.truncated) return;
+        expanded.add(node);
+        nodeBudget += MAX_NODES / 2;
+        recompute();
     }
 
     /** Из взаимозаменяемых вариантов берём тот, что уже есть у игрока, иначе первый. */

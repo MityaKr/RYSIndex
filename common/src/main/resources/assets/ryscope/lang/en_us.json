@@ -62,6 +62,8 @@
   "ryscope.tree.have_part": "have %s",
   "ryscope.tree.raw": "raw material",
   "ryscope.tree.no_recipe": "no recipe",
+  "ryscope.tree.truncated": "not expanded · click to expand",
+  "ryscope.tree.truncated.tip": "Has a recipe: the branch is not expanded, expand it in the tree",
   "ryscope.tree.all_have": "You have everything you need",
   "ryscope.tree.to_gather": "Still to gather",
   "ryscope.tree.pin": "Bookmark raw",
