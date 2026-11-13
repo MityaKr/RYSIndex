@@ -771,7 +771,10 @@ public final class Overlay {
     }
 
     /** Подсказки, линза и уведомления: поверх всего экрана. */
-    public static void renderTop(Screen screen, GuiGraphics g, int mx, int my, float partialTick) {
+    public static void renderTop(Screen screen, GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        // курсор на уведомлении семьи (оно лежит поверх окна): подсказки предметов под карточкой не всплывают
+        boolean underNotice = works.repka.ryscore.ui.Notices.over(UiScale.toGui(mouseX), UiScale.toGui(mouseY));
+        int mx = underNotice ? Integer.MIN_VALUE / 2 : mouseX, my = underNotice ? Integer.MIN_VALUE / 2 : mouseY;
         if (!active(screen)) {
             // панели выключены, но уведомление «Ctrl+O вернёт» должно быть видно
             renderToast(screen, g);
