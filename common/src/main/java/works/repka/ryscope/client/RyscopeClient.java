@@ -26,7 +26,32 @@ public final class RyscopeClient {
     public static void init() {
         Config.get();
         works.repka.ryscore.team.TeamCards.register(RyscopeClient::goalsCard);
+        dockHost();
         RYScope.LOG.info("{} client ready", RYScope.NAME);
+    }
+
+    /**
+     * RYScope ставит панель кнопок семьи (кор) в верх своей левой колонки и по настройке заменяет ею панель FTB.
+     * Кнопки FTB, которые заменены модами семьи, не показываются; значки кнопок FTB этих модов свои.
+     */
+    private static void dockHost() {
+        works.repka.ryscore.dock.Dock.setHost(new works.repka.ryscore.dock.Dock.Host() {
+            @Override
+            public boolean hosts(Screen screen) {
+                return screen instanceof AbstractContainerScreen<?> && works.repka.ryscope.ui.Overlay.active(screen);
+            }
+
+            @Override
+            public boolean replacesFtb(Screen screen) {
+                return hosts(screen) && Config.get().replaceFtbSidebar;
+            }
+        });
+        if (works.repka.ryscope.platform.Platform.get().isModLoaded("rysquests")) works.repka.ryscore.dock.DockButtons.hideFtb("ftbquests_quests");
+        if (works.repka.ryscope.platform.Platform.get().isModLoaded("rysteams")) works.repka.ryscore.dock.DockButtons.hideFtb("ftbteams_my_team");
+        works.repka.ryscore.dock.DockButtons.styleFtb("rysquests_book",
+            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "textures/gui/dock/rysquests_book.png"), 0xFFE9A83A, 0);
+        works.repka.ryscore.dock.DockButtons.styleFtb("rysteams_team",
+            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "textures/gui/dock/rysteams_team.png"), 0xFF4C8DF5, 1);
     }
 
     /** Карточка на экране команды: что игрок сейчас собирает. */

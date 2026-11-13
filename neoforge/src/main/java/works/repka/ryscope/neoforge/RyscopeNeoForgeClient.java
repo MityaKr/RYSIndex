@@ -74,14 +74,7 @@ public final class RyscopeNeoForgeClient {
             if (RyscopeClient.charTyped(e.getScreen(), e.getCodePoint(), e.getModifiers())) e.setCanceled(true);
         });
         bus.addListener((ScreenEvent.Closing e) -> RyscopeClient.onScreenClosing(e.getScreen()));
-        // самый низкий приоритет: виджет FTB добавляется в этом же событии и должен уже быть на экране
-        bus.addListener(net.neoforged.bus.api.EventPriority.LOWEST, (ScreenEvent.Init.Post e) -> {
-            if (!works.repka.ryscope.ui.Dock.replaces(e.getScreen())) return;
-            for (var listener : java.util.List.copyOf(e.getListenersList())) {
-                if (works.repka.ryscope.ui.Dock.isFtbWidget(listener)) e.removeListener(listener);
-            }
-            works.repka.ryscope.ui.Dock.widgetRemoved();
-        });
+        // виджет FTB убирает кор (works.repka.ryscore.dock.Dock): RYScope хозяин панели семьи, см. RyscopeClient.init
         bus.addListener((ScreenEvent.RenderInventoryMobEffects e) -> {
             if (RyscopeClient.compactEffects(e.getScreen())) e.setCompact(true);
         });
@@ -154,6 +147,7 @@ public final class RyscopeNeoForgeClient {
             event.register(k);
         }
         Keys.matcher = (mapping, keyCode, scanCode) -> mapping.isActiveAndMatches(InputConstants.getKey(keyCode, scanCode));
+        Keys.keyMatcher = KeyMapping::isActiveAndMatches;
     }
 
     private static KeyMapping gui(String name, KeyModifier modifier, int key) {

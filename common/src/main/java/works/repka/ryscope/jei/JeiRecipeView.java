@@ -208,7 +208,7 @@ public final class JeiRecipeView<T> implements RecipeView {
 
         @Override
         public boolean is(net.minecraft.client.KeyMapping mapping) {
-            return mapping.isActiveAndMatches(key);
+            return works.repka.ryscope.client.Keys.keyMatcher.test(mapping, key);
         }
 
         @Override

@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.dock.Dock;
 import works.repka.ryscore.ui.ScaledScreen;
 import works.repka.ryscore.ui.Draw;
 import works.repka.ryscore.ui.Icons;

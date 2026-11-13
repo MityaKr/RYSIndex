@@ -1,5 +1,6 @@
 package works.repka.ryscope.ui;
 
+import works.repka.ryscore.dock.Dock;
 import works.repka.ryscore.ui.Draw;
 import java.util.ArrayList;
 import java.util.List;

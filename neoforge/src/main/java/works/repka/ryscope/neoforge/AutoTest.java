@@ -302,6 +302,10 @@ final class AutoTest {
             buildDock();
             return;
         }
+        if ("corekit".equals(System.getProperty("ryscope.autotest"))) {
+            buildCoreKit();
+            return;
+        }
         if ("perf".equals(System.getProperty("ryscope.autotest"))) {
             buildPerf();
             return;
@@ -2899,7 +2903,7 @@ final class AutoTest {
     // --- сценарий dock: панель кнопок FTB ---
 
     private static boolean ftbWidgetOnScreen() {
-        return mc().screen.children().stream().anyMatch(works.repka.ryscope.ui.Dock::isFtbWidget);
+        return mc().screen.children().stream().anyMatch(works.repka.ryscore.dock.Dock::isFtbWidget);
     }
 
     private static void setOverlay(boolean on) {
@@ -2910,12 +2914,13 @@ final class AutoTest {
     private static void buildDock() {
         step("dock: open", () -> mc().setScreen(new InventoryScreen(mc().player)), 30);
         step("dock: state", () -> RYScope.LOG.info("[dock] панель видна: {}, виджет FTB на экране: {}, кнопки: {}",
-            works.repka.ryscope.ui.Dock.visible(), ftbWidgetOnScreen(), works.repka.ryscope.ui.Dock.keys()), 2);
+            works.repka.ryscore.dock.Dock.visible(), ftbWidgetOnScreen(), works.repka.ryscore.dock.Dock.keys()), 2);
         shot("dock_inventory");
         step("dock: hover", () -> {
-            int[] p = works.repka.ryscope.ui.Dock.center("ftbquests_quests");
+            int[] p = works.repka.ryscore.dock.Dock.center("ftbquests_quests");
             RYScope.LOG.info("[dock] кнопка квестов: {}", p == null ? "НЕТ" : p[0] + ", " + p[1]);
-            if (p != null) moveMouse(p[0], p[1]);
+            // центр в единицах интерфейса, курсор в единицах GUI игры
+            if (p != null) moveMouse(works.repka.ryscore.ui.UiScale.toGui(p[0]), works.repka.ryscore.ui.UiScale.toGui(p[1]));
         }, 8);
         shot("dock_hover");
         step("dock: click quests", () -> click(0), 40);
@@ -2927,7 +2932,7 @@ final class AutoTest {
                 new net.minecraft.world.inventory.CraftingMenu(0, mc().player.getInventory()), mc().player.getInventory(), net.minecraft.network.chat.Component.empty()));
         }, 15);
         step("dock: crafting state", () -> RYScope.LOG.info("[dock] экран верстака: панель видна {}, виджет FTB {}",
-            works.repka.ryscope.ui.Dock.visible(), ftbWidgetOnScreen()), 2);
+            works.repka.ryscore.dock.Dock.visible(), ftbWidgetOnScreen()), 2);
         shot("dock_crafting");
         step("dock: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 15);
         step("dock: overlay off", () -> setOverlay(false), 15);
@@ -2935,8 +2940,119 @@ final class AutoTest {
         shot("dock_overlay_off");
         step("dock: overlay on", () -> setOverlay(true), 15);
         step("dock: on state", () -> RYScope.LOG.info("[dock] наши панели включены: панель видна {}, виджет FTB {}",
-            works.repka.ryscope.ui.Dock.visible(), ftbWidgetOnScreen()), 2);
+            works.repka.ryscore.dock.Dock.visible(), ftbWidgetOnScreen()), 2);
         step("quit", () -> mc().stop(), 0);
+    }
+
+    // --- сценарий corekit: новое в коре 1.9.0 (линии, значки, виджеты, база масштаба, реестр кнопок) ---
+
+    private static void buildCoreKit() {
+        step("corekit: setup", () -> {
+            mc().options.enableVsync().set(false);
+            mc().options.framerateLimit().set(260);
+            mc().getWindow().updateVsync(false);
+            org.lwjgl.glfw.GLFW.glfwSetWindowSize(mc().getWindow().getWindow(), 1280, 800);
+        }, 40);
+        for (String theme : new String[] {"ryscore:slate", "ryscore:glass", "ryscore:vanilla"}) {
+            step("corekit: kit " + theme, () -> {
+                ThemeManager.select(theme);
+                CoreKitBench.mode = CoreKitBench.Mode.KIT;
+                mc().setScreen(new CoreKitBench());
+            }, 30);
+            step("corekit: hover " + theme, () -> moveMouse(works.repka.ryscore.ui.UiScale.toGui(560), works.repka.ryscore.ui.UiScale.toGui(272)), 6);
+            shot("corekit_" + theme.substring(8));
+        }
+        step("corekit: dialog", () -> {
+            ThemeManager.select("ryscore:slate");
+            CoreKitBench.mode = CoreKitBench.Mode.DIALOG;
+            mc().setScreen(new CoreKitBench());
+        }, 30);
+        shot("corekit_dialog");
+        step("corekit: esc", () -> {
+            CoreKitBench.clicked = "";
+            mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE, 0, 0);
+            RYScope.LOG.info("[corekit] Esc в окне-вопросе ответил: {}, экран открыт: {}", CoreKitBench.clicked, mc().screen instanceof CoreKitBench);
+        }, 4);
+        step("corekit: lines", () -> {
+            CoreKitBench.mode = CoreKitBench.Mode.LINES;
+            mc().setScreen(new CoreKitBench());
+        }, 20);
+        step("corekit: lines reset", () -> {
+            CoreKitBench.reset();
+            framesReset();
+        }, 200);
+        step("corekit: lines report", () -> RYScope.LOG.info("[corekit] 3200 наклонных дорог и 4900 узлов: {}; {}", CoreKitBench.report(), framesReport()), 2);
+        shot("corekit_lines");
+        step("corekit: compact window", () -> org.lwjgl.glfw.GLFW.glfwSetWindowSize(mc().getWindow().getWindow(), 1366, 768), 30);
+        step("corekit: compact", () -> {
+            CoreKitBench.mode = CoreKitBench.Mode.COMPACT;
+            mc().setScreen(new CoreKitBench());
+        }, 20);
+        step("corekit: compact report", () -> {
+            CoreKitBench s = (CoreKitBench) mc().screen;
+            RYScope.LOG.info("[corekit] окно {}×{}: сжатая база нужна {}, экран {}×{} ед. при {} px/ед., база экрана {}×{}; вне экрана (HUD) {} px/ед., fit(640,400) {}, fit(480,270) {}",
+                mc().getWindow().getWidth(), mc().getWindow().getHeight(), works.repka.ryscore.ui.UiScale.compactNeeded(), s.width, s.height, s.pixels(),
+                s.baseWidth(), s.baseHeight(), works.repka.ryscore.ui.UiScale.pixels(), works.repka.ryscore.ui.UiScale.fit(640, 400), works.repka.ryscore.ui.UiScale.fit(480, 270));
+        }, 2);
+        shot("corekit_compact");
+        step("corekit: window back", () -> org.lwjgl.glfw.GLFW.glfwSetWindowSize(mc().getWindow().getWindow(), 1280, 800), 30);
+        step("corekit: dock button", () -> works.repka.ryscore.dock.DockButton.builder("ryscope_autotest")
+            .label(net.minecraft.network.chat.Component.literal("Квесты"))
+            .description(() -> net.minecraft.network.chat.Component.literal("Квестов пока нет. Откройте, чтобы собрать книгу"))
+            .tile(0xFFE9A83A).icon(works.repka.ryscore.ui.Icons.Shape.BOOK).key(works.repka.ryscope.client.Keys.LENS).order(0)
+            .action(() -> RYScope.LOG.info("[corekit] нажата кнопка семьи на панели")).register(), 2);
+        step("corekit: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 30);
+        step("corekit: dock state", () -> RYScope.LOG.info("[corekit] панель: видна {}, хозяин {}, заменяет FTB {}, сама {}, кнопки {}",
+            works.repka.ryscore.dock.Dock.visible(), works.repka.ryscore.dock.Dock.hosted(mc().screen), works.repka.ryscore.dock.Dock.replaces(mc().screen),
+            works.repka.ryscore.dock.Dock.standalone(mc().screen), works.repka.ryscore.dock.Dock.keys()), 2);
+        step("corekit: dock hover", () -> {
+            int[] p = works.repka.ryscore.dock.Dock.center("ryscope_autotest");
+            RYScope.LOG.info("[corekit] кнопка семьи: {}", p == null ? "НЕТ" : p[0] + ", " + p[1]);
+            if (p != null) moveMouse(works.repka.ryscore.ui.UiScale.toGui(p[0]), works.repka.ryscore.ui.UiScale.toGui(p[1]));
+        }, 8);
+        shot("corekit_dock_hover");
+        step("corekit: dock click", () -> click(0), 10);
+        step("corekit: overlay off", () -> setOverlay(false), 15);
+        step("corekit: off state", () -> RYScope.LOG.info("[corekit] панели RYScope выключены: панель видна {}, сама {}, FTB показывает свою {}, виджет FTB {}",
+            works.repka.ryscore.dock.Dock.visible(), works.repka.ryscore.dock.Dock.standalone(mc().screen), works.repka.ryscore.dock.Dock.ftbVisible(mc().screen), ftbWidgetOnScreen()), 2);
+        step("corekit: off hover", () -> {
+            int[] p = works.repka.ryscore.dock.Dock.center("ryscope_autotest");
+            if (p != null) moveMouse(works.repka.ryscore.ui.UiScale.toGui(p[0]), works.repka.ryscore.ui.UiScale.toGui(p[1]));
+        }, 8);
+        shot("corekit_dock_overlay_off");
+        // без панели FTB: с выключенными панелями RYScope панель рисует сам кор, с включёнными её ставит RYScope
+        step("corekit: ftb sidebar off", () -> {
+            ftbSidebar(false);
+            mc().setScreen(new InventoryScreen(mc().player));
+        }, 20);
+        step("corekit: standalone state", () -> RYScope.LOG.info("[corekit] без FTB и без панелей RYScope: кор рисует сам {}, панель видна {}, кнопки {}",
+            works.repka.ryscore.dock.Dock.standalone(mc().screen), works.repka.ryscore.dock.Dock.visible(), works.repka.ryscore.dock.Dock.keys()), 2);
+        step("corekit: standalone hover", () -> {
+            int[] p = works.repka.ryscore.dock.Dock.center("ryscope_autotest");
+            RYScope.LOG.info("[corekit] кнопка семьи у инвентаря: {}", p == null ? "НЕТ" : p[0] + ", " + p[1]);
+            if (p != null) moveMouse(works.repka.ryscore.ui.UiScale.toGui(p[0]), works.repka.ryscore.ui.UiScale.toGui(p[1]));
+        }, 8);
+        shot("corekit_dock_standalone");
+        step("corekit: standalone click", () -> click(0), 10);
+        step("corekit: hosted no ftb", () -> setOverlay(true), 20);
+        step("corekit: hosted state", () -> RYScope.LOG.info("[corekit] без FTB, панели RYScope включены: хозяин {}, панель видна {}, кнопки {}",
+            works.repka.ryscore.dock.Dock.hosted(mc().screen), works.repka.ryscore.dock.Dock.visible(), works.repka.ryscore.dock.Dock.keys()), 2);
+        shot("corekit_dock_hosted_noftb");
+        step("corekit: ftb sidebar on", () -> {
+            ftbSidebar(true);
+            mc().setScreen(new InventoryScreen(mc().player));
+        }, 15);
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    /** Включает и выключает панель FTB Library её же настройкой (через отражение: FTB не зависимость). */
+    private static void ftbSidebar(boolean on) {
+        try {
+            Object value = Class.forName("dev.ftb.mods.ftblibrary.config.FTBLibraryClientConfig").getField("SIDEBAR_ENABLED").get(null);
+            value.getClass().getMethod("set", Object.class).invoke(value, on);
+        } catch (Throwable t) {
+            RYScope.LOG.warn("[corekit] настройка панели FTB недоступна: {}", t.toString());
+        }
     }
 
     private static void search(String text) {

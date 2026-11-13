@@ -76,7 +76,7 @@ public final class Lens {
      */
     private static boolean yieldsToAdvancedTooltips() {
         if (Keys.LENS == null || !Minecraft.getInstance().options.advancedItemTooltips) return false;
-        int key = Keys.LENS.getKey().getValue();
+        int key = com.mojang.blaze3d.platform.InputConstants.getKey(Keys.LENS.saveString()).getValue();
         return key == org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_ALT || key == org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_ALT;
     }
 

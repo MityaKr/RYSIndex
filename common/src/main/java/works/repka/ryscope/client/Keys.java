@@ -51,6 +51,10 @@ public final class Keys {
 
     public static Matcher matcher = (mapping, keyCode, scanCode) -> mapping.matches(keyCode, scanCode);
 
+    /** Совпадает ли клавиша или кнопка мыши с привязкой, с учётом контекста: её тоже подставляет модуль загрузчика. */
+    public static java.util.function.BiPredicate<KeyMapping, InputConstants.Key> keyMatcher =
+        (mapping, key) -> !mapping.isUnbound() && InputConstants.getKey(mapping.saveString()).equals(key);
+
     public static boolean matches(KeyMapping mapping, int keyCode, int scanCode) {
         if (mapping == null) return false;
         if (!mapping.isUnbound() && matcher.test(mapping, keyCode, scanCode)) return true;
