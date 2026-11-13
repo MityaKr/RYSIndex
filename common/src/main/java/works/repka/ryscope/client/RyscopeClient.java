@@ -46,10 +46,7 @@ public final class RyscopeClient {
                 return hosts(screen) && Config.get().replaceFtbSidebar;
             }
         });
-        if (works.repka.ryscope.platform.Platform.get().isModLoaded("rysquests")) works.repka.ryscore.dock.DockButtons.hideFtb("ftbquests_quests");
         if (works.repka.ryscope.platform.Platform.get().isModLoaded("rysteams")) works.repka.ryscore.dock.DockButtons.hideFtb("ftbteams_my_team");
-        works.repka.ryscore.dock.DockButtons.styleFtb("rysquests_book",
-            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "textures/gui/dock/rysquests_book.png"), 0xFFE9A83A, 0);
         works.repka.ryscore.dock.DockButtons.styleFtb("rysteams_team",
             net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(RYScope.MOD_ID, "textures/gui/dock/rysteams_team.png"), 0xFF4C8DF5, 1);
     }

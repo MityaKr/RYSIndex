@@ -3061,6 +3061,11 @@ final class AutoTest {
 
     private static void tick() {
         if (index >= STEPS.size()) return;
+        if (total == 0) {
+            // автотесты идут без звука (просьба автора): игра могла записать громкость обратно в options.txt
+            mc().options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(0.0);
+            mc().options.save();
+        }
         if (++total > tickLimit) {
             RYScope.LOG.error("[autotest] превышено время, шаг {}", STEPS.get(index).name);
             index = STEPS.size();
