@@ -132,12 +132,18 @@ public final class Overlay {
     }
 
     public static void toast(String message) {
-        toast(message, 1800);
+        toast(message, 2000);
     }
 
+    /**
+     * Короткое подтверждение («Закладка добавлена»): строка в общих уведомлениях семьи справа вверху, в колонке тостов игры,
+     * поверх любого окна. Новая строка RYScope заменяет прежнюю, а не ждёт очереди.
+     */
     public static void toast(String message, int millis) {
         toast = message;
         toastUntil = System.currentTimeMillis() + millis;
+        works.repka.ryscore.ui.Notice.row(works.repka.ryscore.ui.Notice.SCOPE, "row").icon(works.repka.ryscore.ui.Icons.Shape.CHECK)
+            .title(message).millis(millis).show();
     }
 
     private static EditBox search() {
@@ -851,10 +857,15 @@ public final class Overlay {
     }
 
     private static final float HELP_PX = 11.5f, TOAST_PX = 12f;
+    /** Старая строка внизу экрана выключена: подтверждения идут в общие уведомления (ядро 1.9.2). */
+    private static final boolean LEGACY_TOAST = false;
 
-    /** Короткое уведомление внизу экрана. Работает на любом экране мода. */
+    /**
+     * Прежнее уведомление внизу экрана. Подтверждения теперь строки общих уведомлений семьи ({@link #toast}), их рисует колонка
+     * тостов игры поверх всего; вызовы остаются, чтобы окна мода не менялись.
+     */
     public static void renderToast(Screen screen, GuiGraphics g) {
-        if (toast == null || System.currentTimeMillis() >= toastUntil) return;
+        if (!LEGACY_TOAST || toast == null || System.currentTimeMillis() >= toastUntil) return;
         Theme theme = ThemeManager.get();
         float maxText = Math.max(80, UiScale.width() - 40);
         List<String> lines = Draw.wrapLabel(toast, maxText, TOAST_PX, Weight.REGULAR, 3);
@@ -1242,6 +1253,11 @@ public final class Overlay {
             if (target != null) Lens.renderCard(g, ThemeManager.get(), target, mx, my, UiScale.width(), UiScale.height());
         }
         renderToast(screen, g);
+    }
+
+    /** Для автотеста: поле поиска панели справа (x, y, w, h в единицах интерфейса): по нему видно, сдвинулась ли панель. */
+    public static int[] searchRectForTest() {
+        return searchRect.clone();
     }
 
     /** Для автотеста. */

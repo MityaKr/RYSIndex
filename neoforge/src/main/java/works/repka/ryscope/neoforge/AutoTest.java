@@ -306,6 +306,10 @@ final class AutoTest {
             buildCoreKit();
             return;
         }
+        if ("notices".equals(System.getProperty("ryscope.autotest"))) {
+            buildNotices();
+            return;
+        }
         if ("perf".equals(System.getProperty("ryscope.autotest"))) {
             buildPerf();
             return;
@@ -2945,6 +2949,89 @@ final class AutoTest {
     }
 
     // --- сценарий corekit: новое в коре 1.9.0 (линии, значки, виджеты, база масштаба, реестр кнопок) ---
+
+    /** Снимок без очистки тостов: общие уведомления семьи сами тосты игры. */
+    private static void shotWithToasts(String name) {
+        step("shot:" + name, () -> {
+            String file = String.format("ryscope_%02d_%s.png", shotCounter++, name);
+            Screenshot.grab(mc().gameDirectory, file, mc().getMainRenderTarget(), msg -> {});
+        }, 3);
+    }
+
+    private static int[] noticeBefore;
+    private static boolean noticeClicked;
+
+    /** Три тоста игры, пришедшие разом: «открыт рецепт», FTB Quests и любой другой стоят в одной колонке справа вверху. */
+    private static void gameToasts() {
+        for (String title : new String[] {"Новые рецепты!", "Квест выполнен!", "Достижение получено!"}) {
+            net.minecraft.client.gui.components.toasts.SystemToast.add(mc().getToasts(),
+                net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                net.minecraft.network.chat.Component.literal(title), net.minecraft.network.chat.Component.literal("Медная катушка"));
+        }
+    }
+
+    /**
+     * Уведомления семьи (ядро 1.9.2) поверх окна RYScope и сдвиг содержимого: раньше область тостов, которую JEI отдаёт как
+     * занятую ({@code ToastGuiHandler}), опускала панель справа; теперь тосты лежат поверх, панель стоит на месте.
+     */
+    private static void buildNotices() {
+        step("notices: window", () -> {
+            org.lwjgl.glfw.GLFW.glfwSetWindowSize(mc().getWindow().getWindow(), 1280, 800);
+            mc().options.guiScale().set(2);
+            mc().resizeDisplay();
+            mc().getToasts().clear();
+            moveMouse(1, 1);
+        }, 30);
+        step("notices: inventory", () -> mc().setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc().player)), 30);
+        step("notices: panel without toasts", () -> {
+            noticeBefore = works.repka.ryscope.ui.Overlay.searchRectForTest();
+            RYScope.LOG.info("[autotest] поле поиска без тостов: {}", java.util.Arrays.toString(noticeBefore));
+        }, 2);
+        step("notices: before the fix", () -> {
+            works.repka.ryscope.jei.JeiBridge.KEEP_TOAST_AREA = true;
+            gameToasts();
+        }, 40);
+        step("notices: moved before", () -> {
+            int[] now = works.repka.ryscope.ui.Overlay.searchRectForTest();
+            Foreign.Source foreign = Foreign.get();
+            RYScope.LOG.info("[autotest] до исправления: поле поиска {} (было {}), области JEI {}", java.util.Arrays.toString(now),
+                java.util.Arrays.toString(noticeBefore), foreign == null ? "нет JEI" : foreign.exclusionAreas(mc().screen).stream().map(java.util.Arrays::toString).toList());
+        }, 2);
+        shotWithToasts("notices_shift_before");
+        step("notices: after the fix", () -> {
+            mc().getToasts().clear();
+            works.repka.ryscope.jei.JeiBridge.KEEP_TOAST_AREA = false;
+        }, 10);
+        step("notices: toasts and family notices", () -> {
+            gameToasts();
+            works.repka.ryscore.ui.Notice.card(works.repka.ryscore.ui.Notice.QUESTS, "autotest").item(new ItemStack(Items.COPPER_INGOT)).check()
+                .title("Медная катушка").lines("Награда в книге: 25 опыта и 1 монета").key(() -> "K").action(() -> noticeClicked = true)
+                .millis(30_000).show();
+        }, 40);
+        step("notices: did not move", () -> {
+            int[] now = works.repka.ryscope.ui.Overlay.searchRectForTest();
+            boolean same = java.util.Arrays.equals(now, noticeBefore);
+            RYScope.LOG.info("[autotest] {} после исправления: поле поиска {} (было {})", same ? "OK" : "FAIL", java.util.Arrays.toString(now), java.util.Arrays.toString(noticeBefore));
+        }, 2);
+        shotWithToasts("notices_shift_after");
+        step("notices: a line of RYScope", () -> works.repka.ryscope.ui.Overlay.toast(net.minecraft.network.chat.Component.translatable("ryscope.bookmark.added").getString()), 30);
+        shotWithToasts("notices_scope_row");
+        step("notices: mouse on the card", () -> {
+            int[] b = works.repka.ryscore.ui.Notices.boundsForTest(works.repka.ryscore.ui.Notice.QUESTS, "autotest");
+            RYScope.LOG.info("[autotest] карточка {}", java.util.Arrays.toString(b));
+            if (b != null) moveMouse(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
+        }, 10);
+        shotWithToasts("notices_hover_over_ryscope");
+        step("notices: click the card", () -> click(0), 10);
+        step("notices: clicked", () -> RYScope.LOG.info("[autotest] {} клик по карточке: дело выполнено {}, окно {} осталось",
+            noticeClicked && mc().screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen ? "OK" : "FAIL", noticeClicked,
+            mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName()), 2);
+        step("notices: close", () -> {
+            mc().setScreen(null);
+            mc().getToasts().clear();
+        }, 5);
+        step("quit", () -> mc().stop(), 0);
+    }
 
     private static void buildCoreKit() {
         step("corekit: setup", () -> {

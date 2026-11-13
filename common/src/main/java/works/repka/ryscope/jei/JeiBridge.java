@@ -685,14 +685,26 @@ public final class JeiBridge implements Foreign.Source {
 
     // --- чужие экраны ---
 
+    /**
+     * Области чужих окон, которые панели обходят. Область тостов игры сюда не входит: её добавляет сам JEI
+     * ({@code ToastGuiHandler}, настройка {@code toastReflowEnabled}), и из-за неё панель уезжала вниз, когда приходил тост
+     * («открыт рецепт», уведомление FTB Quests, уведомление семьи). Тосты рисуются поверх окна, содержимое стоит на месте.
+     */
     @Override
     public List<int[]> exclusionAreas(Screen screen) {
         List<int[]> out = new ArrayList<>();
+        int right = screen.width;
         runtime.getScreenHelper().getGuiExclusionAreas(screen).forEach((Rect2i r) -> {
-            if (r != null) out.add(new int[] {r.getX(), r.getY(), r.getWidth(), r.getHeight()});
+            if (r == null) return;
+            // область тостов JEI считает от верхнего правого угла экрана: x = ширина экрана - ширина тоста, y = 0
+            boolean toasts = r.getY() == 0 && r.getX() + r.getWidth() == right;
+            if (KEEP_TOAST_AREA || !toasts) out.add(new int[] {r.getX(), r.getY(), r.getWidth(), r.getHeight()});
         });
         return out;
     }
+
+    /** Для автотеста: оставить область тостов, как было, чтобы снять сдвиг «до». */
+    public static boolean KEEP_TOAST_AREA;
 
     /** Как в JEI: курсор переводится в координаты окна, область берётся у обработчиков модов и самого JEI. */
     @Override
