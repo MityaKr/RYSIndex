@@ -227,4 +227,45 @@ final class AutoTestJei {
         }
         return "категорий " + categories + ", рецептов " + recipes;
     }
+
+    /** Что JEI отдаёт по клавише R на предмете: категории с числом рецептов и их id. Так JEI покажет и в своём окне. */
+    static String byOutput(ItemStack stack) {
+        IJeiRuntime rt = runtime();
+        if (rt == null) return "JEI нет";
+        var focus = rt.getJeiHelpers().getFocusFactory().createFocus(RecipeIngredientRole.OUTPUT, VanillaTypes.ITEM_STACK, stack);
+        return byFocus(rt, List.of(focus));
+    }
+
+    /** То же для ресурса JEI любого типа (пчела Productive Bees). */
+    static String byOutput(Stack stack) {
+        IJeiRuntime rt = runtime();
+        JeiBridge bridge = RyscopeJeiPlugin.bridge();
+        if (rt == null || bridge == null) return "JEI нет";
+        var typed = bridge.toTyped(stack);
+        if (typed.isEmpty()) return "ресурс не известен JEI";
+        return byFocus(rt, List.of(rt.getJeiHelpers().getFocusFactory().createFocus(RecipeIngredientRole.OUTPUT, typed.get())));
+    }
+
+    private static String byFocus(IJeiRuntime rt, List<IFocus<?>> focuses) {
+        IRecipeManager rm = rt.getRecipeManager();
+        StringBuilder sb = new StringBuilder();
+        for (IRecipeCategory<?> c : rm.createRecipeCategoryLookup().limitFocus(focuses).get().toList()) {
+            sb.append(c.getRecipeType().getUid()).append(' ').append(ids(rm, c, focuses)).append("; ");
+        }
+        return sb.isEmpty() ? "ничего" : sb.toString();
+    }
+
+    private static <T> List<String> ids(IRecipeManager rm, IRecipeCategory<T> c, List<IFocus<?>> focuses) {
+        List<String> out = new ArrayList<>();
+        rm.createRecipeLookup(c.getRecipeType()).limitFocus(focuses).get().forEach(r -> {
+            ResourceLocation id;
+            try {
+                id = c.getRegistryName(r);
+            } catch (Throwable t) {
+                id = null;
+            }
+            out.add(id == null ? "?" : id.toString());
+        });
+        return out;
+    }
 }

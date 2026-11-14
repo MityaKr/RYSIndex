@@ -45,8 +45,14 @@ public final class JeiRes<T> extends Stack {
 
     @Override
     public Component name() {
-        return Component.literal(helper.getDisplayName(typed.getIngredient()));
+        String name = helper.getDisplayName(typed.getIngredient());
+        // Productive Bees отдаёт имя настраиваемой пчелы как текст объекта: «translation{key='entity.…', args=[]}»
+        java.util.regex.Matcher m = RAW_TRANSLATION.matcher(name);
+        if (m.find()) return Component.translatable(m.group(1)).append(name.substring(m.end()).replaceFirst("^[^}]*}", ""));
+        return Component.literal(name);
     }
+
+    private static final java.util.regex.Pattern RAW_TRANSLATION = java.util.regex.Pattern.compile("^translation\\{key='([^']+)'");
 
     @Override
     public void render(GuiGraphics g, int x, int y) {

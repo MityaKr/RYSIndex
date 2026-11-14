@@ -270,6 +270,11 @@ public final class JeiBridge implements Foreign.Source {
 
     @Override
     public List<Lookup.Group> find(Stack stack, Lookup.Mode mode, Snapshot snapshot) {
+        return find(stack, mode, snapshot, null);
+    }
+
+    @Override
+    public List<Lookup.Group> find(Stack stack, Lookup.Mode mode, Snapshot snapshot, @Nullable Map<ResourceLocation, java.util.Set<ResourceLocation>> shown) {
         Optional<ITypedIngredient<?>> typed = toTyped(stack);
         if (typed.isEmpty()) return List.of();
         IFocusFactory ff = runtime.getJeiHelpers().getFocusFactory();
@@ -280,10 +285,10 @@ public final class JeiBridge implements Foreign.Source {
             focuses.add(ff.createFocus(RecipeIngredientRole.INPUT, typed.get()));
             focuses.add(ff.createFocus(RecipeIngredientRole.CATALYST, typed.get()));
         }
-        return collect(focuses, snapshot);
+        return collect(focuses, snapshot, shown);
     }
 
-    private List<Lookup.Group> collect(List<IFocus<?>> focuses, Snapshot snapshot) {
+    private List<Lookup.Group> collect(List<IFocus<?>> focuses, Snapshot snapshot, @Nullable Map<ResourceLocation, java.util.Set<ResourceLocation>> shown) {
         IRecipeManager rm = runtime.getRecipeManager();
         IFocusGroup group = runtime.getJeiHelpers().getFocusFactory().createFocusGroup(focuses);
         List<Lookup.Group> out = new ArrayList<>();
@@ -293,7 +298,7 @@ public final class JeiBridge implements Foreign.Source {
         for (IRecipeCategory<?> c : cats) {
             try {
                 if (replaced(c, snapshot)) continue;
-                List<RecipeView> views = views(rm, c, focuses, group, snapshot);
+                List<RecipeView> views = views(rm, c, focuses, group, snapshot, shown);
                 if (views.isEmpty()) continue;
                 // категории, которые есть и у нас, сливаются в одну вкладку
                 Category own = snapshot.category(c.getRecipeType().getUid());
@@ -314,10 +319,22 @@ public final class JeiBridge implements Foreign.Source {
     }
 
     private <T> List<RecipeView> views(IRecipeManager rm, IRecipeCategory<T> c, List<IFocus<?>> focuses, IFocusGroup group, Snapshot snapshot) {
+        return views(rm, c, focuses, group, snapshot, null);
+    }
+
+    /**
+     * @param shown id рецептов, которые наш индекс уже нашёл для этого запроса, по категориям; {@code null} — сверять со
+     *     всеми нашими рецептами категории. Сверка со всеми теряла варианты: рецепт сундука Sophisticated Storage у нас
+     *     один, с выходом без породы дерева, и к сундуку из ели не подходит, а JEI под тем же id отдаёт вариант из ели.
+     */
+    private <T> List<RecipeView> views(IRecipeManager rm, IRecipeCategory<T> c, List<IFocus<?>> focuses, IFocusGroup group, Snapshot snapshot,
+            @Nullable Map<ResourceLocation, java.util.Set<ResourceLocation>> shown) {
         var lookup = rm.createRecipeLookup(c.getRecipeType());
         if (!focuses.isEmpty()) lookup = lookup.limitFocus(focuses);
-        boolean overlaps = snapshot.hasCategory(c.getRecipeType().getUid());
-        java.util.Set<ResourceLocation> ownIds = overlaps ? nativeIds(snapshot, c.getRecipeType().getUid()) : java.util.Set.of();
+        ResourceLocation uid = c.getRecipeType().getUid();
+        boolean overlaps = snapshot.hasCategory(uid);
+        java.util.Set<ResourceLocation> ownIds = !overlaps ? java.util.Set.of()
+            : shown != null ? shown.getOrDefault(uid, java.util.Set.of()) : nativeIds(snapshot, uid);
         List<RecipeView> views = new ArrayList<>();
         lookup.get().forEach(recipe -> {
             if (overlaps) {

@@ -58,8 +58,19 @@ public final class Lookup {
         Foreign.Source foreign = Foreign.get();
         if (foreign != null) {
             try {
+                // источник не повторяет только то, что наш индекс нашёл для этого ресурса (раскладки уступают JEI сами)
+                Map<net.minecraft.resources.ResourceLocation, java.util.Set<net.minecraft.resources.ResourceLocation>> shown = null;
+                if (!legacyForeignDedup) {
+                    shown = new java.util.HashMap<>();
+                    for (Map.Entry<Category, List<RecipeView>> m : matched.entrySet()) {
+                        for (RecipeView r : m.getValue()) {
+                            if (r.id() == null || r instanceof works.repka.ryscope.content.NativeRecipe n && n.fromLayout) continue;
+                            shown.computeIfAbsent(m.getKey().id, k -> new java.util.HashSet<>()).add(r.id());
+                        }
+                    }
+                }
                 // категории с одинаковым id из разных источников показываются одной вкладкой
-                for (Group g : foreign.find(stack, mode, snap)) {
+                for (Group g : foreign.find(stack, mode, snap, shown)) {
                     groups.computeIfAbsent(g.category(), k -> new ArrayList<>()).addAll(g.recipes());
                 }
             } catch (Throwable t) {
@@ -68,7 +79,45 @@ public final class Lookup {
         }
         List<Group> out = preferOriginals(groups);
         out.sort(java.util.Comparator.comparingInt(g -> rank(g.category(), stack, mode, snap)));
+        if (mode == Mode.RECIPES && !(stack instanceof works.repka.ryscope.model.ItemRes)) {
+            // существо из JEI (пчела Productive Bees) получается из яйца призыва: его рецепты показываем следом
+            Stack egg = spawnEggOf(stack, snap);
+            if (egg != null) {
+                java.util.Set<Category> have = new java.util.HashSet<>();
+                for (Group g : out) have.add(g.category());
+                for (Group g : find(egg, Mode.RECIPES)) {
+                    if (have.add(g.category())) out.add(g);
+                }
+            }
+        }
         return out;
+    }
+
+    /** Для сверки в автотесте: старая сверка повторов с источником по всем нашим рецептам категории. */
+    public static volatile boolean legacyForeignDedup;
+
+    /**
+     * Яйцо призыва существа из источника: предмет-яйцо, в данных которого записан этот вид
+     * ({@code entity_data.type}, так яйца Productive Bees хранят вид пчелы), или обычное яйцо этого типа существа.
+     */
+    @org.jetbrains.annotations.Nullable
+    static Stack spawnEggOf(Stack stack, Snapshot snap) {
+        net.minecraft.resources.ResourceLocation id;
+        try {
+            id = stack.id();
+        } catch (Throwable t) {
+            return null;
+        }
+        if (id == null) return null;
+        String want = id.toString();
+        for (Stack s : snap.stacks) {
+            if (!(s instanceof works.repka.ryscope.model.ItemRes item) || !(item.stack.getItem() instanceof net.minecraft.world.item.SpawnEggItem)) continue;
+            net.minecraft.world.item.component.CustomData data = item.stack.get(net.minecraft.core.component.DataComponents.ENTITY_DATA);
+            if (data != null && want.equals(data.getUnsafe().getString("type"))) return s;
+        }
+        var type = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
+        net.minecraft.world.item.SpawnEggItem egg = type == null ? null : net.minecraft.world.item.SpawnEggItem.byId(type);
+        return egg == null ? null : works.repka.ryscope.model.ItemRes.of(new net.minecraft.world.item.ItemStack(egg));
     }
 
     /**

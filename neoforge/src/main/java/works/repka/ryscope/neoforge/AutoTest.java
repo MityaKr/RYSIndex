@@ -294,6 +294,10 @@ final class AutoTest {
             buildLoot();
             return;
         }
+        if ("feedback".equals(System.getProperty("ryscope.autotest"))) {
+            buildFeedback();
+            return;
+        }
         if ("ae2".equals(System.getProperty("ryscope.autotest"))) {
             buildAe2();
             return;
@@ -2901,6 +2905,257 @@ final class AutoTest {
                 RYScope.LOG.info("[loot] {} показываем: {}", id, view == null ? "нет" : view.outputs().stream().map(o -> o.id() + " " + o.chance).toList());
             }
         }, 5);
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    // --- сценарий feedback: замечания игроков сборки RepYS ---
+
+    private static final net.minecraft.resources.ResourceLocation CONFIGURABLE_EGG = net.minecraft.resources.ResourceLocation.parse("productivebees:spawn_egg_configurable_bee");
+    private static works.repka.ryscope.runtime.Snapshot snapBefore;
+    private static Stack chestFromList;
+
+    private static int recipeCount(Stack stack) {
+        int n = 0;
+        for (Lookup.Group g : Lookup.find(stack, Lookup.Mode.RECIPES)) n += g.recipes().size();
+        return n;
+    }
+
+    private static String recipeIds(Stack stack) {
+        StringBuilder sb = new StringBuilder();
+        for (Lookup.Group g : Lookup.find(stack, Lookup.Mode.RECIPES)) {
+            sb.append(g.category().id).append(' ').append(g.recipes().stream().map(r -> String.valueOf(r.id())).toList()).append("; ");
+        }
+        return sb.isEmpty() ? "ничего" : sb.toString();
+    }
+
+    /** Яйцо пчелы из списка (так его берёт игрок): яйцо настраиваемой пчелы с этим видом в данных. */
+    private static Stack beeEgg(String bee) {
+        for (Stack s : Indexer.snapshot().stacks) {
+            if (!(s instanceof ItemRes item) || !s.id().equals(CONFIGURABLE_EGG)) continue;
+            var data = item.stack.get(net.minecraft.core.component.DataComponents.ENTITY_DATA);
+            if (data != null && bee.equals(data.getUnsafe().getString("type"))) return s;
+        }
+        return null;
+    }
+
+    /** Сама пчела: ресурс JEI Productive Bees. */
+    private static Stack bee(String bee) {
+        for (Stack s : Indexer.snapshot().stacks) {
+            if (!(s instanceof ItemRes) && bee.equals(String.valueOf(s.id()))) return s;
+        }
+        return null;
+    }
+
+    private static void logBee(String phase) {
+        Stack egg = beeEgg("productivebees:brass"), bee = bee("productivebees:brass");
+        RYScope.LOG.info("[bees] {}: яйцо латунной пчелы в списке {}, данные {}", phase, egg != null,
+            egg == null ? null : ((ItemRes) egg).stack.getComponentsPatch());
+        if (egg != null) {
+            RYScope.LOG.info("[bees] {}: подтип яйца {}", phase, Foreign.get() == null ? null : Foreign.get().subtypeUid(egg));
+            RYScope.LOG.info("[bees] {}: RYScope по R на яйце: {}", phase, recipeIds(egg));
+            RYScope.LOG.info("[bees] {}: JEI по R на яйце: {}", phase, AutoTestJei.byOutput(((ItemRes) egg).stack));
+        }
+        Stack steel = beeEgg("productivebees:steel");
+        if (steel != null) RYScope.LOG.info("[bees] {}: RYScope по R на яйце стальной: {}", phase, recipeIds(steel));
+        RYScope.LOG.info("[bees] {}: пчела в списке {}", phase, bee == null ? "нет" : bee.getClass().getSimpleName());
+        if (bee != null) {
+            RYScope.LOG.info("[bees] {}: RYScope по R на пчеле: {}", phase, recipeIds(bee));
+            RYScope.LOG.info("[bees] {}: JEI по R на пчеле: {}", phase, AutoTestJei.byOutput(bee));
+        }
+        var server = mc().getSingleplayerServer();
+        if (server != null) {
+            long casting = 0, eggs = 0;
+            List<String> pbees = new ArrayList<>();
+            for (var h : server.getRecipeManager().getRecipes()) {
+                ItemStack out;
+                try {
+                    out = h.value().getResultItem(server.registryAccess());
+                } catch (Throwable t) {
+                    continue;
+                }
+                if (!itemKey(out).equals(CONFIGURABLE_EGG)) continue;
+                eggs++;
+                if (h.id().getPath().startsWith("casting/pbees/")) {
+                    casting++;
+                    pbees.add(h.id().getPath());
+                }
+            }
+            RYScope.LOG.info("[bees] {}: на сервере рецептов с яйцом настраиваемой пчелы на выходе {}, из них литьё пчёл Metalworks {} {}", phase, eggs, casting, pbees);
+        }
+    }
+
+    private static net.minecraft.resources.ResourceLocation itemKey(ItemStack stack) {
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem());
+    }
+
+    /**
+     * Возвращает на сервер рецепты с яйцом настраиваемой пчелы на выходе, которые есть в данных модов, проходят свои
+     * условия, но в игре отсутствуют (их убрал скрипт сборки). Так исправленный скрипт сборки и выглядел бы для игры:
+     * проверка исправления без правки файлов. Потом сервер рассылает рецепты, как после /reload.
+     */
+    private static void restoreEggRecipes() {
+        var server = mc().getSingleplayerServer();
+        server.execute(() -> {
+            try {
+                var rm = server.getRecipeManager();
+                var ops = new net.neoforged.neoforge.common.conditions.ConditionalOps<>(
+                    server.registryAccess().createSerializationContext(com.mojang.serialization.JsonOps.INSTANCE),
+                    tagContext(server));
+                var codec = net.neoforged.neoforge.common.conditions.ConditionalOps.createConditionalCodec(net.minecraft.world.item.crafting.Recipe.CODEC);
+                java.util.Set<net.minecraft.resources.ResourceLocation> have = new java.util.HashSet<>();
+                for (var h : rm.getRecipes()) have.add(h.id());
+                List<net.minecraft.world.item.crafting.RecipeHolder<?>> add = new ArrayList<>();
+                int files = 0, failed = 0, conditions = 0;
+                for (var e : server.getResourceManager().listResources("recipe", p -> p.getPath().endsWith(".json")).entrySet()) {
+                    files++;
+                    String text;
+                    try (var reader = e.getValue().openAsReader()) {
+                        text = reader.lines().collect(java.util.stream.Collectors.joining("\n"));
+                    }
+                    if (!text.contains("spawn_egg_configurable_bee")) continue;
+                    String path = e.getKey().getPath();
+                    var id = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(e.getKey().getNamespace(), path.substring("recipe/".length(), path.length() - ".json".length()));
+                    if (have.contains(id)) continue;
+                    var parsed = codec.parse(ops, com.google.gson.JsonParser.parseString(text));
+                    if (parsed.error().isPresent()) {
+                        failed++;
+                        continue;
+                    }
+                    var recipe = parsed.getOrThrow();
+                    if (recipe.isEmpty()) {
+                        conditions++;
+                        continue;
+                    }
+                    ItemStack out;
+                    try {
+                        out = recipe.get().getResultItem(server.registryAccess());
+                    } catch (Throwable t) {
+                        continue;
+                    }
+                    if (!itemKey(out).equals(CONFIGURABLE_EGG)) continue;
+                    add.add(new net.minecraft.world.item.crafting.RecipeHolder<>(id, recipe.get()));
+                }
+                RYScope.LOG.info("[bees] файлов рецептов {}, с яйцом не разобрано {}, не прошли условия {}, отсутствуют в игре и возвращены {}: {}",
+                    files, failed, conditions, add.size(), add.stream().map(h -> h.id().toString()).sorted().toList());
+                List<net.minecraft.world.item.crafting.RecipeHolder<?>> all = new ArrayList<>(rm.getRecipes());
+                all.addAll(add);
+                rm.replaceRecipes(all);
+                server.getPlayerList().reloadResources();
+            } catch (Throwable t) {
+                RYScope.LOG.error("[bees] возврат рецептов", t);
+            }
+        });
+    }
+
+    /** Условия рецептов с тегами (вид пчелы есть, только если тег блоков латуни не пуст) сверяются по тегам мира. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static net.neoforged.neoforge.common.conditions.ICondition.IContext tagContext(net.minecraft.server.MinecraftServer server) {
+        return new net.neoforged.neoforge.common.conditions.ICondition.IContext() {
+            @Override
+            public <T> java.util.Map<net.minecraft.resources.ResourceLocation, java.util.Collection<net.minecraft.core.Holder<T>>> getAllTags(
+                    net.minecraft.resources.ResourceKey<? extends net.minecraft.core.Registry<T>> key) {
+                java.util.Map<net.minecraft.resources.ResourceLocation, java.util.Collection<net.minecraft.core.Holder<T>>> out = new java.util.HashMap<>();
+                server.registryAccess().registry((net.minecraft.resources.ResourceKey) key).ifPresent(reg ->
+                    ((net.minecraft.core.Registry<T>) reg).getTags().forEach(p -> out.put(p.getFirst().location(), p.getSecond().stream().toList())));
+                return out;
+            }
+        };
+    }
+
+    /** Листает вкладки окна рецептов вниз, пока первый рецепт вкладки не будет с этим куском id (не больше десяти шагов). */
+    private static void tabTo(String category) {
+        for (int i = 0; i < 10; i++) {
+            step("tab to " + category, () -> {
+                if (!(mc().screen instanceof RecipeScreen rs) || rs.placed().isEmpty()) return;
+                if (String.valueOf(rs.placed().get(0).recipe().id()).contains(category)) return;
+                rs.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+            }, 15);
+        }
+    }
+
+    private static void buildFeedback() {
+        // список с ресурсами JEI (пчёлы Productive Bees, варианты сундуков из вкладок): индекс после подключения JEI
+        step("feedback: jei index", () -> (Foreign.get() != null && Indexer.state() == Indexer.State.READY
+            && Indexer.snapshot().stacks.stream().anyMatch(s -> s instanceof works.repka.ryscope.jei.JeiRes<?>)) || stuck > 12000, () ->
+            RYScope.LOG.info("[feedback] индекс: ресурсов {}, ждали тиков {}", Indexer.snapshot().stacks.size(), stuck), 100);
+        // 1. алмазные сундуки Sophisticated Storage: клик по варианту в списке
+        step("chests: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 20);
+        step("chests: search", () -> Overlay.setSearch("алмазный сундук"), 40);
+        step("chests: state", () -> {
+            List<Stack> list = SearchService.results().stacks;
+            RYScope.LOG.info("[chests] «алмазный сундук»: в списке {}", list.size());
+            Foreign.Source foreign = Foreign.get();
+            for (Stack s : list) {
+                if (!(s instanceof ItemRes item)) continue;
+                Lookup.legacyForeignDedup = true;
+                int before = recipeCount(s);
+                Lookup.legacyForeignDedup = false;
+                int after = recipeCount(s);
+                RYScope.LOG.info("[chests] {} {}: данные {}, подтип {}, рецептов было {}, стало {}", s.id(), s.name().getString(),
+                    item.stack.getComponentsPatch(), foreign == null ? null : foreign.subtypeUid(s), before, after);
+                if (chestFromList == null && s.id().getPath().equals("diamond_chest") && String.valueOf(item.stack.getComponentsPatch()).contains("spruce")) chestFromList = s;
+            }
+            if (chestFromList == null && !list.isEmpty()) chestFromList = list.get(Math.min(1, list.size() - 1));
+            if (chestFromList != null) {
+                RYScope.LOG.info("[chests] выбран {}: RYScope {}", chestFromList.name().getString(), recipeIds(chestFromList));
+                RYScope.LOG.info("[chests] JEI по R: {}", AutoTestJei.byOutput(((ItemRes) chestFromList).stack));
+                Stack plain = new ItemRes(new ItemStack(((ItemRes) chestFromList).stack.getItem()));
+                RYScope.LOG.info("[chests] сундук без данных (как в рецепте): подтип {}, RYScope {}", foreign == null ? null : foreign.subtypeUid(plain), recipeIds(plain));
+            }
+            parkMouse();
+        }, 5);
+        shot("chests_list");
+        step("chests: before", () -> {
+            Lookup.legacyForeignDedup = true;
+            if (chestFromList != null) RecipeScreen.open(chestFromList, Lookup.Mode.RECIPES);
+        }, 40);
+        shot("chests_before");
+        step("chests: back", () -> mc().setScreen(new InventoryScreen(mc().player)), 10);
+        step("chests: after", () -> {
+            Lookup.legacyForeignDedup = false;
+            if (chestFromList != null) RecipeScreen.open(chestFromList, Lookup.Mode.RECIPES);
+        }, 40);
+        shot("chests_after");
+        step("chests: clear", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            Overlay.setSearch("");
+        }, 10);
+
+        // 2. пчёлы Productive Bees из литья Productive Metalworks
+        step("bees: before", () -> logBee("сейчас"), 5);
+        step("bees: egg before", () -> {
+            Stack egg = beeEgg("productivebees:brass");
+            if (egg != null) RecipeScreen.open(egg, Lookup.Mode.RECIPES);
+        }, 40);
+        shot("bee_egg_before");
+        step("bees: bee before", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            Stack bee = bee("productivebees:brass");
+            if (bee != null) RecipeScreen.open(bee, Lookup.Mode.RECIPES);
+        }, 40);
+        shot("bee_before");
+        step("bees: restore", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            snapBefore = Indexer.snapshot();
+            restoreEggRecipes();
+        }, 20);
+        step("bees: reindex", () -> Indexer.snapshot() != snapBefore && Indexer.state() == Indexer.State.READY && Foreign.get() != null, () -> {}, 200);
+        step("bees: after", () -> logBee("с возвращёнными рецептами"), 5);
+        step("bees: egg after", () -> {
+            Stack egg = beeEgg("productivebees:brass");
+            if (egg != null) RecipeScreen.open(egg, Lookup.Mode.RECIPES);
+        }, 40);
+        shot("bee_egg_after");
+        tabTo("casting/pbees/");
+        shot("bee_egg_after_casting");
+        step("bees: bee after", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            Stack bee = bee("productivebees:brass");
+            if (bee != null) RecipeScreen.open(bee, Lookup.Mode.RECIPES);
+        }, 40);
+        shot("bee_after");
+        tabTo("casting/pbees/");
+        shot("bee_after_casting");
         step("quit", () -> mc().stop(), 0);
     }
 

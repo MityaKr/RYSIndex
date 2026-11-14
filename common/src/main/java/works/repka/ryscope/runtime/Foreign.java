@@ -22,6 +22,17 @@ public final class Foreign {
 
         List<Lookup.Group> find(Stack stack, Lookup.Mode mode, Snapshot snapshot);
 
+        /**
+         * То же, но повторы с нашим индексом сверяются по тому, что индекс действительно нашёл для этого ресурса:
+         * {@code shown} — id найденных рецептов по id категории. Рецепт с тем же id, который наш индекс не подобрал
+         * (у нас один общий выход, а мод в JEI показывает свой вариант по подтипу: сундуки Sophisticated Storage
+         * по породам дерева), источник показывает сам.
+         */
+        default List<Lookup.Group> find(Stack stack, Lookup.Mode mode, Snapshot snapshot,
+                java.util.Map<net.minecraft.resources.ResourceLocation, java.util.Set<net.minecraft.resources.ResourceLocation>> shown) {
+            return find(stack, mode, snapshot);
+        }
+
         List<Category> categories(Snapshot snapshot);
 
         List<Lookup.Group> category(Category category);
