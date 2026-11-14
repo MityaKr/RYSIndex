@@ -16,7 +16,11 @@ void main() {
     if (c.a < 0.01) discard;
     float top = max(c.r, max(c.g, c.b));
     float low = min(c.r, min(c.g, c.b));
-    if (top - low < 0.09) {
+    // серая текстура, окрашенная тинтом (вода, жидкости, цветные шкалы), цветная: её не перекрашиваем
+    vec4 tint = ColorModulator;
+    float tintTop = max(tint.r, max(tint.g, tint.b));
+    float tintLow = min(tint.r, min(tint.g, tint.b));
+    if (top - low < 0.09 && tintTop - tintLow < 0.09) {
         float l = (c.r + c.g + c.b) / 3.0;
         vec4 m;
         if (l < 0.216) m = mix(C0, C1, l / 0.216);
@@ -25,5 +29,5 @@ void main() {
         else m = mix(C3, C4, (l - 0.776) / 0.224);
         c = vec4(m.rgb, c.a * m.a);
     }
-    fragColor = c * ColorModulator;
+    fragColor = c * tint;
 }

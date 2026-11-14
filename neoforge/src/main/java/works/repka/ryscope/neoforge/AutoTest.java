@@ -350,6 +350,68 @@ final class AutoTest {
             buildSubstitution();
             return;
         }
+        if ("fluids".equals(System.getProperty("ryscope.autotest"))) {
+            // замечание автора: в «Разделении жидкостей» Oritech сосуд на миг пустеет при смене жидкости, вода тёмная
+            step("fluids: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
+                && works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY
+                && works.repka.ryscope.runtime.Indexer.snapshot().stacks.size() > 5000, () -> {}, 40);
+            step("fluids: open", () -> {
+                parkMouse();
+                var groups = works.repka.ryscope.runtime.Foreign.get().categoryById(net.minecraft.resources.ResourceLocation.parse("oritech:centrifuge_fluid"));
+                RYScope.LOG.info("[fluids] групп {}", groups.size());
+                if (!groups.isEmpty()) RecipeScreen.openCategory(groups.get(0).category());
+            }, 40);
+            // страница с рецептом, где в сосуде перебирается несколько жидкостей
+            final boolean[] many = {false};
+            for (int page = 0; page < 30; page++) {
+                step("fluids: find many", () -> {
+                    if (many[0] || !(mc().screen instanceof RecipeScreen rs)) return;
+                    for (RecipeScreen.Placed p : rs.placed()) {
+                        try {
+                            java.lang.reflect.Field f = p.recipe().getClass().getDeclaredField("layout");
+                            f.setAccessible(true);
+                            if (!(f.get(p.recipe()) instanceof mezz.jei.api.gui.IRecipeLayoutDrawable<?> l)) continue;
+                            for (var slot : l.getRecipeSlotsView().getSlotViews()) {
+                                if (slot.getAllIngredients().filter(i -> !(i.getIngredient() instanceof ItemStack)).count() > 1) many[0] = true;
+                            }
+                        } catch (ReflectiveOperationException ignored) {
+                        }
+                    }
+                    if (!many[0]) mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT, 0, 0);
+                }, 3);
+            }
+            step("fluids: found", () -> RYScope.LOG.info("[fluids] страница с перебором жидкостей найдена: {}", many[0]), 2);
+            for (int tick = 0; tick < 70; tick++) {
+                final int at = tick;
+                step("fluids: tick", () -> {
+                    if (!(mc().screen instanceof RecipeScreen rs)) return;
+                    StringBuilder line = new StringBuilder();
+                    for (RecipeScreen.Placed p : rs.placed()) {
+                        try {
+                            java.lang.reflect.Field f = p.recipe().getClass().getDeclaredField("layout");
+                            f.setAccessible(true);
+                            Object layout = f.get(p.recipe());
+                            if (!(layout instanceof mezz.jei.api.gui.IRecipeLayoutDrawable<?> l)) continue;
+                            for (var slot : l.getRecipeSlotsView().getSlotViews()) {
+                                var shown = slot.getDisplayedIngredient();
+                                boolean fluid = slot.getAllIngredients().anyMatch(i -> !(i.getIngredient() instanceof ItemStack));
+                                if (!fluid) continue;
+                                line.append(shown.map(i -> String.valueOf(i.getIngredient())).orElse("ПУСТО")).append(" | ");
+                            }
+                        } catch (ReflectiveOperationException e) {
+                            line.append("? ");
+                        }
+                    }
+                    RYScope.LOG.info("[fluids] {} {}", at, line);
+                }, 1);
+                if (tick % 5 == 0) shotWithToasts("fluids_t" + tick);
+            }
+            step("fluids: restyle off", () -> works.repka.ryscope.runtime.Config.get().restyleRecipes = false, 5);
+            shot("fluids_plain");
+            step("fluids: restyle on", () -> works.repka.ryscope.runtime.Config.get().restyleRecipes = true, 2);
+            step("quit", () -> mc().stop(), 0);
+            return;
+        }
         if ("fb15".equals(System.getProperty("ryscope.autotest"))) {
             // замечания автора 15.11: подсказка Almost Unified над рецептом не режется краем окна, рейка способов предметами,
             // закладка ставится без уведомления
