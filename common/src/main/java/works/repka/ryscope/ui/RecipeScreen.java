@@ -41,7 +41,7 @@ import works.repka.ryscore.ui.Type.Weight;
  */
 public final class RecipeScreen extends ScaledScreen {
     private static final int CARD_W = 260;
-    private static final int RAIL_W = 24, RAIL_SLOT = 17, RAIL_GAP = 2, RAIL_PAD = 5;
+    private static final int RAIL_W = 28, RAIL_SLOT = 20, RAIL_GAP = 2, RAIL_PAD = 5;
     private static final int PAD_X = 7;
     private static final int HEADER_H = 32;
     private static final int TABS_H = 16;
@@ -718,15 +718,13 @@ public final class RecipeScreen extends ScaledScreen {
                 Draw.round(g, x, y, RAIL_SLOT, RAIL_SLOT, 4f, t.c("slot.hover"));
             }
             Category category = nav.groups.get(i).category();
-            g.pose().pushPose();
-            g.pose().translate(x + 3.5f, y + 3.5f, 0);
-            g.pose().scale(0.625f, 0.625f, 1f);
+            // способ показан своей главной станцией, предметом в полный размер, как в строке над рецептом; значок категории, если станций нет
             try {
-                category.renderIcon(g, 0, 0);
+                if (!category.stations.isEmpty()) category.stations.get(0).render(g, x + 2, y + 2);
+                else category.renderIcon(g, x + 2, y + 2);
             } catch (Throwable ignored) {
                 // значок чужой категории
             }
-            g.pose().popPose();
             if (works.repka.ryscope.runtime.Stations.state(category) == works.repka.ryscope.runtime.Stations.State.MISSING) {
                 // станции нет: значок приглушён, место в рейке то же (порядок под рукой не меняется)
                 g.pose().pushPose();
@@ -779,7 +777,7 @@ public final class RecipeScreen extends ScaledScreen {
             boolean starHot = over(mx, my, starX, buttonY, 15, 15), marked = Bookmarks.contains(shown);
             iconButton(g, t, starX, buttonY, starHot);
             Icons.draw(g, Icons.Shape.STAR, starX + 3.5f, buttonY + 3.5f, 8f, marked || starHot ? t.c("accent") : t.c("button.fg"));
-            hits.add(starX, buttonY, 15, 15, b -> Overlay.toast(tr(Bookmarks.toggle(nav.focus) ? "ryscope.bookmark.added" : "ryscope.bookmark.removed")));
+            hits.add(starX, buttonY, 15, 15, b -> Bookmarks.toggle(nav.focus));
         }
         // клавиши карточки: значок с подсказкой вместо строки внизу окна
         int infoX = shown != null ? starX - 14 : starX + 3, infoY = buttonY + 2;
@@ -966,6 +964,8 @@ public final class RecipeScreen extends ScaledScreen {
         double scale = Draw.scale();
         float push = (float) (Math.round(edge.update(0) * scale) / scale);
         Draw.scissor(g, cardX, top, cardX + cardW, bottom);
+        // подсказки, которые мод рисует внутри рецепта, иначе обрезаются этой рамкой
+        TooltipDefer.begin();
         g.pose().pushPose();
         g.pose().translate(0, -push, 0);
         int y = top + BLOCK_MARGIN - pageScroll;
@@ -1004,6 +1004,7 @@ public final class RecipeScreen extends ScaledScreen {
             y += h + BLOCK_MARGIN * 2;
         }
         g.pose().popPose();
+        TooltipDefer.end();
         g.disableScissor();
         int max = maxScroll();
         if (max > 0) {
@@ -1337,7 +1338,10 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     private void renderTooltips(GuiGraphics g, Theme t, int mx, int my, @Nullable Category hoveredCategory) {
-        if (Overlay.isOver(mx, my)) return;
+        if (Overlay.isOver(mx, my)) {
+            TooltipDefer.drop();
+            return;
+        }
         Font font = Minecraft.getInstance().font;
         g.pose().pushPose();
         g.pose().translate(0, 0, 300);
@@ -1387,6 +1391,7 @@ public final class RecipeScreen extends ScaledScreen {
                 for (Placed p : placed) extraTooltip(g, t, p, mx, my);
             }
         }
+        TooltipDefer.flush();
         g.pose().popPose();
     }
 
@@ -1586,8 +1591,7 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     private static void toggleMark(Stack stack) {
-        boolean added = Bookmarks.toggle(stack);
-        Overlay.toast(tr(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed"));
+        Bookmarks.toggle(stack);
     }
 
     private void doTransfer(AbstractContainerScreen<?> acs, RecipeView recipe, boolean max) {

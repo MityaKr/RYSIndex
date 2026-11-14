@@ -350,6 +350,49 @@ final class AutoTest {
             buildSubstitution();
             return;
         }
+        if ("fb15".equals(System.getProperty("ryscope.autotest"))) {
+            // замечания автора 15.11: подсказка Almost Unified над рецептом не режется краем окна, рейка способов предметами,
+            // закладка ставится без уведомления
+            step("fb15: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
+                && works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY
+                && works.repka.ryscope.runtime.Indexer.snapshot().stacks.size() > 5000, () -> {}, 40);
+            step("fb15: open golden sheet", () -> {
+                parkMouse();
+                RecipeScreen.open(new ItemRes(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+                    net.minecraft.resources.ResourceLocation.parse("create:golden_sheet")))), Lookup.Mode.RECIPES);
+            }, 40);
+            shot("fb15_rail");
+            final boolean[] found = {false};
+            for (int group = 0; group < 12; group++) {
+                for (int k = 0; k < 4; k++) {
+                    final int dx = new int[] {-1, -3, 1, -5}[k], dy = new int[] {-1, -3, 1, -5}[k];
+                    step("fb15: aim", () -> {
+                        if (found[0] || !(mc().screen instanceof RecipeScreen rs) || rs.placed().isEmpty()) return;
+                        RecipeScreen.Placed p = rs.placed().get(0);
+                        moveMouse(works.repka.ryscore.ui.UiScale.toGui(p.x() + p.recipe().width() + dx), works.repka.ryscore.ui.UiScale.toGui(p.y() + p.recipe().height() + dy));
+                    }, 4);
+                    step("fb15: check", () -> {
+                        if (!found[0] && works.repka.ryscope.ui.TooltipDefer.lastCount > 0) {
+                            found[0] = true;
+                            RYScope.LOG.info("[fb15] подсказка из рецепта отложена и нарисована поверх окна");
+                        }
+                    }, 1);
+                }
+                step("fb15: next group", () -> {
+                    if (!found[0] && mc().screen != null) mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+                }, 15);
+            }
+            step("fb15: report", () -> RYScope.LOG.info("[fb15] подсказка найдена: {}", found[0]), 2);
+            shot("fb15_au_tooltip");
+            step("fb15: bookmark", () -> {
+                parkMouse();
+                works.repka.ryscope.ui.Overlay.toggleBookmarkForTest(new ItemRes(new ItemStack(Items.GOLD_INGOT)));
+            }, 10);
+            shotWithToasts("fb15_bookmark_no_toast");
+            step("fb15: unbookmark", () -> works.repka.ryscope.ui.Overlay.toggleBookmarkForTest(new ItemRes(new ItemStack(Items.GOLD_INGOT))), 5);
+            step("quit", () -> mc().stop(), 0);
+            return;
+        }
         if ("subtype".equals(System.getProperty("ryscope.autotest"))) {
             // JEI подключается позже входа в мир: без него нет подтипов, мода книг и превью структур
             step("subtype: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null

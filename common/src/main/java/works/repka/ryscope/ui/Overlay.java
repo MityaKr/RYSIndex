@@ -1441,10 +1441,9 @@ public final class Overlay {
                 if (Bookmarks.contains(dropped)) {
                     List<Stack> marks = Bookmarks.list();
                     for (int i = 0; i < marks.size(); i++) if (marks.get(i).same(dropped)) MARKS.reveal(i);
-                    toast(Component.translatable("ryscope.bookmark.already").getString());
                 } else {
+                    // без уведомления: закладка сама появляется в панели (просьба автора)
                     Bookmarks.toggle(dropped);
-                    toast(Component.translatable("ryscope.bookmark.added").getString());
                 }
             }
             return true;
@@ -1517,7 +1516,6 @@ public final class Overlay {
             }
             if (!placed && MARKS.contains(mx, my) && !Bookmarks.contains(dragged)) {
                 Bookmarks.toggle(dragged);
-                toast(Component.translatable("ryscope.bookmark.added").getString());
             }
             return true;
         }
@@ -1817,9 +1815,14 @@ public final class Overlay {
         toast(Component.translatable(!hidden ? "ryscope.hidden.item.shown" : all ? "ryscope.hidden.item.all" : "ryscope.hidden.item", name).getString());
     }
 
+    /** Закладка ставится и снимается без уведомления: её видно в панели закладок и по звезде (просьба автора). */
     static void toggleBookmark(Stack stack) {
-        boolean added = Bookmarks.toggle(stack);
-        toast(Component.translatable(added ? "ryscope.bookmark.added" : "ryscope.bookmark.removed").getString());
+        Bookmarks.toggle(stack);
+    }
+
+    /** Для автотеста: закладка тем же путём, что клавиша A. */
+    public static void toggleBookmarkForTest(Stack stack) {
+        toggleBookmark(stack);
     }
 
     private static void saveSearch() {
