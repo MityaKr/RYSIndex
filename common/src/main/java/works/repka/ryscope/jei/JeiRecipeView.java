@@ -38,6 +38,8 @@ public final class JeiRecipeView<T> implements RecipeView {
     private IRecipeLayoutDrawable<T> layout;
     private boolean failed;
     private int border = 4;
+    /** Насколько ячейки рецепта выходят за размер категории: слева, сверху, справа, снизу. */
+    private int padLeft, padTop, padRight, padBottom;
     private List<Ing> inputs;
     private List<Stack> outputs;
     /** Ответ обработчика переноса: сам рисует на рецепте, чего не хватает. */
@@ -59,6 +61,7 @@ public final class JeiRecipeView<T> implements RecipeView {
                     layout = created.get();
                     Rect2i inner = layout.getRect(), outer = layout.getRectWithBorder();
                     border = Math.max(0, (outer.getWidth() - inner.getWidth()) / 2);
+                    measureSlots(layout);
                 } else {
                     failed = true;
                 }
@@ -68,6 +71,31 @@ public final class JeiRecipeView<T> implements RecipeView {
             }
         }
         return layout;
+    }
+
+    /**
+     * Ячейки, которые мод ставит за край своей категории (шкала энергии Modular Machinery Reborn выше, чем рецепт задал себе
+     * высоты), растягивают окошко рецепта, а не вылезают из него.
+     */
+    private void measureSlots(IRecipeLayoutDrawable<T> l) {
+        int w = category.getWidth(), h = category.getHeight();
+        int left = 0, top = 0, right = w, bottom = h;
+        try {
+            for (IRecipeSlotView slot : l.getRecipeSlotsView().getSlotViews()) {
+                if (!(slot instanceof mezz.jei.api.gui.ingredient.IRecipeSlotDrawable drawable)) continue;
+                Rect2i r = drawable.getRect();
+                left = Math.min(left, r.getX());
+                top = Math.min(top, r.getY());
+                right = Math.max(right, r.getX() + r.getWidth());
+                bottom = Math.max(bottom, r.getY() + r.getHeight());
+            }
+        } catch (Throwable ignored) {
+            // чужие ячейки: остаётся размер категории
+        }
+        padLeft = -left;
+        padTop = -top;
+        padRight = right - w;
+        padBottom = bottom - h;
     }
 
     @Override
@@ -81,12 +109,14 @@ public final class JeiRecipeView<T> implements RecipeView {
 
     @Override
     public int width() {
-        return category.getWidth() + border * 2;
+        layout();
+        return category.getWidth() + border * 2 + padLeft + padRight;
     }
 
     @Override
     public int height() {
-        return category.getHeight() + border * 2;
+        layout();
+        return category.getHeight() + border * 2 + padTop + padBottom;
     }
 
     @Override
@@ -96,9 +126,18 @@ public final class JeiRecipeView<T> implements RecipeView {
             theme.plate(g, x, y, width(), height());
             return;
         }
-        l.setPosition(x + border, y + border);
+        l.setPosition(x + border + padLeft, y + border + padTop);
         boolean restyled = works.repka.ryscope.ui.RecipeRestyle.begin(theme);
         try {
+            if (padLeft > 0 || padTop > 0 || padRight > 0 || padBottom > 0) {
+                // окошко рецепта растянуто под ячейки за его краем: подложка того же серого, что фон окон модов (перекраска переведёт его в тему)
+                int w = category.getWidth() + padLeft + padRight, h = category.getHeight() + padTop + padBottom;
+                int x0 = x + border, y0 = y + border;
+                // как окно мода в ванильном стиле: тёмный контур, светлая грань, серый фон
+                g.fill(x0 - 1, y0 - 1, x0 + w + 1, y0 + h + 1, 0xFF000000);
+                g.fill(x0, y0, x0 + w, y0 + h, 0xFFFFFFFF);
+                g.fill(x0 + 1, y0 + 1, x0 + w - 1, y0 + h - 1, 0xFFC6C6C6);
+            }
             works.repka.ryscore.ui.Draw.isolated(g, () -> l.drawRecipe(g, mouseX, mouseY));
         } finally {
             if (restyled) {
@@ -108,7 +147,7 @@ public final class JeiRecipeView<T> implements RecipeView {
         }
         if (transferError != null && works.repka.ryscope.content.NativeRecipe.missingBadges) {
             try {
-                transferError.showError(g, mouseX, mouseY, l.getRecipeSlotsView(), x + border, y + border);
+                transferError.showError(g, mouseX, mouseY, l.getRecipeSlotsView(), x + border + padLeft, y + border + padTop);
             } catch (Throwable t) {
                 transferError = null;
             }

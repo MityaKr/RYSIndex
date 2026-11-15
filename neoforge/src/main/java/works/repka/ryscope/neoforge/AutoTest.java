@@ -350,6 +350,58 @@ final class AutoTest {
             buildSubstitution();
             return;
         }
+        if ("energy".equals(System.getProperty("ryscope.autotest"))) {
+            // замечание автора: шкала энергии рецепта Арены симуляций (Custom Machinery) выходит за окошко рецепта
+            step("energy: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
+                && works.repka.ryscope.runtime.Indexer.state() == works.repka.ryscope.runtime.Indexer.State.READY
+                && works.repka.ryscope.runtime.Indexer.snapshot().stacks.size() > 5000, () -> {}, 40);
+            step("energy: open", () -> {
+                parkMouse();
+                RecipeScreen.open(new ItemRes(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+                    net.minecraft.resources.ResourceLocation.parse("kubejs:neural_matrix")))), Lookup.Mode.RECIPES);
+            }, 40);
+            // раздел рецептов индукционной плавильни Modular Machinery Reborn: шкала энергии в (8, 8), высота рецепта 34
+            final boolean[] mmr = {false};
+            for (int i = 0; i < 15; i++) {
+                step("energy: find mmr", () -> {
+                    if (mmr[0] || !(mc().screen instanceof RecipeScreen rs) || rs.placed().isEmpty()) return;
+                    try {
+                        java.lang.reflect.Field f = rs.placed().get(0).recipe().getClass().getDeclaredField("category");
+                        f.setAccessible(true);
+                        Object c = f.get(rs.placed().get(0).recipe());
+                        if (c instanceof mezz.jei.api.recipe.category.IRecipeCategory<?> cat && cat.getRecipeType().getUid().getPath().contains("simulation_arena") && !cat.getRecipeType().getUid().getNamespace().equals("kubejs")) mmr[0] = true;
+                    } catch (ReflectiveOperationException ignored) {
+                    }
+                    if (!mmr[0]) mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+                }, 8);
+            }
+            step("energy: report", () -> {
+                if (!(mc().screen instanceof RecipeScreen rs)) return;
+                for (RecipeScreen.Placed p : rs.placed()) {
+                    RYScope.LOG.info("[energy] вид {} {}x{} в {} {}", p.recipe().getClass().getSimpleName(), p.recipe().width(), p.recipe().height(), p.x(), p.y());
+                    try {
+                        java.lang.reflect.Field f = p.recipe().getClass().getDeclaredField("layout");
+                        f.setAccessible(true);
+                        if (f.get(p.recipe()) instanceof mezz.jei.api.gui.IRecipeLayoutDrawable<?> l) {
+                            RYScope.LOG.info("[energy] категория {} {}x{}, rect {}, с рамкой {}", l.getRecipeCategory().getRecipeType().getUid(),
+                                l.getRecipeCategory().getWidth(), l.getRecipeCategory().getHeight(), l.getRect(), l.getRectWithBorder());
+                            for (var slot : l.getRecipeSlotsView().getSlotViews()) {
+                                var r = slot instanceof mezz.jei.api.gui.ingredient.IRecipeSlotDrawable d ? d.getRect() : null;
+                                RYScope.LOG.info("[energy] ячейка {} {} {}", slot.getRole(), r == null ? "-" : r.getX() + "," + r.getY() + " " + r.getWidth() + "x" + r.getHeight(), slot.getDisplayedIngredient().map(i -> String.valueOf(i.getIngredient())).orElse("-"));
+                            }
+                        }
+                    } catch (ReflectiveOperationException e) {
+                        RYScope.LOG.info("[energy] не JEI: {}", e.toString());
+                    }
+                }
+            }, 5);
+            shot("energy_arena");
+            step("energy: restyle off", () -> works.repka.ryscope.runtime.Config.get().restyleRecipes = false, 5);
+            shot("energy_arena_plain");
+            step("energy: restyle on", () -> works.repka.ryscope.runtime.Config.get().restyleRecipes = true, 2);
+            step("quit", () -> mc().stop(), 0);
+            return;
+        }
         if ("fluids".equals(System.getProperty("ryscope.autotest"))) {
             // замечание автора: в «Разделении жидкостей» Oritech сосуд на миг пустеет при смене жидкости, вода тёмная
             step("fluids: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
