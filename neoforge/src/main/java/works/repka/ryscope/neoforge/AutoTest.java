@@ -350,6 +350,28 @@ final class AutoTest {
             buildSubstitution();
             return;
         }
+        if ("grid".equals(System.getProperty("ryscope.autotest"))) {
+            // замечание автора: предметы, которые уже лежат в сетке крафта, не учитывались в «есть в инвентаре/сети»
+            step("grid: survival, 4 planks", () -> {
+                command("gamemode survival");
+                command("clear @s");
+                command("give @s minecraft:oak_planks 4");
+            }, 20);
+            step("grid: inventory", () -> mc().setScreen(new InventoryScreen(mc().player)), 10);
+            step("grid: pick planks", () -> mc().gameMode.handleInventoryMouseClick(mc().player.containerMenu.containerId, 36, 0, net.minecraft.world.inventory.ClickType.PICKUP, mc().player), 5);
+            step("grid: put into the 2x2", () -> mc().gameMode.handleInventoryMouseClick(mc().player.containerMenu.containerId, 1, 0, net.minecraft.world.inventory.ClickType.PICKUP, mc().player), 15);
+            step("grid: count", () -> RYScope.LOG.info("[grid] в сетке {}, в инвентаре {}, RYScope видит {}",
+                mc().player.containerMenu.getSlot(1).getItem(), mc().player.getInventory().countItem(Items.OAK_PLANKS),
+                works.repka.ryscope.runtime.InventoryView.snapshot().getOrDefault(Items.OAK_PLANKS, 0)), 2);
+            step("grid: recipe", () -> {
+                parkMouse();
+                RecipeScreen.open(new ItemRes(new ItemStack(Items.CRAFTING_TABLE)), Lookup.Mode.RECIPES);
+            }, 20);
+            shot("grid_crafting_table");
+            step("grid: back", () -> mc().setScreen(null), 5);
+            step("quit", () -> mc().stop(), 0);
+            return;
+        }
         if ("energy".equals(System.getProperty("ryscope.autotest"))) {
             // замечание автора: шкала энергии рецепта Арены симуляций (Custom Machinery) выходит за окошко рецепта
             step("energy: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null

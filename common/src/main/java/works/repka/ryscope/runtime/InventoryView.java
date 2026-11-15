@@ -34,6 +34,12 @@ public final class InventoryView {
             ItemStack s = player.getInventory().getItem(i);
             if (!s.isEmpty()) map.merge(s.getItem(), s.getCount(), Integer::sum);
         }
+        // то, что уже лежит в сетке крафта открытого окна, тоже есть: перенос рецепта возьмёт это первым (замечание автора)
+        for (net.minecraft.world.inventory.Slot slot : player.containerMenu.slots) {
+            if (slot.container == player.getInventory() || !craftingInput(slot)) continue;
+            ItemStack s = slot.getItem();
+            if (!s.isEmpty()) map.merge(s.getItem(), s.getCount(), Integer::sum);
+        }
         ItemStack carried = player.containerMenu.getCarried();
         if (!carried.isEmpty()) map.merge(carried.getItem(), carried.getCount(), Integer::sum);
         // опубликованную карту не меняем никогда: её читают потоки поиска; при том же содержимом остаётся прежняя
@@ -42,6 +48,19 @@ public final class InventoryView {
             version++;
         }
         tracking = !player.isCreative() && !player.isSpectator();
+    }
+
+    /**
+     * Ячейка сетки крафта с настоящими предметами: верстак, 2×2 игрока, сетки модов на ванильном {@code CraftingContainer},
+     * сетка крафт-терминала AE2. Ячейка результата и призрачные ячейки шаблонов AE2 не считаются.
+     */
+    private static boolean craftingInput(net.minecraft.world.inventory.Slot slot) {
+        if (slot instanceof net.minecraft.world.inventory.ResultSlot) return false;
+        if (slot.container instanceof net.minecraft.world.inventory.CraftingContainer) return true;
+        for (Class<?> c = slot.getClass(); c != null && c != net.minecraft.world.inventory.Slot.class; c = c.getSuperclass()) {
+            if (c.getName().equals("appeng.menu.slot.CraftingMatrixSlot")) return true;
+        }
+        return false;
     }
 
     /** Номер содержимого инвентаря: меняется, только когда меняется само содержимое. */
