@@ -37,6 +37,7 @@ import works.repka.ryscore.ui.Type.Weight;
  */
 public final class StructureRecipeView implements RecipeView {
     private static final String MMR_RECIPE = "es.degrassi.mmreborn.common.integration.xei.MultiblockRecipe";
+    private static final String MMR_CONTROLLER_ITEM = "es.degrassi.mmreborn.common.item.ControllerItem";
     private static final int WIDTH = 200, SCENE_H = 132, SLOT = 18, GAP = 2, COLUMNS = (WIDTH + GAP) / (SLOT + GAP), MAX_ROWS = 4;
     private static final int ARROW = 6, CONTROL_X = 6, CONTROL_Y = 6, LABEL_W = 24;
     private static final long IDLE_MS = 5000L;
@@ -50,6 +51,10 @@ public final class StructureRecipeView implements RecipeView {
     private final Map<BlockPos, List<BlockState>> variants;
     private long shownStep;
     private final List<Ing> inputs;
+    /** Постройка по умолчанию: основной блок каждого гнезда без люков и модификаторов, в количествах по структуре. */
+    private final List<Stack> build;
+    /** Предмет машины, как его показывает MMR: контроллер с id машины в компонентах. Пустой, если его нет. */
+    private final ItemStack machineItem;
     private final int layers;
     @Nullable
     private SceneView view;
@@ -60,11 +65,14 @@ public final class StructureRecipeView implements RecipeView {
     private int openIndex = -1;
     private static final int POPUP_COLUMNS = 8, POPUP_PAD = 4;
 
-    private StructureRecipeView(ResourceLocation id, BlockScene scene, Map<BlockPos, List<BlockState>> variants, List<Ing> inputs) {
+    private StructureRecipeView(ResourceLocation id, BlockScene scene, Map<BlockPos, List<BlockState>> variants, List<Ing> inputs,
+                                List<Stack> build, ItemStack machineItem) {
         this.id = id;
         this.scene = scene;
         this.variants = variants;
         this.inputs = inputs;
+        this.build = build;
+        this.machineItem = machineItem;
         this.layers = scene.size().getY();
     }
 
@@ -123,7 +131,92 @@ public final class StructureRecipeView implements RecipeView {
             BlockPos min = new BlockPos(minX, minY, minZ);
             for (Map.Entry<BlockPos, List<BlockState>> e : variants.entrySet()) shifted.put(e.getKey().subtract(min), e.getValue());
         }
-        return new StructureRecipeView(name.withPrefix("multiblock_preview/"), BlockScene.of(states), Map.copyOf(shifted), inputs);
+        List<Stack> build = List.of();
+        try {
+            build = defaultBuild(machine);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            RYScope.LOG.warn("Постройка по умолчанию {} не прочитана: {}", name, e.toString());
+        }
+        ItemStack machineItem = ItemStack.EMPTY;
+        try {
+            machineItem = (ItemStack) Class.forName(MMR_CONTROLLER_ITEM).getMethod("makeMachineItem", ResourceLocation.class).invoke(null, name);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            RYScope.LOG.warn("Предмет машины {} не получен: {}", name, e.toString());
+        }
+        return new StructureRecipeView(name.withPrefix("multiblock_preview/"), BlockScene.of(states), Map.copyOf(shifted), inputs, build, machineItem);
+    }
+
+    /**
+     * Блоки постройки в варианте по умолчанию. У каждой буквы структуры берётся блок, прописанный в ключе явно:
+     * люки входа и выхода в сборке RepYS приходят тегами ({@code #modular_machinery_reborn:inputbus} и т.п.),
+     * а блоки модификаторов (ядра разгона) убираются, потому что это необязательные гнёзда.
+     * Если явного блока нет (ключ только из тега), берётся первый по id блок тега. Количество: сколько раз буква
+     * встречается в структуре, как в списке блоков превью MMR ({@code DynamicMachine.getStacks}). Контроллер не входит.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<Stack> defaultBuild(Object machine) throws ReflectiveOperationException {
+        Object structure = machine.getClass().getMethod("getPattern").invoke(machine);
+        Object pattern = structure.getClass().getMethod("getPattern").invoke(structure);
+        Character machineKey = (Character) structure.getClass().getMethod("getMachineKey").invoke(structure);
+        List<List<String>> rows = (List<List<String>>) pattern.getClass().getMethod("asList").invoke(pattern);
+        Map<Character, ?> keys = (Map<Character, ?>) pattern.getClass().getMethod("asMap").invoke(pattern);
+        List<?> modifiers = (List<?>) pattern.getClass().getMethod("getModifiers").invoke(pattern);
+        List<Object> modifierIngredients = new ArrayList<>();
+        for (Object m : modifiers) modifierIngredients.add(m.getClass().getMethod("getIngredient").invoke(m));
+
+        Map<Character, Integer> counts = new java.util.LinkedHashMap<>();
+        for (List<String> layer : rows) for (String row : layer) for (char c : row.toCharArray()) counts.merge(c, 1, Integer::sum);
+        Map<net.minecraft.world.item.Item, Integer> total = new java.util.LinkedHashMap<>();
+        for (Map.Entry<Character, Integer> e : counts.entrySet()) {
+            if (machineKey != null && e.getKey().charValue() == machineKey.charValue()) continue;
+            Object ingredient = keys.get(e.getKey());
+            if (ingredient == null || (boolean) ingredient.getClass().getMethod("isNot").invoke(ingredient)) continue;
+            int count = e.getValue();
+            List<ItemStack> explicit = (List<ItemStack>) ingredient.getClass().getMethod("getNonTagStacks", int.class).invoke(ingredient, count);
+            List<ItemStack> options = new ArrayList<>();
+            for (ItemStack st : explicit) if (!st.isEmpty() && !isModifier(st, modifierIngredients)) options.add(st);
+            if (options.isEmpty()) {
+                // только тег или только модификатор: первый по id блок, который не модификатор
+                List<ItemStack> all = new ArrayList<>((List<ItemStack>) ingredient.getClass().getMethod("getStacks", int.class).invoke(ingredient, count));
+                all.removeIf(ItemStack::isEmpty);
+                List<ItemStack> plain = new ArrayList<>(all);
+                plain.removeIf(st -> isModifier(st, modifierIngredients));
+                options = plain.isEmpty() ? all : plain;
+            }
+            if (options.isEmpty()) continue;
+            options.sort(java.util.Comparator.comparing(st -> BuiltInRegistries.ITEM.getKey(st.getItem()).toString()));
+            total.merge(options.get(0).getItem(), count, Integer::sum);
+        }
+        List<Stack> out = new ArrayList<>();
+        for (Map.Entry<net.minecraft.world.item.Item, Integer> e : total.entrySet()) {
+            ItemRes block = new ItemRes(new ItemStack(e.getKey()));
+            block.amount = e.getValue();
+            out.add(block);
+        }
+        return out;
+    }
+
+    private static boolean isModifier(ItemStack stack, List<Object> modifierIngredients) {
+        Block block = Block.byItem(stack.getItem());
+        if (block == Blocks.AIR) return false;
+        for (Object ingredient : modifierIngredients) {
+            try {
+                if ((boolean) ingredient.getClass().getMethod("test", Block.class).invoke(ingredient, block)) return true;
+            } catch (ReflectiveOperationException e) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** Постройка по умолчанию, см. {@link #defaultBuild}. */
+    public List<Stack> build() {
+        return build;
+    }
+
+    /** Предмет машины: контроллер MMR с id машины. */
+    public ItemStack machineItem() {
+        return machineItem;
     }
 
     /** Освобождает буферы всех превью: окно рецептов закрыто. */
@@ -170,6 +263,24 @@ public final class StructureRecipeView implements RecipeView {
     @Override
     public boolean isCrafting() {
         return false;
+    }
+
+    /** «+» записывает постройку в шаблон обработки AE2: блоки по умолчанию на входе, машина на выходе. */
+    @Override
+    public boolean showsTransfer() {
+        return !build.isEmpty() && !machineItem.isEmpty();
+    }
+
+    @Override
+    public String transferUnavailable() {
+        return "ryscope.transfer.structure.terminal";
+    }
+
+    @Override
+    public Transfer transfer(net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> screen, boolean max, boolean simulate) {
+        if (!showsTransfer()) return Transfer.UNSUPPORTED;
+        Transfer ae2 = works.repka.ryscope.runtime.Ae2Terminal.encodeStructure(screen.getMenu(), build, new ItemRes(machineItem.copy()), simulate);
+        return ae2 != null ? ae2 : Transfer.UNSUPPORTED;
     }
 
     @Override

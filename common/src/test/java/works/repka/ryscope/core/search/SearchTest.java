@@ -108,6 +108,50 @@ class SearchTest {
         assertTrue(q.operators().get(2).negated);
     }
 
+    /** Моды с пробелами и двоеточием в названии: @ сравнивает id и название без регистра, пробелов и пунктуации. */
+    @Test
+    void modNamesWithSpacesAndPunctuation() {
+        List<SearchEntry> list = new ArrayList<>();
+        list.add(new SearchEntry(0, "me controller", new String[0], "controller", "ae2", "applied energistics 2",
+            new String[] {"ae2", "appliedenergistics2"}, new String[0]));
+        list.add(new SearchEntry(1, "me glass cable", new String[0], "fluix_glass_cable", "ae2", "applied energistics 2",
+            new String[] {"ae2", "appliedenergistics2"}, new String[0]));
+        list.add(new SearchEntry(2, "tier 2 drill", new String[0], "drill_2", "aatiers", "actually additions: tiers",
+            new String[] {"aatiers", "actuallyadditionstiers"}, new String[0]));
+        list.add(new SearchEntry(3, "crusher", new String[0], "crusher", "actuallyadditions", "actually additions",
+            new String[] {"actuallyadditions"}, new String[0]));
+        list.add(new SearchEntry(4, "terminal", new String[0], "wireless_terminal", "ae2wtlib", "ae2wtlib",
+            new String[] {"ae2wtlib"}, new String[0]));
+        SearchIndex idx = new SearchIndex(list);
+        Query.setModKeys(List.of("ae2", "appliedenergistics2", "aatiers", "actuallyadditionstiers", "actuallyadditions", "ae2wtlib"));
+        try {
+            java.util.function.Function<String, int[]> find = q -> idx.search(Query.parse(q), () -> false, null, false).indices;
+            assertArrayEquals(new int[] {0, 1, 4}, find.apply("@ae2"));
+            assertArrayEquals(new int[] {0, 1}, find.apply("@appliedenergistics"));
+            assertArrayEquals(new int[] {0, 1}, find.apply("@applied energistics 2"));
+            assertArrayEquals(new int[] {0, 1}, find.apply("@Applied Energistics 2"));
+            assertArrayEquals(new int[] {2}, find.apply("@actually additions: tiers"));
+            assertArrayEquals(new int[] {2}, find.apply("@actually additions : tiers"));
+            assertArrayEquals(new int[] {2}, find.apply("@aatiers"));
+            assertArrayEquals(new int[] {2, 3}, find.apply("@actually additions"));
+            assertArrayEquals(new int[] {2}, find.apply("@\"actually additions: tiers\""));
+            assertArrayEquals(new int[] {2}, find.apply("mod:actually additions: tiers"));
+            // после названия мода обычные слова снова ищут по названию предмета
+            assertArrayEquals(new int[] {1}, find.apply("@applied energistics 2 cable"));
+            assertArrayEquals(new int[] {1}, find.apply("@ae2 cable"));
+            assertArrayEquals(new int[] {2}, find.apply("@actually additions drill"));
+            assertArrayEquals(new int[] {0, 1, 3, 4}, find.apply("@ae2 | crusher"));
+            assertArrayEquals(new int[] {3}, find.apply("@actually -@aatiers"));
+            Query q = Query.parse("@applied energistics 2 cable");
+            assertEquals(2, q.terms().size());
+            assertEquals("applied energistics 2", q.terms().get(0).text);
+            assertEquals(0, q.terms().get(0).start);
+            assertEquals(22, q.terms().get(0).end);
+        } finally {
+            Query.setModKeys(List.of());
+        }
+    }
+
     @Test
     void cancellationReturnsNull() {
         assertEquals(null, index().search(Query.parse("piston"), () -> true, null, true));

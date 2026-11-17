@@ -1051,7 +1051,7 @@ public final class RecipeScreen extends ScaledScreen {
      * проверяется или когда окно открыто не над станцией. Активна она только когда перенос возможен.
      */
     private boolean showsTransfer(RecipeView r) {
-        return r.isCrafting();
+        return r.showsTransfer();
     }
 
     /** Стадия, которая не даёт выполнить рецепт на сервере (блокирующая, enforce), или null. */
@@ -1404,11 +1404,11 @@ public final class RecipeScreen extends ScaledScreen {
             if (blocking != null) {
                 Kit.tooltip(g, t, List.of(tr("ryscope.stage.blocked", blocking.title().getString())), mx, my);
             } else if (overPlus && host == null) {
-                Kit.tooltip(g, t, List.of(tr("ryscope.transfer.unsupported")), mx, my);
+                Kit.tooltip(g, t, List.of(tr(p.recipe.transferUnavailable())), mx, my);
             } else if (overPlus && tr == null) {
                 Kit.tooltip(g, t, List.of(tr("ryscope.transfer.checking")), mx, my);
             } else if (overPlus && tr.status() == Transfer.Status.UNSUPPORTED) {
-                Kit.tooltip(g, t, List.of(tr("ryscope.transfer.unsupported")), mx, my);
+                Kit.tooltip(g, t, List.of(tr(p.recipe.transferUnavailable())), mx, my);
             } else if (tr != null && overPlus) {
                 if (!tr.lines().isEmpty()) {
                     g.renderComponentTooltip(font, tr.lines(), mx, my);

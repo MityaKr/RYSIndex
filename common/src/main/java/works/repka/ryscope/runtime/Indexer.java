@@ -162,6 +162,7 @@ public final class Indexer {
                 RYScope.LOG.debug("Пропущен ресурс при индексации: {}", t.toString());
             }
         }
+        works.repka.ryscope.core.search.Query.setModKeys(strings.allModKeys);
 
         Groups.assign(stacks);
         Stages.assign(stacks);
@@ -231,6 +232,24 @@ public final class Indexer {
             return known != null ? known : value;
         }
 
+        final Map<List<String>, String[]> modKeyArrays = new HashMap<>();
+        final java.util.Set<String> allModKeys = new java.util.HashSet<>();
+
+        /** Сжатые ключи мода записи; у тысяч записей одного мода массив общий. */
+        String[] modKeys(List<String> raw) {
+            String[] known = modKeyArrays.get(raw);
+            if (known != null) return known;
+            List<String> out = new ArrayList<>(raw.size());
+            for (String r : raw) {
+                String k = of(works.repka.ryscope.core.search.Query.squash(r));
+                if (!k.isEmpty() && !out.contains(k)) out.add(k);
+            }
+            allModKeys.addAll(out);
+            String[] arr = out.toArray(new String[0]);
+            modKeyArrays.put(raw, arr);
+            return arr;
+        }
+
         String[] tags(Stack s) {
             boolean byItem = s instanceof ItemRes;
             if (byItem) {
@@ -272,18 +291,29 @@ public final class Indexer {
         }
         // мод для поиска через @: и по id, и тот, к которому предмет относит JEI (книги Patchouli — к своему моду)
         String namespace = id.getNamespace(), modName = platform.modName(namespace).toLowerCase(Locale.ROOT);
+        // те же id, названия и псевдонимы по отдельности и без пунктуации: «@applied energistics 2», «@aatiers»
+        List<String> modKeys = new ArrayList<>(4);
+        modKeys.add(namespace);
+        modKeys.add(modName);
         Foreign.Source foreign = Foreign.get();
         String shownMod = foreign == null ? null : foreign.displayModId(s);
         if (shownMod != null && !shownMod.equals(namespace)) {
+            String shownName = platform.modName(shownMod).toLowerCase(Locale.ROOT);
             namespace += " " + shownMod;
-            modName += " " + platform.modName(shownMod).toLowerCase(Locale.ROOT);
+            modName += " " + shownName;
+            modKeys.add(shownMod);
+            modKeys.add(shownName);
         }
         if (foreign != null) {
             // псевдонимы, которые моды зарегистрировали в JEI: по ним ищет и JEI
             for (String alias : foreign.aliases(s)) if (!alias.equals(name) && !alt.contains(alias)) alt.add(alias);
-            for (String alias : foreign.modAliases(id.getNamespace())) modName += " " + alias.toLowerCase(Locale.ROOT);
+            for (String alias : foreign.modAliases(id.getNamespace())) {
+                modName += " " + alias.toLowerCase(Locale.ROOT);
+                modKeys.add(alias);
+            }
         }
-        return new SearchEntry(index, name, alt.toArray(new String[0]), id.getPath(), strings.of(namespace), strings.of(modName), strings.tags(s));
+        return new SearchEntry(index, name, alt.toArray(new String[0]), id.getPath(), strings.of(namespace), strings.of(modName),
+            strings.modKeys(modKeys), strings.tags(s));
     }
 
     /** Языки для поиска помимо текущего. Читаются один раз, пока не сменится список или ресурсы. */

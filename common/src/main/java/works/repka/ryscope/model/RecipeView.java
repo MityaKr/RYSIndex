@@ -82,6 +82,16 @@ public interface RecipeView {
         return true;
     }
 
+    /** Показывать ли у рецепта кнопку «+». По умолчанию у рецептов, которые игрок выполняет сам. */
+    default boolean showsTransfer() {
+        return isCrafting();
+    }
+
+    /** Ключ подсказки у неактивного «+», когда рецепт здесь не применить. */
+    default String transferUnavailable() {
+        return "ryscope.transfer.unsupported";
+    }
+
     /** Можно ли перенести рецепт в слоты открытого экрана. */
     default Transfer transfer(AbstractContainerScreen<?> screen, boolean max, boolean simulate) {
         return Transfer.UNSUPPORTED;

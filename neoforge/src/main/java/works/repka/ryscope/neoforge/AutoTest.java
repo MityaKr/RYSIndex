@@ -529,6 +529,10 @@ final class AutoTest {
             step("quit", () -> mc().stop(), 0);
             return;
         }
+        if ("fb17".equals(System.getProperty("ryscope.autotest"))) {
+            buildFb17();
+            return;
+        }
         if ("subtype".equals(System.getProperty("ryscope.autotest"))) {
             // JEI подключается позже входа в мир: без него нет подтипов, мода книг и превью структур
             step("subtype: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
@@ -2645,6 +2649,158 @@ final class AutoTest {
             logAreas();
             quickMoveAll(Items.OAK_PLANKS);
         }, 30);
+    }
+
+    /**
+     * Замечания автора 17.11: поиск мода через @ по названию с пробелами и двоеточием; «+» у превью мультиблока
+     * записывает постройку по умолчанию в шаблон обработки AE2 (без терминала кнопка неактивна с подсказкой).
+     */
+    private static void buildFb17() {
+        step("fb17: wait jei", () -> works.repka.ryscope.runtime.Foreign.get() != null
+            && Indexer.state() == Indexer.State.READY && Indexer.snapshot().stacks.size() > 5000, () -> {}, 40);
+        step("fb17: inventory", () -> {
+            parkMouse();
+            mc().setScreen(new InventoryScreen(mc().player));
+        }, 20);
+        String[][] queries = {
+            {"@ae2", "ae2"}, {"@appliedenergistics", "ae2"}, {"@applied energistics 2", "ae2"}, {"@Applied Energistics 2", "ae2"},
+            {"@actually additions: tiers", "aatiers"}, {"@aatiers", "aatiers"}, {"@\"actually additions: tiers\"", "aatiers"},
+            {"@applied energistics 2 cable", "ae2"}, {"@ae2 cable", "ae2"},
+        };
+        for (String[] q : queries) {
+            step("fb17: search " + q[0], () -> Overlay.setSearch(q[0]), 30);
+            step("fb17: result " + q[0], () -> !works.repka.ryscope.runtime.SearchService.busy() || stuck > 200, () -> {
+                var results = works.repka.ryscope.runtime.SearchService.results();
+                java.util.Map<String, Integer> byMod = new java.util.TreeMap<>();
+                for (var st : results.stacks) byMod.merge(st.id().getNamespace(), 1, Integer::sum);
+                int own = byMod.getOrDefault(q[1], 0);
+                List<String> names = new ArrayList<>();
+                for (int i = 0; i < Math.min(4, results.stacks.size()); i++) names.add(results.stacks.get(i).name().getString());
+                RYScope.LOG.info("[fb17] «{}»: найдено {}, из мода {} {}, по модам {}, первые {}", q[0], results.stacks.size(), q[1], own,
+                    byMod.size() > 6 ? byMod.size() + " модов" : byMod, names);
+            }, 2);
+            if (q[0].equals("@applied energistics 2") || q[0].equals("@actually additions: tiers")) shot("fb17_search_" + q[1]);
+        }
+        step("fb17: clear search", () -> Overlay.setSearch(""), 5);
+
+        // превью литейни поверх инвентаря: «+» есть, но неактивен с подсказкой про терминал
+        step("fb17: open over inventory", () -> openFoundryPreview(), 40);
+        for (int tab = 0; tab < 4; tab++) {
+            step("fb17: find structure", () -> {
+                if (structureOnScreen() != null) return;
+                mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+            }, 40);
+        }
+        step("fb17: build", () -> {
+            var view = structureOnScreen();
+            if (view == null) {
+                RYScope.LOG.info("[fb17] превью структуры не найдено");
+                return;
+            }
+            List<String> build = new ArrayList<>();
+            for (Stack st : view.build()) build.add(st.id() + " x" + st.amount);
+            RYScope.LOG.info("[fb17] постройка по умолчанию: {}; машина {} {}", build, view.machineItem(), view.machineItem().getComponentsPatch());
+            hoverPlus();
+        }, 20);
+        step("fb17: hint without terminal", () -> {
+            var view = structureOnScreen();
+            if (view != null) {
+                RYScope.LOG.info("[fb17] без терминала: «+» показан {}, перенос в инвентарь {}", view.showsTransfer(),
+                    view.transfer(new InventoryScreen(mc().player), false, true).status());
+            }
+        }, 2);
+        shot("fb17_plus_no_terminal");
+        step("fb17: close card", () -> mc().setScreen(null), 10);
+
+        ae2Setup();
+        step("fb17: close terminal", () -> mc().player.closeContainer(), 10);
+        step("fb17: open pattern", () -> use(AE_CABLE, Direction.WEST, new Vec3(0.1, -58.5, 2.5)), 30);
+        step("fb17: open over pattern", () -> {
+            RYScope.LOG.info("[fb17] экран {}", mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName());
+            openFoundryPreview();
+        }, 40);
+        for (int tab = 0; tab < 4; tab++) {
+            step("fb17: find structure", () -> {
+                if (structureOnScreen() != null) return;
+                mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+            }, 40);
+        }
+        step("fb17: hover plus", () -> hoverPlus(), 30);
+        shot("fb17_plus_terminal");
+        step("fb17: click plus", () -> {
+            int[] at = plusCenter();
+            if (at == null) {
+                RYScope.LOG.info("[fb17] «+» не найден");
+                return;
+            }
+            boolean taken = mc().screen.mouseClicked(works.repka.ryscore.ui.UiScale.toGui(at[0]), works.repka.ryscore.ui.UiScale.toGui(at[1]), 0);
+            mc().screen.mouseReleased(works.repka.ryscore.ui.UiScale.toGui(at[0]), works.repka.ryscore.ui.UiScale.toGui(at[1]), 0);
+            RYScope.LOG.info("[fb17] клик по «+» принят {}, экран после {}", taken, mc().screen == null ? "нет" : mc().screen.getClass().getSimpleName());
+        }, 30);
+        step("fb17: pattern slots", () -> {
+            parkMouse();
+            if (!(mc().player.containerMenu instanceof appeng.menu.me.items.PatternEncodingTermMenu term)) {
+                RYScope.LOG.info("[fb17] терминал шаблонов не открыт: {}", mc().player.containerMenu.getClass().getSimpleName());
+                return;
+            }
+            List<String> in = new ArrayList<>(), out = new ArrayList<>();
+            for (var slot : term.getProcessingInputSlots()) {
+                var gs = appeng.api.stacks.GenericStack.fromItemStack(slot.getItem());
+                if (gs != null) in.add(gs.what().getId() + " x" + gs.amount());
+            }
+            for (var slot : term.getProcessingOutputSlots()) {
+                var gs = appeng.api.stacks.GenericStack.fromItemStack(slot.getItem());
+                if (gs != null) out.add(gs.what().getId() + " x" + gs.amount() + " " + (gs.what() instanceof appeng.api.stacks.AEItemKey k ? k.toStack().getComponentsPatch() : ""));
+            }
+            RYScope.LOG.info("[fb17] режим {}, входы шаблона {}: {}; выход {}", term.getMode(), in.size(), in, out);
+        }, 10);
+        shot("fb17_pattern_filled");
+        step("fb17: blank", () -> quickMoveAll(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("ae2:blank_pattern"))), 10);
+        step("fb17: encode", () -> {
+            if (mc().player.containerMenu instanceof appeng.menu.me.items.PatternEncodingTermMenu term) term.encode();
+        }, 15);
+        step("fb17: encoded", () -> {
+            var processing = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("ae2:processing_pattern"));
+            for (var slot : mc().player.containerMenu.slots) {
+                if (!slot.getItem().is(processing)) continue;
+                List<String> tip = new ArrayList<>();
+                for (var line : slot.getItem().getTooltipLines(net.minecraft.world.item.Item.TooltipContext.EMPTY, mc().player, net.minecraft.world.item.TooltipFlag.NORMAL)) tip.add(line.getString());
+                RYScope.LOG.info("[fb17] записанный шаблон: {}", tip);
+                return;
+            }
+            RYScope.LOG.info("[fb17] записанного шаблона нет");
+        }, 5);
+        shot("fb17_pattern_encoded");
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    private static void openFoundryPreview() {
+        parkMouse();
+        try {
+            Object item = Class.forName("es.degrassi.mmreborn.common.item.ControllerItem")
+                .getMethod("makeMachineItem", net.minecraft.resources.ResourceLocation.class)
+                .invoke(null, net.minecraft.resources.ResourceLocation.parse("repys:kinetic_foundry"));
+            RecipeScreen.open(new ItemRes((ItemStack) item), Lookup.Mode.USES);
+        } catch (ReflectiveOperationException e) {
+            RYScope.LOG.error("[fb17]", e);
+        }
+    }
+
+    /** Центр «+» у превью структуры в единицах интерфейса RYScope, как его ставит RecipeScreen.plusY. */
+    @org.jetbrains.annotations.Nullable
+    private static int[] plusCenter() {
+        if (!(mc().screen instanceof RecipeScreen rs)) return null;
+        for (var p : rs.placed()) {
+            if (!(p.recipe() instanceof works.repka.ryscope.jei.StructureRecipeView)) continue;
+            int button = 14;
+            return new int[] {p.rowX() + p.rowW() - button + button / 2, p.rowY() + (p.rowH() - button) / 2 + button / 2};
+        }
+        return null;
+    }
+
+    private static void hoverPlus() {
+        int[] at = plusCenter();
+        if (at != null) moveMouse(works.repka.ryscore.ui.UiScale.toGui(at[0]), works.repka.ryscore.ui.UiScale.toGui(at[1]));
     }
 
     @org.jetbrains.annotations.Nullable

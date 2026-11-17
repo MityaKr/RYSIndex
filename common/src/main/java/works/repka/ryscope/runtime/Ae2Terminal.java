@@ -53,7 +53,7 @@ public final class Ae2Terminal {
         static Method repo, allEntries, what, stored, entryCraftable, itemOf;
         static Method findMissing, missingSlots, craftableSlots;
         static Method performTransfer, encodeCrafting, encodeProcessing, supported;
-        static Method craftingTooltip, encodingTooltip, fromItemStack, fluidKey;
+        static Method craftingTooltip, encodingTooltip, fromItemStack, fluidKey, itemKeyOf, processingInputSlots;
         static Constructor<?> genericStack;
 
         static {
@@ -90,6 +90,8 @@ public final class Ae2Terminal {
                     fromItemStack = stack.getMethod("fromItemStack", ItemStack.class);
                     fluidKey = Class.forName("appeng.api.stacks.AEFluidKey").getMethod("of", Fluid.class);
                     genericStack = stack.getConstructor(aeKey, long.class);
+                    itemKeyOf = itemKey.getMethod("of", ItemStack.class);
+                    processingInputSlots = patternMenu.getMethod("getProcessingInputSlots");
                     ok = true;
                 }
             } catch (Throwable t) {
@@ -323,6 +325,59 @@ public final class Ae2Terminal {
             if (!groups.isEmpty()) alternativesSink.accept(groups);
         }
         return Transfer.OK;
+    }
+
+    /**
+     * Шаблон обработки из постройки мультиблока: каждый блок отдельным входом в полном количестве (AE2 позволяет
+     * входу шаблона больше стопки), на выходе предмет машины. Пишется тем же помощником AE2, что и перенос рецептов
+     * из JEI ({@code EncodingHelper.encodeProcessingRecipe}): терминал переключается в режим обработки, слоты
+     * заполняются пакетами AE2. Если разных блоков больше, чем входов у шаблона (81 в AE2 19), шаблон не пишется.
+     *
+     * @return итог или null, если это не терминал шаблонов AE2
+     */
+    @Nullable
+    @SuppressWarnings("unchecked")
+    public static Transfer encodeStructure(AbstractContainerMenu menu, List<Stack> blocks, Stack machine, boolean simulate) {
+        if (!Api.OK || !Api.patternMenu.isInstance(menu)) return null;
+        try {
+            int slots = ((Object[]) Api.processingInputSlots.invoke(menu)).length;
+            if (blocks.size() > slots) {
+                return new Transfer(Transfer.Status.MISSING, "ryscope.transfer.structure.too_many", List.of(
+                    Component.translatable("ryscope.transfer.structure.too_many", blocks.size(), slots)));
+            }
+            if (simulate) {
+                long total = 0;
+                for (Stack b : blocks) total += Math.max(1, b.amount);
+                List<Component> tip = new ArrayList<>();
+                tip.add(Component.translatable("ryscope.transfer.structure.hint"));
+                tip.add(Component.translatable("ryscope.transfer.structure.count", blocks.size(), total)
+                    .withStyle(net.minecraft.ChatFormatting.GRAY));
+                tip.add(Component.translatable("ryscope.transfer.structure.output", machine.name())
+                    .withStyle(net.minecraft.ChatFormatting.GRAY));
+                return Transfer.ok(tip);
+            }
+            List<List<Object>> in = new ArrayList<>();
+            for (Stack b : blocks) {
+                Object stack = genericFull(b);
+                if (stack != null) in.add(List.of(stack));
+            }
+            Object out = genericFull(machine);
+            if (in.isEmpty() || out == null) return Transfer.UNSUPPORTED;
+            Api.encodeProcessing.invoke(null, menu, in, List.of(out));
+            return Transfer.OK;
+        } catch (Throwable t) {
+            RYScope.LOG.warn("Шаблон постройки не записан: {}", t.toString());
+            return Transfer.missing("ryscope.transfer.failed");
+        }
+    }
+
+    /** Стопка AE2 в полном количестве, без обрезки до размера стопки игры. */
+    @Nullable
+    private static Object genericFull(Stack stack) throws ReflectiveOperationException {
+        ItemStack item = stack.item();
+        if (item.isEmpty()) return generic(stack);
+        Object key = Api.itemKeyOf.invoke(null, item);
+        return key == null ? null : Api.genericStack.newInstance(key, Math.max(1L, stack.amount));
     }
 
     @Nullable

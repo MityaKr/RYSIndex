@@ -118,7 +118,9 @@ public final class SearchIndex {
     private static int matchTerm(SearchEntry e, Query.Term t, boolean fuzzy) {
         switch (t.kind) {
             case MOD:
-                return matches(e.namespace, t) || matches(e.modName, t) ? 0 : -1;
+                if (t.regex != null || t.squashed.isEmpty()) return matches(e.namespace, t) || matches(e.modName, t) ? 0 : -1;
+                for (String key : e.modKeys) if (key.contains(t.squashed)) return 0;
+                return -1;
             case TAG:
                 for (String tag : e.tags) if (matches(tag, t)) return 0;
                 return -1;
