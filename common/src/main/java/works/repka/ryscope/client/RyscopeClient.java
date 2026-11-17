@@ -112,6 +112,7 @@ public final class RyscopeClient {
         works.repka.ryscope.ui.RecipeScreen.clearTabs();
         works.repka.ryscope.runtime.Stages.reset();
         works.repka.ryscope.runtime.Stations.reset();
+        Overlay.forgetWorld();
     }
 
     public static void onResourceReload(ResourceManager manager) {
@@ -126,7 +127,10 @@ public final class RyscopeClient {
 
     public static void onClientTick() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return;
+        if (mc.level == null) {
+            Indexer.reopen();
+            return;
+        }
         InventoryView.tick();
         works.repka.ryscope.runtime.Storages.tick();
         works.repka.ryscope.runtime.Stations.tick();

@@ -258,6 +258,12 @@ public final class SearchService {
     private static volatile Snapshot warmFor;
     private static volatile int warmNext;
 
+    /** Снимок сброшен (выход из мира): прогрев подсказок не держит прежний снимок до следующего мира. */
+    static void forget() {
+        warmFor = null;
+        warmNext = 0;
+    }
+
     /**
      * Тексты подсказок собираются заранее, понемногу каждый тик в главном потоке: первый поиск с {@code $}
      * не ждёт сборки по всем предметам, а подсказки модов считаются там, где им положено.

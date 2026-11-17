@@ -1851,6 +1851,24 @@ public final class Overlay {
         saveSearch();
     }
 
+    /**
+     * Выход из мира: списки панелей и запомненные по результатам поиска ключи держат ресурсы и снимок прошлого мира
+     * (в том числе ингредиенты JEI с его помощниками) до первой отрисовки панели в следующем мире.
+     */
+    public static void forgetWorld() {
+        LIST.setItems(List.of());
+        MARKS.setItems(List.of());
+        highlightFor = null;
+        highlightKeys = java.util.Set.of();
+        bookmarkKeysFor = null;
+        bookmarkKeys = java.util.Set.of();
+        bookmarksShown = List.of();
+        tagCache = null;
+        tagCacheFor = null;
+        pressStack = null;
+        ghostStack = null;
+    }
+
     public static void setSearch(String text) {
         search().setValue(text);
     }

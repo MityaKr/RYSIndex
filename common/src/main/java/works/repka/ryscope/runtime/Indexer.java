@@ -69,12 +69,26 @@ public final class Indexer {
         return progress;
     }
 
-    /** Сбрасывает снимок при выходе из мира. */
+    /**
+     * Мир уже покинут, а новый ещё не открыт. Пока останавливается встроенный сервер, игра крутит тики со старым миром
+     * и игроком, а JEI останавливается в своём потоке: без этого признака оба запроса строили новый снимок по
+     * покинутому миру, и он лежал в памяти до следующего входа.
+     */
+    private static volatile boolean closed;
+
+    /** Сбрасывает снимок при выходе из мира. До {@link #reopen} новые снимки не строятся. */
     public static void clear() {
+        closed = true;
         GENERATION.incrementAndGet();
         snapshot = Snapshot.EMPTY;
         state = State.IDLE;
+        SearchService.forget();
         SearchService.onSnapshot();
+    }
+
+    /** Мира нет (главное меню, подключение): следующий мир снова строит снимки. */
+    public static void reopen() {
+        closed = false;
     }
 
     public static void invalidateLanguages() {
@@ -83,7 +97,7 @@ public final class Indexer {
 
     public static void request(String reason) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return;
+        if (mc.level == null || closed) return;
         int gen = GENERATION.incrementAndGet();
         state = State.BUILDING;
         progress = 0f;
