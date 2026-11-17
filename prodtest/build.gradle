@@ -23,6 +23,9 @@ neoForge {
             if (project.findProperty('plan') != null) systemProperty 'ryscope.autotest.plan', project.findProperty('plan')
             if (project.findProperty('compare') != null) systemProperty 'ryscope.autotest.compare', project.findProperty('compare')
             if (project.findProperty('cats') != null) systemProperty 'ryscope.autotest.cats', project.findProperty('cats')
+            // сценарий leak: -PleakSessions=5 -PleakMinutes=6 (сколько входов в мир и «минут» действий в каждом)
+            if (project.findProperty('leakSessions') != null) systemProperty 'ryscope.leak.sessions', project.findProperty('leakSessions')
+            if (project.findProperty('leakMinutes') != null) systemProperty 'ryscope.leak.minutes', project.findProperty('leakMinutes')
         }
     }
 }

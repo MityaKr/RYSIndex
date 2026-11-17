@@ -73,6 +73,13 @@ final class AutoTest {
         }
         build();
         bus.addListener((ClientTickEvent.Post e) -> tick());
+        // все кадры, с окном и без: худший кадр и FPS для сценария leak
+        bus.addListener((net.neoforged.neoforge.client.event.RenderFrameEvent.Post e) -> {
+            long now = System.nanoTime();
+            if (gameFrameAt != 0) gameWorst = Math.max(gameWorst, now - gameFrameAt);
+            gameFrameAt = now;
+            gameFrames++;
+        });
         bus.addListener((ScreenEvent.Render.Post e) -> {
             long now = System.nanoTime();
             if (lastFrameAt != 0) worstFrame = Math.max(worstFrame, now - lastFrameAt);
@@ -320,6 +327,10 @@ final class AutoTest {
         }
         if ("soak".equals(System.getProperty("ryscope.autotest"))) {
             buildSoak();
+            return;
+        }
+        if ("leak".equals(System.getProperty("ryscope.autotest"))) {
+            buildLeak();
             return;
         }
         if ("craft".equals(System.getProperty("ryscope.autotest"))) {
@@ -1783,6 +1794,7 @@ final class AutoTest {
     }
 
     private static long soakFrames, soakAt;
+    private static long gameFrames, gameFrameAt, gameWorst, leakFrames, leakAt;
     /** Предел длительности автотеста в тиках: 10 минут, долгому прогону больше. */
     private static int tickLimit = 20 * 600;
 
@@ -1888,6 +1900,160 @@ final class AutoTest {
         }
         shot("soak_end");
         step("quit", () -> mc().stop(), 0);
+    }
+
+    /**
+     * Утечки между входами в мир: несколько сессий подряд с типичными действиями (окно, поиск, листание, карточка,
+     * дерево, структура), между ними выход в главное меню и вход снова. Память после GC пишется каждые две минуты
+     * и в меню после каждого выхода; там же снимается гистограмма классов (logs/ryscope-leak-hist-N.txt).
+     * Свойства: ryscope.leak.sessions (5), ryscope.leak.minutes (6).
+     */
+    private static void buildLeak() {
+        int sessions = Integer.getInteger("ryscope.leak.sessions", 5);
+        int minutes = Integer.getInteger("ryscope.leak.minutes", 6);
+        tickLimit = 20 * 60 * (sessions * (minutes + 6) + 20);
+        String[] queries = {"iron", "железн", "@create", "меч", "piston", "gold", "$острота", "plate", "уголь", "gear", "@applied", "#c:ingots"};
+        int cycle = 0;
+        for (int s = 1; s <= sessions; s++) {
+            final int session = s;
+            step("leak: ready " + s, () -> Foreign.get() != null && mc().player != null
+                && Indexer.state() == Indexer.State.READY && Indexer.snapshot().stacks.size() > 5000, () -> {
+                    mc().options.enableVsync().set(false);
+                    mc().options.framerateLimit().set(120);
+                    mc().getWindow().updateVsync(false);
+                    leakReport("сессия " + session + " вход");
+                }, 100);
+            for (int minute = 1; minute <= minutes; minute++) {
+                for (int k = 0; k < 6; k++, cycle++) {
+                    final int c = cycle;
+                    step("leak: inventory", () -> {
+                        mc().setScreen(new InventoryScreen(mc().player));
+                        Overlay.setSearch(queries[c % queries.length]);
+                    }, 25);
+                    step("leak: scroll", () -> {
+                        Screen sc = mc().screen;
+                        if (sc == null) return;
+                        double x = sc.width - 40, y = sc.height / 2.0;
+                        for (int i = 0; i < 6; i++) works.repka.ryscope.client.RyscopeClient.mouseScrolled(sc, x, y, -1);
+                    }, 10);
+                    step("leak: clear search", () -> Overlay.setSearch(""), 10);
+                    step("leak: card", () -> {
+                        var stacks = Indexer.snapshot().stacks;
+                        if (stacks.isEmpty()) return;
+                        Stack st = stacks.get((c * 7919) % stacks.size());
+                        RecipeScreen.open(st, c % 2 == 0 ? Lookup.Mode.RECIPES : Lookup.Mode.USES);
+                    }, 20);
+                    step("leak: page", () -> {
+                        if (mc().screen != null) mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT, 0, 0);
+                    }, 15);
+                    if (c % 2 == 0) {
+                        step("leak: tree", () -> works.repka.ryscope.ui.TreeScreen.open(new ItemRes(new ItemStack(c % 4 == 0 ? Items.PISTON : Items.DISPENSER))), 30);
+                    }
+                    if (c % 5 == 0) {
+                        step("leak: structure", () -> {
+                            try {
+                                Object item = Class.forName("es.degrassi.mmreborn.common.item.ControllerItem")
+                                    .getMethod("makeMachineItem", net.minecraft.resources.ResourceLocation.class)
+                                    .invoke(null, net.minecraft.resources.ResourceLocation.parse("repys:kinetic_foundry"));
+                                RecipeScreen.open(new ItemRes((ItemStack) item), Lookup.Mode.USES);
+                            } catch (ReflectiveOperationException e) {
+                                RYScope.LOG.error("[leak]", e);
+                            }
+                        }, 20);
+                        for (int t = 0; t < 3; t++) {
+                            step("leak: find structure", () -> {
+                                if (structureOnScreen() != null || mc().screen == null) return;
+                                mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
+                            }, 20);
+                        }
+                        step("leak: watch structure", () -> {}, 40);
+                    }
+                    step("leak: close", () -> mc().setScreen(null), 15);
+                }
+                if (minute % 2 == 0) {
+                    final int m = minute;
+                    step("leak: report", () -> leakReport("сессия " + session + ", минута " + m), 2);
+                }
+            }
+            if (s == sessions) break;
+            step("leak: logout " + s, AutoTest::leakLogout, 20);
+            step("leak: menu " + s, () -> mc().level == null && mc().screen instanceof TitleScreen && mc().getOverlay() == null, () -> {}, 200);
+            step("leak: menu report " + s, () -> {
+                leakReport("меню после сессии " + session);
+                leakHistogram(session);
+            }, 60);
+            step("leak: join " + (s + 1), () -> mc().createWorldOpenFlows().openWorld(WORLD, () -> RYScope.LOG.error("[leak] мир не открылся")), 20);
+            step("leak: world " + (s + 1), () -> {
+                skipBackupQuestion();
+                return mc().player != null && mc().level != null && mc().screen == null;
+            }, () -> {}, 40);
+        }
+        step("leak: final report", () -> {
+            leakReport("конец");
+            leakHistogram(99);
+        }, 60);
+        step("leak: logout final", AutoTest::leakLogout, 20);
+        step("leak: menu final", () -> mc().level == null && mc().screen instanceof TitleScreen, () -> {}, 200);
+        step("leak: menu final report", () -> {
+            leakReport("меню в конце");
+            leakHistogram(100);
+        }, 60);
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    /**
+     * Выход в главное меню, как кнопкой меню паузы. Не прямо из обработчика тика: выход сам крутит тики игры,
+     * пока встроенный сервер не остановится, и шаг автотеста выполнился бы повторно изнутри себя.
+     */
+    private static void leakLogout() {
+        mc().tell(() -> {
+            if (mc().level == null) return;
+            mc().setScreen(null);
+            boolean local = mc().isLocalServer();
+            mc().level.disconnect();
+            if (local) mc().disconnect(new net.minecraft.client.gui.screens.GenericMessageScreen(net.minecraft.network.chat.Component.literal("saving")));
+            else mc().disconnect();
+            mc().setScreen(new TitleScreen());
+        });
+    }
+
+    /** Куча после полной сборки мусора и размеры кешей мода и кора. */
+    private static void leakReport(String where) {
+        // кадры до сборки мусора: её пауза в худший кадр не входит
+        long now = System.currentTimeMillis();
+        double fps = leakAt == 0 ? 0 : (gameFrames - leakFrames) * 1000.0 / Math.max(1, now - leakAt);
+        long worst = gameWorst / 1_000_000;
+        Runtime rt = Runtime.getRuntime();
+        for (int i = 0; i < 2; i++) System.gc();
+        long used = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
+        RYScope.LOG.info("[leak] {}: куча после GC {} МБ (выделено {} МБ), FPS {}, худший кадр {} мс, снимок {} ресурсов, мост {}, "
+                + "атлас {}, глифов {}, фигур {}, значков {}, ячеек {}, структур {}, дерево {}, линза {}",
+            where, used, rt.totalMemory() / (1024 * 1024), String.format("%.0f", fps), worst,
+            Indexer.snapshot().stacks.size(), Foreign.get() == null ? "нет" : Foreign.get().name(),
+            staticSize("works.repka.ryscore.ui.Atlas", "PAGES"), staticSize("works.repka.ryscore.ui.Type", "GLYPHS"),
+            staticSize("works.repka.ryscore.ui.Shapes", "CACHE"), staticSize("works.repka.ryscore.ui.Icons", "CACHE"),
+            staticSize("works.repka.ryscore.ui.Tiles", "CACHE"), staticSize("works.repka.ryscope.jei.StructureRecipeView", "LIVE"),
+            staticSize("works.repka.ryscope.runtime.CraftTree", "MAP"), staticSize("works.repka.ryscope.ui.Lens", "found"));
+        // счёт кадров начинается после сборки мусора
+        leakFrames = gameFrames;
+        leakAt = System.currentTimeMillis();
+        gameFrameAt = 0;
+        gameWorst = 0;
+    }
+
+    /** Гистограмма классов кучи через jcmd этого же процесса: logs/ryscope-leak-hist-N.txt. */
+    private static void leakHistogram(int n) {
+        try {
+            long pid = ProcessHandle.current().pid();
+            java.nio.file.Path jcmd = java.nio.file.Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("win") ? "jcmd.exe" : "jcmd");
+            java.nio.file.Path out = mc().gameDirectory.toPath().resolve("logs").resolve("ryscope-leak-hist-" + n + ".txt");
+            new ProcessBuilder(jcmd.toString(), String.valueOf(pid), "GC.class_histogram")
+                .redirectErrorStream(true).redirectOutput(out.toFile()).start();
+            RYScope.LOG.info("[leak] гистограмма {} пишется в {}", n, out);
+        } catch (Throwable t) {
+            RYScope.LOG.error("[leak] гистограмма не снята", t);
+        }
     }
 
     /** Быстрый крафт в обычном верстаке: обновляется ли слот результата. */
