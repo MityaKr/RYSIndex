@@ -109,6 +109,8 @@ public final class Indexer {
                 Snapshot built = build(gen);
                 if (built == null || GENERATION.get() != gen) return;
                 snapshot = built;
+                // наборы операторов прежнего снимка больше не совпадут ни с одним запросом, а держат его целиком
+                Operators.clearMemo();
                 Board.invalidate();
                 state = State.READY;
                 progress = 1f;
