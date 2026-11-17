@@ -45,7 +45,8 @@ public final class RecipeScreen extends ScaledScreen {
     private static final int PAD_X = 7;
     private static final int HEADER_H = 32;
     private static final int TABS_H = 16;
-    private static final int ROW_H = 14;
+    /** Строка категории: станции в полный размер 16 (дробный масштаб мылит текстуру), сверху 3, снизу 1. */
+    private static final int ROW_H = 20, ROW_ICON = 16, ROW_ICON_TOP = 3, ROW_STEP = 17, ROW_MAX_STATIONS = 4;
     private static final int BLOCK_MARGIN = 3, BLOCK_PAD = 5, STATUS_GAP = 4, STATUS_H = 8;
     private static final int BOTTOM = 4;
     private static final int HISTORY_SLOT = 13, HISTORY_PAD = 2, HISTORY_GAP = 2, HISTORY_OFFSET = 23;
@@ -150,6 +151,9 @@ public final class RecipeScreen extends ScaledScreen {
     private boolean hintHover;
     /** «+N» у станций категории и плашка со всеми станциями: x, y, w, h; w = 0, если «+N» нет. */
     private final int[] stationsChip = new int[4], stationsPopup = new int[4];
+    /** Название в строке категории, как нарисовано (для автотеста), и середина его левого края. */
+    private String stripTitle = "";
+    private final int[] stripTitleAt = new int[2];
     private boolean stationsOpen;
     private final List<StationSpot> popupSpots = new ArrayList<>();
     /** Что показывает плашка (станции или варианты ячейки), её заголовок и место, от которого она открыта. */
@@ -446,6 +450,25 @@ public final class RecipeScreen extends ScaledScreen {
     /** Показанные рецепты с их положением на экране. */
     public List<Placed> placed() {
         return placed;
+    }
+
+    /** Для автотеста: показать в текущем разделе группу первой подходящей категории. */
+    public boolean selectGroupForTest(java.util.function.Predicate<Category> pick) {
+        for (int i = 0; i < nav.groups.size(); i++) {
+            if (!pick.test(nav.groups.get(i).category())) continue;
+            setGroup(i);
+            return true;
+        }
+        return false;
+    }
+
+    /** Для автотеста: строка категории последнего кадра (счётчик, название, «+N», значки станций). */
+    public record StripForTest(String pager, String title, int titleX, int titleY, int[] chip, List<int[]> stations) {}
+
+    public StripForTest stripForTest() {
+        List<int[]> spots = new ArrayList<>();
+        for (StationSpot s : stations) spots.add(new int[] {s.x, s.y, s.size});
+        return new StripForTest(pagerText(group().recipes().size()), stripTitle, stripTitleAt[0], stripTitleAt[1], stationsChip.clone(), spots);
     }
 
     private Group group() {
@@ -820,72 +843,110 @@ public final class RecipeScreen extends ScaledScreen {
 
     private void renderCategoryRow(GuiGraphics g, Theme t, int mx, int my, int rowTop) {
         Group group = group();
-        int y = rowTop + 5;
-        float cy = y + 3.5f;
+        // значки 16 в полный размер, текст и стрелки по их середине
+        int y = rowTop + ROW_ICON_TOP;
+        float cy = y + ROW_ICON / 2f;
+        int textTop = Math.round(cy - 5.5f);
         int x = cardX + railWidth() + PAD_X;
-        Stack mainStation = group.category().stations.isEmpty() ? null : group.category().stations.get(0);
+        List<Stack> all = group.category().stations;
+        Stack mainStation = all.isEmpty() ? null : all.get(0);
         if (mainStation != null) {
-            renderScaled(g, mainStation, x, y, 0.4375f);
-            stations.add(new StationSpot(mainStation, x, y, 8));
+            renderStation(g, mainStation, x, y);
+            stations.add(new StationSpot(mainStation, x, y, ROW_ICON));
         }
-        float textX = x + (mainStation != null ? 11 : 0);
+        float textX = x + (mainStation != null ? ROW_ICON + 4 : 0);
         int right = cardX + cardW - PAD_X;
-        List<RecipeView> recipes = group.recipes();
-        Page page = pages.isEmpty() ? new Page(0, 0) : pages.get(nav.page);
-        String range = page.end - page.start > 1 ? (page.start + 1) + "–" + page.end : Integer.toString(page.start + 1);
-        String pageText = tr("ryscope.recipes.range", range, recipes.size());
+        // счётчик: на одной странице сколько всего рецептов, без стрелок; на нескольких номера на странице и стрелки
+        float pagerLeft = right;
+        String pageText = pagerText(group.recipes().size());
         float pageW = Draw.labelWidth(pageText, 11.5f, Weight.REGULAR);
-        int nextX = right - 6, prevX = nextX - 10;
-        int prevC = over(mx, my, prevX - 2, y - 2, 10, 11) ? t.c("accent") : t.c("button.fg");
-        int nextC = over(mx, my, nextX - 2, y - 2, 10, 11) ? t.c("accent") : t.c("button.fg");
-        Icons.draw(g, Icons.Shape.CHEVRON_LEFT, prevX, y + 0.5f, 6f, prevC);
-        Icons.draw(g, Icons.Shape.CHEVRON_RIGHT, nextX, y + 0.5f, 6f, nextC);
-        Draw.label(g, pageText, prevX - 4 - pageW, cy, 11.5f, Weight.REGULAR, t.c("text.muted"));
-        hits.add(prevX - 2, y - 2, 10, 11, b -> setPage(nav.page - 1));
-        hits.add(nextX - 2, y - 2, 10, 11, b -> setPage(nav.page + 1));
-        float titleRoom = prevX - 4 - pageW - 6 - textX;
-        String title = Draw.ellipsize(group.category().title.getString(), titleRoom, 12.5f, Weight.REGULAR);
+        if (pageCount() > 1) {
+            int nextX = right - 6, prevX = nextX - 10;
+            int prevC = over(mx, my, prevX - 2, textTop, 10, 11) ? t.c("accent") : t.c("button.fg");
+            int nextC = over(mx, my, nextX - 2, textTop, 10, 11) ? t.c("accent") : t.c("button.fg");
+            Icons.draw(g, Icons.Shape.CHEVRON_LEFT, prevX, cy - 3, 6f, prevC);
+            Icons.draw(g, Icons.Shape.CHEVRON_RIGHT, nextX, cy - 3, 6f, nextC);
+            hits.add(prevX - 2, textTop, 10, 11, b -> setPage(nav.page - 1));
+            hits.add(nextX - 2, textTop, 10, 11, b -> setPage(nav.page + 1));
+            pagerLeft = prevX - 4;
+        }
+        pagerLeft -= pageW;
+        Draw.label(g, pageText, pagerLeft, cy, 11.5f, Weight.REGULAR, t.c("text.muted"));
+        // остальные станции, на которых делается то же самое; длинное название уступает место хотя бы «+N»
+        int rest = Math.max(0, all.size() - 1);
+        float limit = pagerLeft - 5;
+        float reserve = rest > 0 ? 5 + Draw.labelWidth("+" + rest, 11.5f, Weight.REGULAR) + 4 : 0;
+        String fullTitle = group.category().title.getString();
+        float titleRoom = Math.max(0, limit - 1 - textX - reserve);
+        String title = Draw.ellipsize(fullTitle, titleRoom, 12.5f, Weight.REGULAR);
         // заголовок открывает все рецепты категории, как в JEI
         float titleW = Draw.labelWidth(title, 12.5f, Weight.REGULAR);
         // в самом просмотре категории ссылка не нужна
         boolean titleLink = nav.focus != null;
-        boolean titleHot = titleLink && over(mx, my, (int) textX, y - 2, (int) Math.ceil(titleW), 11);
+        boolean titleOver = over(mx, my, (int) textX, textTop, (int) Math.ceil(titleW), 11);
+        boolean titleHot = titleLink && titleOver;
         Draw.label(g, title, textX, cy, 12.5f, Weight.REGULAR, titleHot ? t.c("accent") : t.c("text.primary"));
+        stripTitle = title;
+        stripTitleAt[0] = (int) textX;
+        stripTitleAt[1] = Math.round(cy);
         Category shownCategory = group.category();
         if (titleLink) {
-            hits.add((int) textX, y - 2, (int) Math.ceil(titleW), 11, b -> {
+            hits.add((int) textX, textTop, (int) Math.ceil(titleW), 11, b -> {
                 if (b == 0) openCategory(shownCategory);
             });
         }
-        if (titleHot) pendingTip = tr("ryscope.recipes.category_all");
-        // остальные станции, на которых делается то же самое; что не влезло, собрано в «+N»
-        float stx = textX + titleW + 5;
-        List<Stack> all = group.category().stations;
-        float limit = prevX - 4 - pageW - 5;
-        int rest = all.size() - 1, fit = rest;
-        if (rest > 5 || stx + rest * 10 - 2 > limit) {
-            float chipW = Draw.labelWidth("+" + rest, 11.5f, Weight.REGULAR) + 3;
-            fit = Math.max(0, Math.min(5, (int) ((limit - stx - chipW) / 10)));
+        if (titleOver) {
+            // обрезанное название показывает себя целиком
+            boolean cut = !title.equals(fullTitle);
+            if (titleLink) pendingTip = cut ? fullTitle + "\n" + tr("ryscope.recipes.category_all") : tr("ryscope.recipes.category_all");
+            else if (cut) pendingTip = fullTitle;
         }
+        // целая координата: значок ложится на пиксели без сдвига
+        float stx = Math.round(textX + titleW + 5);
+        int fit = stationsFit(rest, stx, limit, rest > 0 ? Draw.labelWidth("+" + rest, 11.5f, Weight.REGULAR) + 4 : 0);
         for (int i = 1; i <= fit; i++) {
             Stack station = all.get(i);
-            renderScaled(g, station, stx, y, 0.4375f);
-            stations.add(new StationSpot(station, (int) stx, y, 8));
-            stx += 10;
+            renderStation(g, station, stx, y);
+            stations.add(new StationSpot(station, (int) stx, y, ROW_ICON));
+            stx += ROW_STEP;
         }
         stationsChip[2] = 0;
         if (fit < rest) {
             String more = "+" + (rest - fit);
             float moreW = Draw.labelWidth(more, 11.5f, Weight.REGULAR);
             if (stx + moreW <= limit + 5) {
-                stationsChip[0] = (int) stx - 1;
-                stationsChip[1] = y - 2;
-                stationsChip[2] = (int) Math.ceil(moreW) + 2;
-                stationsChip[3] = 11;
+                // цель наведения во всю высоту значков
+                stationsChip[0] = (int) stx;
+                stationsChip[1] = y;
+                stationsChip[2] = (int) Math.ceil(moreW) + 4;
+                stationsChip[3] = ROW_ICON;
                 boolean hot = (stationsOpen && popupStacks == all) || over(mx, my, stationsChip[0], stationsChip[1], stationsChip[2], stationsChip[3]);
-                Draw.label(g, more, stx, cy, 11.5f, Weight.REGULAR, hot ? t.c("accent") : t.c("text.muted"));
+                Draw.label(g, more, stx + 2, cy, 11.5f, Weight.REGULAR, hot ? t.c("accent") : t.c("text.muted"));
             }
         }
+    }
+
+    /** Текст счётчика: «5 рецептов» на единственной странице, «1–2 из 5» при нескольких. */
+    private String pagerText(int total) {
+        if (pageCount() <= 1) return Overlay.plural("ryscope.recipes.total", total, Integer.toString(total));
+        Page page = pages.isEmpty() ? new Page(0, 0) : pages.get(nav.page);
+        String range = page.end - page.start > 1 ? (page.start + 1) + "–" + page.end : Integer.toString(page.start + 1);
+        return tr("ryscope.recipes.range", range, total);
+    }
+
+    /**
+     * Сколько дополнительных станций встаёт в строку после названия: не больше {@link #ROW_MAX_STATIONS},
+     * при нехватке места рядом остаётся «+N» шириной {@code chipW}.
+     */
+    static int stationsFit(int rest, float stx, float limit, float chipW) {
+        if (rest <= 0) return 0;
+        if (rest <= ROW_MAX_STATIONS && stx + rest * ROW_STEP - 1 <= limit) return rest;
+        return Math.max(0, Math.min(ROW_MAX_STATIONS, (int) ((limit - stx - chipW) / ROW_STEP)));
+    }
+
+    /** Станция в полный размер, без масштаба: чужой рендер не роняет окно. */
+    private static void renderStation(GuiGraphics g, Stack stack, float x, float y) {
+        renderScaled(g, stack, x, y, 1f);
     }
 
     private void openPopup(List<Stack> stacks, int x, int y, int w, int h, String title) {
@@ -1373,7 +1434,7 @@ public final class RecipeScreen extends ScaledScreen {
         } else if (hintHover) {
             Kit.tooltip(g, t, List.of(tr("ryscope.recipes.hint").split(" · ")), mx, my);
         } else if (pendingTip != null) {
-            Kit.tooltip(g, t, List.of(pendingTip), mx, my);
+            Kit.tooltip(g, t, List.of(pendingTip.split("\n")), mx, my);
         } else {
             boolean drawn = false;
             for (Placed p : placed) {

@@ -555,10 +555,23 @@ public final class Overlay {
         }
     }
 
-    private static String plural(String key, int n, String shown) {
+    /** Строка с формой числа: ключи {@code .one}, {@code .few}, {@code .many}. */
+    static String plural(String key, int n, String shown) {
+        String lang;
+        try {
+            lang = net.minecraft.client.Minecraft.getInstance().getLanguageManager().getSelected();
+        } catch (Throwable e) {
+            lang = "en_us";
+        }
+        return Component.translatable(key + "." + pluralForm(n, lang), shown).getString();
+    }
+
+    /** Форма числа: у русского, украинского и белорусского три формы, у остальных «один» только для 1. */
+    static String pluralForm(int n, String lang) {
         int a = Math.abs(n) % 100, b = a % 10;
-        String form = a >= 11 && a <= 14 ? "many" : b == 1 ? "one" : b >= 2 && b <= 4 ? "few" : "many";
-        return Component.translatable(key + "." + form, shown).getString();
+        boolean slavic = lang != null && (lang.startsWith("ru") || lang.startsWith("uk") || lang.startsWith("be"));
+        if (!slavic) return Math.abs(n) == 1 ? "one" : "many";
+        return a >= 11 && a <= 14 ? "many" : b == 1 ? "one" : b >= 2 && b <= 4 ? "few" : "many";
     }
 
     private static void renderFilters(GuiGraphics g, Theme t, int mx, int my) {

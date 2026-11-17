@@ -281,6 +281,10 @@ final class AutoTest {
             buildDesign();
             return;
         }
+        if ("strip".equals(System.getProperty("ryscope.autotest"))) {
+            buildStrip();
+            return;
+        }
         if ("matrix".equals(System.getProperty("ryscope.autotest"))) {
             buildMatrix();
             return;
@@ -3262,6 +3266,144 @@ final class AutoTest {
         shot("design_compare");
         step("design: settings", () -> mc().setScreen(new works.repka.ryscope.ui.SettingsScreen(null)), 10);
         shot("design_settings");
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    // --- сценарий strip: строка категории карточки (станции 16, счётчик, «+N», длинное название, узкое окно) ---
+
+    /** Категория с самым длинным названием среди тех, где больше одной станции: проверка обрезки. */
+    private static works.repka.ryscope.model.Category stripLong;
+
+    private static void stripLog(String tag) {
+        if (!(mc().screen instanceof RecipeScreen rs)) {
+            RYScope.LOG.info("[strip] {}: карточка не открыта", tag);
+            return;
+        }
+        RecipeScreen.StripForTest s = rs.stripForTest();
+        RYScope.LOG.info("[strip] {}: счётчик «{}», название «{}», значков станций {}, «+N» {}, карточка {}", tag, s.pager(), s.title(),
+            s.stations().size(), s.chip()[2] > 0 ? s.chip()[0] + "," + s.chip()[1] + " " + s.chip()[2] + "×" + s.chip()[3] : "нет",
+            java.util.Arrays.toString(rs.cardBounds()));
+        for (int[] st : s.stations()) {
+            if (st[2] != 16) RYScope.LOG.info("[strip] FAIL {}: значок станции {} вместо 16", tag, st[2]);
+        }
+    }
+
+    private static void stripWindow(int w, int h) {
+        mc().getWindow().setWindowed(w, h);
+        mc().options.guiScale().set(0);
+        mc().resizeDisplay();
+    }
+
+    /** Карточка пороха на категории с наибольшим числом станций (у пороха их десятки). */
+    private static void stripStations() {
+        mc().setScreen(new InventoryScreen(mc().player));
+        RecipeScreen.clearTabs();
+        RecipeScreen.open(new ItemRes(new ItemStack(Items.GUNPOWDER)), Lookup.Mode.RECIPES);
+        if (!(mc().screen instanceof RecipeScreen rs)) return;
+        int most = 0;
+        for (var c : Lookup.allCategories()) most = Math.max(most, c.stations.size());
+        // самая «станционная» категория именно этой карточки
+        int[] best = {0};
+        rs.selectGroupForTest(c -> {
+            best[0] = Math.max(best[0], c.stations.size());
+            return false;
+        });
+        rs.selectGroupForTest(c -> c.stations.size() == best[0]);
+        RYScope.LOG.info("[strip] порох: станций в категории {}, больше всего в игре {}", best[0], most);
+    }
+
+    private static void stripLongOpen() {
+        mc().setScreen(new InventoryScreen(mc().player));
+        RecipeScreen.clearTabs();
+        if (stripLong == null) return;
+        boolean inCard = RecipeScreen.open(stripLong.stations.get(0), Lookup.Mode.USES) && mc().screen instanceof RecipeScreen rs
+            && rs.selectGroupForTest(c -> c.id.equals(stripLong.id));
+        // станция не показывает категорию в использованиях: тогда просмотр самой категории (без ссылки в названии)
+        if (!inCard) RecipeScreen.openCategory(stripLong);
+        RYScope.LOG.info("[strip] длинное название: {} «{}», в карточке станции {}", stripLong.id, stripLong.title.getString(), inCard);
+    }
+
+    private static void stripHover(java.util.function.Function<RecipeScreen.StripForTest, int[]> at, String what) {
+        if (!(mc().screen instanceof RecipeScreen rs)) return;
+        int[] p = at.apply(rs.stripForTest());
+        if (p == null) {
+            RYScope.LOG.info("[strip] навести на {}: нет на экране", what);
+            return;
+        }
+        moveMouse(works.repka.ryscore.ui.UiScale.toGui(p[0]), works.repka.ryscore.ui.UiScale.toGui(p[1]));
+    }
+
+    private static void buildStrip() {
+        step("strip: setup", () -> {
+            Overlay.setSearch("");
+            ThemeManager.select("ryscore:slate");
+            stripWindow(1280, 800);
+            int longest = 0;
+            for (var c : Lookup.allCategories()) {
+                int len = c.title.getString().length();
+                if (c.stations.size() > 1 && len > longest) {
+                    longest = len;
+                    stripLong = c;
+                }
+            }
+        }, 10);
+        // счётчик на одной странице: «N рецептов» без стрелок
+        step("strip: piston", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            RecipeScreen.clearTabs();
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES);
+        }, 20);
+        step("strip: piston log", () -> stripLog("поршень"), 1);
+        shot("strip_piston");
+        // несколько страниц: «1–3 из N» и стрелки
+        step("strip: stick", () -> {
+            mc().setScreen(new InventoryScreen(mc().player));
+            RecipeScreen.clearTabs();
+            RecipeScreen.open(new ItemRes(new ItemStack(Items.STICK)), Lookup.Mode.RECIPES);
+        }, 20);
+        step("strip: stick log", () -> stripLog("палка"), 1);
+        shot("strip_stick");
+        step("strip: stick next page", () -> mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT, 0, 0), 6);
+        step("strip: stick page 2 log", () -> stripLog("палка, страница 2"), 1);
+        shot("strip_stick_page2");
+        // станции в полный размер, «+N» и плашка всех станций
+        step("strip: gunpowder", AutoTest::stripStations, 25);
+        step("strip: gunpowder log", () -> stripLog("порох"), 1);
+        shot("strip_stations");
+        step("strip: hover station", () -> stripHover(s -> s.stations().size() > 1
+            ? new int[] {s.stations().get(1)[0] + 8, s.stations().get(1)[1] + 8} : null, "вторую станцию"), 6);
+        shot("strip_station_tip");
+        step("strip: hover more", () -> stripHover(s -> s.chip()[2] > 0
+            ? new int[] {s.chip()[0] + s.chip()[2] / 2, s.chip()[1] + s.chip()[3] / 2} : null, "«+N»"), 6);
+        shot("strip_stations_popup");
+        step("strip: glass", () -> {
+            moveMouse(2, 2);
+            ThemeManager.select("ryscore:glass");
+        }, 10);
+        shot("strip_stations_glass");
+        step("strip: slate", () -> ThemeManager.select("ryscore:slate"), 4);
+        // длинное название: многоточие, полное название в подсказке, «+N» остаётся на месте
+        step("strip: long", AutoTest::stripLongOpen, 25);
+        step("strip: long log", () -> stripLog("длинное название"), 1);
+        shot("strip_long");
+        step("strip: hover long title", () -> stripHover(s -> new int[] {s.titleX() + 10, s.titleY()}, "название"), 6);
+        shot("strip_long_tip");
+        // узкое окно: сжатая база, строка не налезает на счётчик
+        step("strip: narrow", () -> {
+            moveMouse(2, 2);
+            mc().setScreen(null);
+            stripWindow(960, 540);
+        }, 10);
+        step("strip: narrow long", AutoTest::stripLongOpen, 25);
+        step("strip: narrow long log", () -> stripLog("узкое окно, длинное название"), 1);
+        shot("strip_narrow_long");
+        step("strip: narrow gunpowder", AutoTest::stripStations, 25);
+        step("strip: narrow gunpowder log", () -> stripLog("узкое окно, порох"), 1);
+        shot("strip_narrow_stations");
+        step("strip: restore", () -> {
+            mc().setScreen(null);
+            stripWindow(1280, 800);
+        }, 5);
         step("quit", () -> mc().stop(), 0);
     }
 
