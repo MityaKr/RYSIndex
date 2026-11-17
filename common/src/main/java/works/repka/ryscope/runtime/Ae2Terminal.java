@@ -118,6 +118,14 @@ public final class Ae2Terminal {
         return active != null;
     }
 
+    /** Выход из мира: меню терминала держит игрока и мир, а содержимое сети к следующему миру не относится. */
+    public static void reset() {
+        active = null;
+        cachedFor = null;
+        network = Map.of();
+        craftable = Set.of();
+    }
+
     /** Растёт на каждое обновление клиентского списка сети (перехват Repo.handleUpdate). */
     private static volatile int repoVersion;
     private static boolean repoHooked;

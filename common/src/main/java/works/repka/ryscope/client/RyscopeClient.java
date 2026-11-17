@@ -112,6 +112,8 @@ public final class RyscopeClient {
         works.repka.ryscope.ui.RecipeScreen.clearTabs();
         works.repka.ryscope.runtime.Stages.reset();
         works.repka.ryscope.runtime.Stations.reset();
+        works.repka.ryscope.runtime.Storages.reset();
+        works.repka.ryscope.runtime.Ae2Terminal.reset();
         Overlay.forgetWorld();
     }
 

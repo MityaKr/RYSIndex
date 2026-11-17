@@ -102,16 +102,26 @@ public final class Storages {
         return Config.get().countStorages ? inRange : 0;
     }
 
+    /**
+     * Выход из мира: запомненные хранилища принадлежат миру. Тик сам этого не сделает: без мира он не вызывается,
+     * а в следующем мире игрок уже есть, и беспроводной терминал прошлого мира (он учитывается отовсюду)
+     * подмешивал бы свою сеть к новому миру.
+     */
+    public static void reset() {
+        if (!SEEN.isEmpty()) SEEN.clear();
+        if (!merged.isEmpty()) version++;
+        merged = Map.of();
+        inRange = 0;
+        setCraftable(Set.of(), 0);
+        trackedMenu = null;
+        trackedKey = null;
+    }
+
     public static void tick() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) {
-            if (!SEEN.isEmpty()) SEEN.clear();
-            if (!merged.isEmpty()) version++;
-            merged = Map.of();
-            inRange = 0;
-            setCraftable(Set.of(), 0);
-            trackedMenu = null;
+            reset();
             return;
         }
         AbstractContainerMenu menu = player.containerMenu;
