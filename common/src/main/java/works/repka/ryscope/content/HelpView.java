@@ -3,50 +3,33 @@ package works.repka.ryscope.content;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.locale.Language;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.FormattedCharSequence;
 import works.repka.ryscope.model.Ing;
 import works.repka.ryscope.model.RecipeView;
 import works.repka.ryscope.model.Stack;
-import works.repka.ryscore.ui.Draw;
 import works.repka.ryscore.theme.Theme;
-import works.repka.ryscore.theme.ThemeManager;
 
 /**
- * Страница справки. Блоки: {@code p} (абзац), {@code warn} (предупреждение), {@code items} (ряд предметов).
+ * Страница справки из JSON. Блоки: {@code p} (абзац), {@code warn} (предупреждение), {@code items} (ряд предметов).
  * В тексте работают ссылки {@code [[item:id]]} (название предмета, сам предмет показывается под абзацем)
- * и {@code [[что-угодно|подпись]]}.
+ * и {@code [[что-угодно|подпись]]}. Рисует {@link HelpPage}.
  */
 public final class HelpView implements RecipeView {
-    private static final int WIDTH = 200;
-    private static final int MAX_HEIGHT = 150;
     private static final Pattern LINK = Pattern.compile("\\[\\[([a-z_]+):([^\\]|]+)(?:\\|([^\\]]+))?]]");
-
-    private record Line(FormattedCharSequence text, int x, int y, boolean warn) {}
-
-    private record Spot(Stack stack, int x, int y) {}
 
     private final ResourceLocation id;
     private final List<Stack> targets;
     private final JsonArray body;
     private final List<Ing> inputs;
-
-    private String layoutTheme;
-    private final List<Line> lines = new ArrayList<>();
-    private final List<Spot> spots = new ArrayList<>();
-    private final List<int[]> warnBoxes = new ArrayList<>();
-    private int height = 20;
+    private HelpPage page;
+    private String pageLanguage;
 
     public HelpView(ResourceLocation id, List<Stack> targets, JsonArray body) {
         this.id = id;
@@ -62,13 +45,17 @@ public final class HelpView implements RecipeView {
 
     @Override
     public int width() {
-        return WIDTH;
+        return HelpPage.WIDTH;
     }
 
     @Override
     public int height() {
-        layout();
-        return height;
+        return page().height();
+    }
+
+    /** Текст страницы как его видит игрок: для автотеста. */
+    public String plainText() {
+        return page().plainText();
     }
 
     private static String text(JsonElement e) {
@@ -77,112 +64,64 @@ public final class HelpView implements RecipeView {
         return Language.getInstance().has(s) ? Language.getInstance().getOrDefault(s) : s;
     }
 
-    /** Раскладка считается при первом показе и при смене темы: ей нужен шрифт и цвета. */
-    private void layout() {
-        Theme theme = ThemeManager.get();
-        if (theme.id.equals(layoutTheme)) return;
-        layoutTheme = theme.id;
-        lines.clear();
-        spots.clear();
-        warnBoxes.clear();
-        Font font = Minecraft.getInstance().font;
-        int y = 0;
+    /** Блоки собираются при первом показе и при смене языка: в тексте бывают ключи перевода и названия предметов. */
+    private HelpPage page() {
+        String language = net.minecraft.client.Minecraft.getInstance().options.languageCode;
+        if (page != null && language.equals(pageLanguage)) return page;
+        pageLanguage = language;
+        List<HelpPage.Block> blocks = new ArrayList<>();
         if (body != null) {
             for (JsonElement be : body) {
-                if (!be.isJsonObject() || y > MAX_HEIGHT - 10) continue;
+                if (!be.isJsonObject()) continue;
                 JsonObject block = be.getAsJsonObject();
                 boolean warn = block.has("warn");
                 if (block.has("p") || warn) {
                     List<Stack> mentioned = new ArrayList<>();
-                    MutableComponent text = rich(text(block.get(warn ? "warn" : "p")), theme, warn, mentioned);
-                    int indent = warn ? 7 : 0;
-                    int top = y;
-                    for (FormattedCharSequence seq : font.split(text, WIDTH - indent - 2)) {
-                        if (y > MAX_HEIGHT - 10) break;
-                        lines.add(new Line(seq, indent, y + (warn ? 3 : 0), warn));
-                        y += 10;
-                    }
-                    if (warn) {
-                        warnBoxes.add(new int[] {top, y - top + 5});
-                        y += 5;
-                    }
-                    if (!mentioned.isEmpty() && y <= MAX_HEIGHT - 20) {
-                        int x = 0;
-                        for (Stack s : mentioned) {
-                            if (x + 20 > WIDTH) break;
-                            spots.add(new Spot(s, x, y + 1));
-                            x += 20;
-                        }
-                        y += 22;
-                    }
-                    y += 3;
+                    List<HelpPage.Span> spans = rich(text(block.get(warn ? "warn" : "p")), mentioned);
+                    blocks.add(warn ? HelpPage.Block.warning(spans, mentioned) : HelpPage.Block.paragraph(spans, mentioned));
                 } else if (block.has("items")) {
-                    int x = 0;
-                    for (Ing ing : JsonStacks.list(block.get("items"))) {
-                        if (x + 20 > WIDTH) break;
-                        spots.add(new Spot(ing.options.get(0), x, y + 1));
-                        x += 20;
-                    }
-                    y += 23;
+                    List<Stack> items = new ArrayList<>();
+                    for (Ing ing : JsonStacks.list(block.get("items"))) if (!ing.isEmpty()) items.add(ing.options.get(0));
+                    if (!items.isEmpty()) blocks.add(HelpPage.Block.items(items));
                 }
             }
         }
-        height = Math.max(20, Math.min(MAX_HEIGHT, y));
+        page = new HelpPage(targets, blocks);
+        return page;
     }
 
     /** Заменяет ссылки на названия и собирает упомянутые предметы. */
-    private static MutableComponent rich(String raw, Theme theme, boolean warn, List<Stack> mentioned) {
-        int base = (warn ? theme.c("text.primary") : theme.c("text.body")) & 0xFFFFFF;
-        int accent = theme.c("accent") & 0xFFFFFF;
-        MutableComponent out = Component.empty();
+    private static List<HelpPage.Span> rich(String raw, List<Stack> mentioned) {
+        List<HelpPage.Span> out = new ArrayList<>();
         Matcher m = LINK.matcher(raw);
         int last = 0;
         while (m.find()) {
-            if (m.start() > last) out.append(Component.literal(raw.substring(last, m.start())).withStyle(Style.EMPTY.withColor(base)));
+            if (m.start() > last) out.add(new HelpPage.Span(raw.substring(last, m.start()), HelpPage.Tone.BODY));
             String kind = m.group(1), target = m.group(2), label = m.group(3);
             String shown = label != null ? label : target;
             if (kind.equals("item")) {
-                Ing ing = JsonStacks.ing(new com.google.gson.JsonPrimitive(target));
+                Ing ing = JsonStacks.ing(new JsonPrimitive(target));
                 if (!ing.isEmpty()) {
                     Stack s = ing.options.get(0);
                     if (label == null) shown = s.name().getString();
                     if (mentioned.stream().noneMatch(x -> x.same(s))) mentioned.add(s);
                 }
             }
-            out.append(Component.literal(shown).withStyle(Style.EMPTY.withColor(accent)));
+            out.add(new HelpPage.Span(shown, HelpPage.Tone.LINK));
             last = m.end();
         }
-        if (last < raw.length()) out.append(Component.literal(raw.substring(last)).withStyle(Style.EMPTY.withColor(base)));
+        if (last < raw.length()) out.add(new HelpPage.Span(raw.substring(last), HelpPage.Tone.BODY));
         return out;
     }
 
     @Override
     public void render(GuiGraphics g, Theme theme, int x, int y, int mouseX, int mouseY, float partialTick) {
-        layout();
-        Font font = Minecraft.getInstance().font;
-        for (int[] box : warnBoxes) {
-            Draw.round(g, x, y + box[0], WIDTH, box[1], 2f, Draw.alpha(theme.c("state.warn"), 0.16f));
-            // предупреждение помечено полосой слева, а не только цветом текста
-            Draw.rect(g, x, y + box[0], 2, box[1], theme.c("state.warn"));
-        }
-        for (Line line : lines) {
-            g.drawString(font, line.text, x + line.x, y + line.y, 0xFFFFFFFF, false);
-        }
-        for (Spot s : spots) {
-            int sx = x + s.x, sy = y + s.y;
-            boolean hover = mouseX >= sx && mouseX < sx + 18 && mouseY >= sy && mouseY < sy + 18;
-            theme.slot(g, sx, sy, 18, hover);
-            s.stack.render(g, sx + 1, sy + 1);
-        }
+        page().render(g, theme, x, y, mouseX, mouseY, HelpContent.focus());
     }
 
     @Override
     public Stack stackAt(int x, int y, int mouseX, int mouseY) {
-        for (Spot s : spots) {
-            int sx = x + s.x, sy = y + s.y;
-            if (mouseX >= sx && mouseX < sx + 18 && mouseY >= sy && mouseY < sy + 18) return s.stack;
-        }
-        return null;
+        return page().stackAt(x, y, mouseX, mouseY, HelpContent.focus());
     }
 
     @Override

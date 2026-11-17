@@ -285,6 +285,10 @@ final class AutoTest {
             buildStrip();
             return;
         }
+        if ("help".equals(System.getProperty("ryscope.autotest"))) {
+            buildHelp();
+            return;
+        }
         if ("matrix".equals(System.getProperty("ryscope.autotest"))) {
             buildMatrix();
             return;
@@ -3269,7 +3273,7 @@ final class AutoTest {
         step("quit", () -> mc().stop(), 0);
     }
 
-    // --- сценарий strip: строка категории карточки (станции 16, счётчик, «+N», длинное название, узкое окно) ---
+    // --- сценарий strip: строка категории карточки (станции 12, счётчик, «+N», длинное название, узкое окно) ---
 
     /** Категория с самым длинным названием среди тех, где больше одной станции: проверка обрезки. */
     private static works.repka.ryscope.model.Category stripLong;
@@ -3284,7 +3288,7 @@ final class AutoTest {
             s.stations().size(), s.chip()[2] > 0 ? s.chip()[0] + "," + s.chip()[1] + " " + s.chip()[2] + "×" + s.chip()[3] : "нет",
             java.util.Arrays.toString(rs.cardBounds()));
         for (int[] st : s.stations()) {
-            if (st[2] != 16) RYScope.LOG.info("[strip] FAIL {}: значок станции {} вместо 16", tag, st[2]);
+            if (st[2] != 12) RYScope.LOG.info("[strip] FAIL {}: значок станции {} вместо 12", tag, st[2]);
         }
     }
 
@@ -3366,12 +3370,12 @@ final class AutoTest {
         step("strip: stick next page", () -> mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT, 0, 0), 6);
         step("strip: stick page 2 log", () -> stripLog("палка, страница 2"), 1);
         shot("strip_stick_page2");
-        // станции в полный размер, «+N» и плашка всех станций
+        // станции 12 единиц, «+N» и плашка всех станций в полный размер
         step("strip: gunpowder", AutoTest::stripStations, 25);
         step("strip: gunpowder log", () -> stripLog("порох"), 1);
         shot("strip_stations");
         step("strip: hover station", () -> stripHover(s -> s.stations().size() > 1
-            ? new int[] {s.stations().get(1)[0] + 8, s.stations().get(1)[1] + 8} : null, "вторую станцию"), 6);
+            ? new int[] {s.stations().get(1)[0] + 6, s.stations().get(1)[1] + 6} : null, "вторую станцию"), 6);
         shot("strip_station_tip");
         step("strip: hover more", () -> stripHover(s -> s.chip()[2] > 0
             ? new int[] {s.chip()[0] + s.chip()[2] / 2, s.chip()[1] + s.chip()[3] / 2} : null, "«+N»"), 6);
@@ -3400,7 +3404,155 @@ final class AutoTest {
         step("strip: narrow gunpowder", AutoTest::stripStations, 25);
         step("strip: narrow gunpowder log", () -> stripLog("узкое окно, порох"), 1);
         shot("strip_narrow_stations");
+        // значки 12 при разном числе пикселей в единице: 2 (1280×800), 2.5 (1920×1080) и 3 (2560×1440 при 150 %), не рябят ли
+        int savedScale = works.repka.ryscore.ui.UiScale.setting();
+        record PixelCase(String tag, int w, int h, int setting) {}
+        for (PixelCase pc : List.of(new PixelCase("px2", 1280, 800, works.repka.ryscore.ui.UiScale.AUTO),
+                new PixelCase("px25", 1920, 1080, works.repka.ryscore.ui.UiScale.AUTO), new PixelCase("px3", 2560, 1440, 150))) {
+            step("strip: " + pc.tag(), () -> {
+                moveMouse(2, 2);
+                mc().setScreen(null);
+                works.repka.ryscore.ui.UiScale.set(pc.setting());
+                stripWindow(pc.w(), pc.h());
+            }, 10);
+            step("strip: " + pc.tag() + " gunpowder", AutoTest::stripStations, 25);
+            step("strip: " + pc.tag() + " log", () -> {
+                stripLog("пикселей в единице " + works.repka.ryscore.ui.UiScale.pixels() + ", порох");
+            }, 1);
+            shot("strip_" + pc.tag() + "_stations");
+        }
         step("strip: restore", () -> {
+            mc().setScreen(null);
+            works.repka.ryscore.ui.UiScale.set(savedScale);
+            stripWindow(1280, 800);
+        }, 5);
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    // --- сценарий help: вкладка «Справка» (наши страницы и сведения JEI нашим видом, серая без них) ---
+
+    private static void helpOpen(net.minecraft.world.item.Item item, boolean toHelp) {
+        mc().setScreen(new InventoryScreen(mc().player));
+        RecipeScreen.clearTabs();
+        RecipeScreen.open(new ItemRes(new ItemStack(item)), Lookup.Mode.RECIPES);
+        if (toHelp && mc().screen instanceof RecipeScreen rs) rs.switchSectionForTest("help");
+    }
+
+    /**
+     * Строки {@code [help]} о карточке: раздел, счётчики, страницы справки по порядку и их текст.
+     * @param expect "info" — сведения JEI обязательны, "own" — первой идёт наша страница, "none" — справки нет
+     */
+    private static void helpLog(String tag, String expect) {
+        if (!(mc().screen instanceof RecipeScreen rs)) {
+            RYScope.LOG.info("[help] FAIL {}: карточка не открыта ({})", tag, mc().screen);
+            return;
+        }
+        RecipeScreen.SectionsForTest s = rs.sectionsForTest();
+        List<String> pages = new ArrayList<>();
+        int info = 0, own = 0;
+        for (RecipeView r : s.help()) {
+            String text = r instanceof works.repka.ryscope.jei.JeiInfoView v ? v.plainText()
+                : r instanceof works.repka.ryscope.content.HelpView v ? v.plainText() : "?";
+            if (r instanceof works.repka.ryscope.jei.JeiInfoView) info++;
+            if (r instanceof works.repka.ryscope.content.HelpView) own++;
+            pages.add(r.getClass().getSimpleName() + " h" + r.height() + " «" + text.replace("\n", " / ") + "»");
+        }
+        int shown = 0;
+        for (RecipeScreen.Placed p : rs.placed()) {
+            if (p.recipe() instanceof works.repka.ryscope.jei.JeiInfoView || p.recipe() instanceof works.repka.ryscope.content.HelpView) shown++;
+        }
+        int[] scroll = rs.scrollForTest();
+        RYScope.LOG.info("[help] {}: раздел {}, счётчики {}, страниц справки {} (наших {}, сведений JEI {}), на экране {}, прокрутка {}/{}",
+            tag, s.current(), s.counts(), s.help().size(), own, info, shown, scroll[0], scroll[1]);
+        for (String page : pages) RYScope.LOG.info("[help] {}: {}", tag, page);
+        if (s.infoOutsideHelp()) RYScope.LOG.info("[help] FAIL {}: сведения JEI остались среди рецептов или использований", tag);
+        switch (expect) {
+            case "info" -> {
+                if (info == 0) RYScope.LOG.info("[help] FAIL {}: сведений JEI нет", tag);
+                else if (!"help".equals(s.current())) RYScope.LOG.info("[help] FAIL {}: открыта не «Справка», а {}", tag, s.current());
+                else if (shown == 0) RYScope.LOG.info("[help] FAIL {}: страница справки не нарисована", tag);
+                else RYScope.LOG.info("[help] PASS {}", tag);
+            }
+            case "own" -> {
+                if (s.help().isEmpty() || !(s.help().get(0) instanceof works.repka.ryscope.content.HelpView)) {
+                    RYScope.LOG.info("[help] FAIL {}: наша страница не первая", tag);
+                } else if (shown == 0) {
+                    RYScope.LOG.info("[help] FAIL {}: страница справки не нарисована", tag);
+                } else {
+                    RYScope.LOG.info("[help] PASS {}", tag);
+                }
+            }
+            default -> {
+                if (!s.help().isEmpty()) RYScope.LOG.info("[help] FAIL {}: справка есть, вкладка не серая", tag);
+                else RYScope.LOG.info("[help] PASS {}: вкладка «Справка» серая", tag);
+            }
+        }
+    }
+
+    /** Предмет без справки и сведений: первый из нескольких простых, у которого их нет. */
+    private static net.minecraft.world.item.Item helpNone() {
+        for (net.minecraft.world.item.Item item : List.of(Items.OAK_BUTTON, Items.STONE_BUTTON, Items.OAK_FENCE_GATE, Items.COBBLESTONE_WALL, Items.STICK)) {
+            boolean any = false;
+            for (Lookup.Group g : Lookup.find(new ItemRes(new ItemStack(item)), Lookup.Mode.RECIPES)) {
+                any |= works.repka.ryscope.content.HelpContent.isHelp(g.category());
+            }
+            if (!any) return item;
+        }
+        return Items.STICK;
+    }
+
+    private static void buildHelp() {
+        step("help: setup", () -> {
+            Overlay.setSearch("");
+            ThemeManager.select("ryscore:slate");
+            stripWindow(1280, 800);
+        }, 10);
+        // яйцо призыва тихони: рецептов нет, карточка открывается на «Справке» со сведениями JEI
+        step("help: egg", () -> helpOpen(Items.CREEPER_SPAWN_EGG, false), 20);
+        step("help: egg log", () -> helpLog("яйцо тихони", "info"), 1);
+        shot("help_egg");
+        step("help: egg glass", () -> ThemeManager.select("ryscore:glass"), 8);
+        shot("help_egg_glass");
+        step("help: egg vanilla", () -> ThemeManager.select("ryscore:vanilla"), 8);
+        shot("help_egg_vanilla");
+        step("help: slate", () -> ThemeManager.select("ryscore:slate"), 6);
+        // длинный текст: колесо листает страницу, как остальные рецепты
+        for (int i = 0; i < 4; i++) {
+            step("help: egg scroll", () -> {
+                if (!(mc().screen instanceof RecipeScreen rs)) return;
+                int[] b = rs.cardBounds();
+                rs.mouseScrolled(works.repka.ryscore.ui.UiScale.toGui(b[0] + b[2] - 8), works.repka.ryscore.ui.UiScale.toGui(b[1] + b[3] / 2.0), 0, -1);
+            }, 3);
+        }
+        step("help: egg scroll log", () -> helpLog("яйцо тихони после колеса", "info"), 1);
+        shot("help_egg_scrolled");
+        // предмет страницы в слоте слева сверху ведёт себя как предмет: подсказка при наведении
+        step("help: egg hover icon", () -> {
+            if (!(mc().screen instanceof RecipeScreen rs) || rs.placed().isEmpty()) return;
+            RecipeScreen.Placed p = rs.placed().get(0);
+            moveMouse(works.repka.ryscore.ui.UiScale.toGui(p.x() + 9), works.repka.ryscore.ui.UiScale.toGui(p.y() + 9));
+        }, 6);
+        shot("help_egg_tip");
+        // поршень: своя страница справки из config/ryscope/help (пример автотеста), сведения JEI следом, если есть
+        step("help: piston", () -> {
+            moveMouse(2, 2);
+            helpOpen(Items.PISTON, true);
+        }, 20);
+        step("help: piston log", () -> helpLog("поршень", "own"), 1);
+        shot("help_piston");
+        // предмет без справки и сведений: вкладка серая
+        step("help: none", () -> helpOpen(helpNone(), false), 20);
+        step("help: none log", () -> helpLog("без справки", "none"), 1);
+        shot("help_none");
+        // узкое окно: сжатая база, текст переносится так же
+        step("help: narrow", () -> {
+            mc().setScreen(null);
+            stripWindow(960, 540);
+        }, 10);
+        step("help: narrow egg", () -> helpOpen(Items.CREEPER_SPAWN_EGG, false), 20);
+        step("help: narrow egg log", () -> helpLog("узкое окно, яйцо тихони", "info"), 1);
+        shot("help_narrow_egg");
+        step("help: restore", () -> {
             mc().setScreen(null);
             stripWindow(1280, 800);
         }, 5);

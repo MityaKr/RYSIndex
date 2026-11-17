@@ -45,8 +45,11 @@ public final class RecipeScreen extends ScaledScreen {
     private static final int PAD_X = 7;
     private static final int HEADER_H = 32;
     private static final int TABS_H = 16;
-    /** Строка категории: станции в полный размер 16 (дробный масштаб мылит текстуру), сверху 3, снизу 1. */
-    private static final int ROW_H = 20, ROW_ICON = 16, ROW_ICON_TOP = 3, ROW_STEP = 17, ROW_MAX_STATIONS = 4;
+    /**
+     * Строка категории: станции 12 единиц, масштаб 0.75 (решение автора 18.11: полные 16 забирают внимание и место),
+     * сверху и снизу по 3. Сколько станций встанет после названия, решает ширина (не больше шести), остальное в «+N».
+     */
+    private static final int ROW_H = 18, ROW_ICON = 12, ROW_ICON_TOP = 3, ROW_STEP = 14, ROW_MAX_STATIONS = 6;
     private static final int BLOCK_MARGIN = 3, BLOCK_PAD = 5, STATUS_GAP = 4, STATUS_H = 8;
     private static final int BOTTOM = 4;
     private static final int HISTORY_SLOT = 13, HISTORY_PAD = 2, HISTORY_GAP = 2, HISTORY_OFFSET = 23;
@@ -193,11 +196,12 @@ public final class RecipeScreen extends ScaledScreen {
         for (Group g : Lookup.find(stack, Lookup.Mode.RECIPES)) {
             boolean crafting = false;
             for (RecipeView r : g.recipes()) crafting |= r.isCrafting();
-            Section s = g.category().id.equals(HelpContent.CATEGORY) ? Section.HELP : crafting ? Section.RECIPES : Section.SOURCES;
+            Section s = HelpContent.isHelp(g.category()) ? Section.HELP : crafting ? Section.RECIPES : Section.SOURCES;
             out.get(s).add(g);
         }
         for (Group g : Lookup.find(stack, Lookup.Mode.USES)) {
-            (g.category().id.equals(HelpContent.CATEGORY) ? out.get(Section.HELP) : out.get(Section.USES)).add(g);
+            // страница справки и сведения JEI находятся и как рецепт, и как использование: в «Справку» один раз
+            if (!HelpContent.isHelp(g.category())) out.get(Section.USES).add(g);
         }
         return out;
     }
@@ -230,7 +234,9 @@ public final class RecipeScreen extends ScaledScreen {
                 Overlay.toast(tr("ryscope.recipes.none", stack.name()));
                 return false;
             }
-            if (section == Section.USES || wanted == Section.USES) {
+            if (section == Section.HELP && wanted == Section.RECIPES) {
+                Overlay.toast(tr("ryscope.recipes.only_help_recipes"));
+            } else if (section == Section.USES || wanted == Section.USES) {
                 Overlay.toast(tr(mode == Lookup.Mode.RECIPES ? "ryscope.recipes.only_uses"
                     : section == Section.SOURCES ? "ryscope.recipes.only_sources"
                     : section == Section.HELP ? "ryscope.recipes.only_help" : "ryscope.recipes.only_recipes"));
@@ -469,6 +475,36 @@ public final class RecipeScreen extends ScaledScreen {
         List<int[]> spots = new ArrayList<>();
         for (StationSpot s : stations) spots.add(new int[] {s.x, s.y, s.size});
         return new StripForTest(pagerText(group().recipes().size()), stripTitle, stripTitleAt[0], stripTitleAt[1], stationsChip.clone(), spots);
+    }
+
+    /** Для автотеста: открытый раздел, рецептов в каждом разделе, есть ли сведения JEI вне «Справки». */
+    public record SectionsForTest(String current, Map<String, Integer> counts, boolean infoOutsideHelp, List<RecipeView> help) {}
+
+    public SectionsForTest sectionsForTest() {
+        Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        boolean stray = false;
+        for (Section s : Section.values()) {
+            counts.put(s.name().toLowerCase(java.util.Locale.ROOT), total(nav.sections.get(s)));
+            if (s == Section.HELP) continue;
+            for (Group g : nav.sections.get(s)) {
+                String path = g.category().id.getPath();
+                stray |= path.equals("information") || path.equals("info");
+                for (RecipeView r : g.recipes()) stray |= r.getClass().getSimpleName().equals("JeiInfoView");
+            }
+        }
+        List<RecipeView> help = new ArrayList<>();
+        for (Group g : nav.sections.get(Section.HELP)) help.addAll(g.recipes());
+        return new SectionsForTest(nav.section.name().toLowerCase(java.util.Locale.ROOT), counts, stray, help);
+    }
+
+    /** Для автотеста: перейти на раздел по имени («help»), как кликом по вкладке. */
+    public void switchSectionForTest(String name) {
+        switchSection(Section.valueOf(name.toUpperCase(java.util.Locale.ROOT)));
+    }
+
+    /** Для автотеста: прокрутка страницы и её предел. */
+    public int[] scrollForTest() {
+        return new int[] {pageScroll, maxScroll()};
     }
 
     private Group group() {
@@ -843,7 +879,7 @@ public final class RecipeScreen extends ScaledScreen {
 
     private void renderCategoryRow(GuiGraphics g, Theme t, int mx, int my, int rowTop) {
         Group group = group();
-        // значки 16 в полный размер, текст и стрелки по их середине
+        // значки 12 единиц, текст и стрелки по их середине
         int y = rowTop + ROW_ICON_TOP;
         float cy = y + ROW_ICON / 2f;
         int textTop = Math.round(cy - 5.5f);
@@ -854,7 +890,7 @@ public final class RecipeScreen extends ScaledScreen {
             renderStation(g, mainStation, x, y);
             stations.add(new StationSpot(mainStation, x, y, ROW_ICON));
         }
-        float textX = x + (mainStation != null ? ROW_ICON + 4 : 0);
+        float textX = x + (mainStation != null ? ROW_ICON + 3 : 0);
         int right = cardX + cardW - PAD_X;
         // счётчик: на одной странице сколько всего рецептов, без стрелок; на нескольких номера на странице и стрелки
         float pagerLeft = right;
@@ -881,8 +917,8 @@ public final class RecipeScreen extends ScaledScreen {
         String title = Draw.ellipsize(fullTitle, titleRoom, 12.5f, Weight.REGULAR);
         // заголовок открывает все рецепты категории, как в JEI
         float titleW = Draw.labelWidth(title, 12.5f, Weight.REGULAR);
-        // в самом просмотре категории ссылка не нужна
-        boolean titleLink = nav.focus != null;
+        // в самом просмотре категории ссылка не нужна, у справки тоже: все страницы игры разом ни к чему
+        boolean titleLink = nav.focus != null && nav.section != Section.HELP;
         boolean titleOver = over(mx, my, (int) textX, textTop, (int) Math.ceil(titleW), 11);
         boolean titleHot = titleLink && titleOver;
         Draw.label(g, title, textX, cy, 12.5f, Weight.REGULAR, titleHot ? t.c("accent") : t.c("text.primary"));
@@ -935,7 +971,7 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     /**
-     * Сколько дополнительных станций встаёт в строку после названия: не больше {@link #ROW_MAX_STATIONS},
+     * Сколько дополнительных станций встаёт в строку после названия: сколько позволяет ширина, но не больше {@link #ROW_MAX_STATIONS},
      * при нехватке места рядом остаётся «+N» шириной {@code chipW}.
      */
     static int stationsFit(int rest, float stx, float limit, float chipW) {
@@ -944,9 +980,9 @@ public final class RecipeScreen extends ScaledScreen {
         return Math.max(0, Math.min(ROW_MAX_STATIONS, (int) ((limit - stx - chipW) / ROW_STEP)));
     }
 
-    /** Станция в полный размер, без масштаба: чужой рендер не роняет окно. */
+    /** Станция строки категории: 12 единиц, масштаб 0.75 (исключение из правила 16 или 8, решение автора). */
     private static void renderStation(GuiGraphics g, Stack stack, float x, float y) {
-        renderScaled(g, stack, x, y, 1f);
+        renderScaled(g, stack, x, y, ROW_ICON / 16f);
     }
 
     private void openPopup(List<Stack> stacks, int x, int y, int w, int h, String title) {
@@ -1016,6 +1052,7 @@ public final class RecipeScreen extends ScaledScreen {
         for (int i = page.start; i < page.end; i++) pageContent += blockHeight(recipes.get(i)) + BLOCK_MARGIN * 2;
         pageScroll = Math.max(0, Math.min(pageScroll, maxScroll()));
         works.repka.ryscope.content.NativeRecipe.missingBadges = true;
+        HelpContent.setFocus(nav.focus);
         works.repka.ryscope.runtime.Ae2Terminal.setActive(host != null ? host.getMenu() : null);
         // блок рецепта не шире, чем нужно самому широкому рецепту раздела; на широкой карточке стоит по центру
         int areaW = cardW - railWidth() - PAD_X * 2;
@@ -1214,7 +1251,8 @@ public final class RecipeScreen extends ScaledScreen {
     /** Дополнительные кнопки рецепта: закладка на сам рецепт и рецепт по умолчанию для предмета карточки. */
     private List<Extra> extras(RecipeView r) {
         List<Extra> out = new ArrayList<>(2);
-        if (r.id() == null) return out;
+        // закладка на страницу справки не нужна: страница и так всегда у предмета
+        if (r.id() == null || nav.section == Section.HELP) return out;
         boolean itemOut = false;
         for (Stack s : r.outputs()) itemOut |= !s.item().isEmpty();
         if (itemOut) out.add(Extra.MARK);

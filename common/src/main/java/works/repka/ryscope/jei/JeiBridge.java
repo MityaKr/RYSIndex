@@ -300,8 +300,8 @@ public final class JeiBridge implements Foreign.Source {
                 if (replaced(c, snapshot)) continue;
                 List<RecipeView> views = views(rm, c, focuses, group, snapshot, shown);
                 if (views.isEmpty()) continue;
-                // категории, которые есть и у нас, сливаются в одну вкладку
-                Category own = snapshot.category(c.getRecipeType().getUid());
+                // категории, которые есть и у нас, сливаются в одну вкладку; сведения JEI уходят в «Справку»
+                Category own = isInfo(c) ? works.repka.ryscope.content.HelpContent.category() : snapshot.category(c.getRecipeType().getUid());
                 out.add(new Lookup.Group(own != null ? own : category(c), views));
             } catch (Throwable t) {
                 RYScope.LOG.warn("Категория JEI {} пропущена: {}", c.getRecipeType().getUid(), t.toString());
@@ -347,10 +347,22 @@ public final class JeiBridge implements Foreign.Source {
                 }
                 if (id != null && ownIds.contains(id)) return;
             }
-            RecipeView structure = StructureRecipeView.of(recipe);
-            views.add(structure != null ? structure : new JeiRecipeView<>(this, c, recipe, group));
+            views.add(view(c, recipe, group));
         });
         return views;
+    }
+
+    /** Сведения о предмете ({@code addInformation}): показываются во вкладке «Справка», а не среди рецептов. */
+    static boolean isInfo(IRecipeCategory<?> c) {
+        return c.getRecipeType().getUid().equals(mezz.jei.api.constants.RecipeTypes.INFORMATION.getUid());
+    }
+
+    /** Наш вид для известных рецептов (сведения, превью структуры), остальное рисует JEI. */
+    private <T> RecipeView view(IRecipeCategory<T> c, T recipe, IFocusGroup group) {
+        RecipeView info = JeiInfoView.of(this, recipe);
+        if (info != null) return info;
+        RecipeView structure = StructureRecipeView.of(recipe);
+        return structure != null ? structure : new JeiRecipeView<>(this, c, recipe, group);
     }
 
     private Snapshot idsFor;
@@ -632,13 +644,11 @@ public final class JeiBridge implements Foreign.Source {
                     }
                 }
             }
-            if (mine == null) {
-                RecipeView structure = StructureRecipeView.of(recipe);
-                mine = structure != null ? structure : new JeiRecipeView<>(this, c, recipe, group);
-            }
+            if (mine == null) mine = view(c, recipe, group);
             views.add(mine);
         }
-        return views.isEmpty() ? null : new Lookup.Group(own != null ? own : category(c), views);
+        if (views.isEmpty()) return null;
+        return new Lookup.Group(isInfo(c) ? works.repka.ryscope.content.HelpContent.category() : own != null ? own : category(c), views);
     }
 
     /** Как сортировка категорий JEI: есть ли обработчик переноса этой категории в открытое окно. */

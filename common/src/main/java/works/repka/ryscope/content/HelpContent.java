@@ -28,6 +28,7 @@ import works.repka.ryscope.runtime.Snapshot;
  * Страницы справки: короткий текст о предмете с иконками, ссылками на другие предметы и предупреждениями.
  * Источники: {@code assets/<namespace>/ryscope_help/*.json} в ресурспаке или jar мода
  * и {@code config/ryscope/help/*.json} в сборке. Формат описан в docs/09-data-formats.md.
+ * «Сведения» JEI ({@code addInformation}) попадают в ту же категорию следом за нашими страницами (см. JeiBridge).
  */
 public final class HelpContent {
     public static final String FOLDER = "ryscope_help";
@@ -36,8 +37,31 @@ public final class HelpContent {
     private record Page(String source, JsonObject json) {}
 
     private static volatile List<Page> pages = List.of();
+    private static Category category;
+    /** Предмет карточки, которая сейчас рисует справку: его и показывает слот страницы, если он среди её предметов. */
+    private static Stack focus;
 
     private HelpContent() {}
+
+    /** Категория «Справка»: одна на наши страницы и сведения JEI, поэтому они сливаются в одну вкладку. */
+    public static synchronized Category category() {
+        if (category == null) {
+            category = new Category(CATEGORY, Component.translatable("ryscope.category.help"), ItemRes.of(new ItemStack(Items.WRITABLE_BOOK)), -10);
+        }
+        return category;
+    }
+
+    public static boolean isHelp(Category c) {
+        return c.id.equals(CATEGORY);
+    }
+
+    public static void setFocus(Stack stack) {
+        focus = stack;
+    }
+
+    public static Stack focus() {
+        return focus;
+    }
 
     public static void reload(ResourceManager manager) {
         List<Page> loaded = new ArrayList<>();
@@ -68,7 +92,7 @@ public final class HelpContent {
     public static void provide(Snapshot.Builder b) {
         List<Page> list = pages;
         if (list.isEmpty()) return;
-        Category category = new Category(CATEGORY, Component.translatable("ryscope.category.help"), ItemRes.of(new ItemStack(Items.WRITABLE_BOOK)), -10);
+        Category category = category();
         int n = 0;
         for (Page page : list) {
             try {
