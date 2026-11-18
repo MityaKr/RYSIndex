@@ -1639,7 +1639,8 @@ final class AutoTest {
             java.util.function.Predicate<works.repka.ryscope.model.Category> pick = cat -> cat.id.getNamespace().equals(ns);
             step("jeiscale: " + id, () -> {
                 ItemStack stack = new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse(id)));
-                int limit = works.repka.ryscope.jei.JeiScale.maxWidth();
+                // 0.2.11: рецепт до места окна наибольшей ширины остаётся своего размера, шире вписывается
+                int limit = works.repka.ryscope.jei.JeiScale.hardWidth();
                 for (Lookup.Group g : Lookup.find(new ItemRes(stack), mode)) {
                     if (g.recipes().isEmpty()) continue;
                     var r = g.recipes().get(0);
