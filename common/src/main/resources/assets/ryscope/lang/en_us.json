@@ -307,6 +307,7 @@
   "ryscope.status.missing": "missing: %s",
   "ryscope.status.more": "and %s more",
   "ryscope.status.stored": "some in nearby storage",
+  "ryscope.status.unknown": "Availability unknown",
   "ryscope.goals.tree": "Craft tree",
   "ryscope.filter.all": "All",
   "ryscope.filter.craftable": "Available",

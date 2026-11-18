@@ -307,6 +307,7 @@
   "ryscope.status.missing": "не хватает: %s",
   "ryscope.status.more": "и ещё %s",
   "ryscope.status.stored": "есть в хранилищах рядом",
+  "ryscope.status.unknown": "Наличие неизвестно",
   "ryscope.goals.tree": "Дерево крафта",
   "ryscope.filter.all": "Все",
   "ryscope.filter.craftable": "Доступно",

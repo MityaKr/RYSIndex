@@ -1,6 +1,7 @@
 package works.repka.ryscope.jei;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -115,4 +116,19 @@ class JeiScaleTest {
         assertEquals(208, JeiScale.hardWidth());
     }
 
+    @Test
+    void failsKeepOldValueUntilLimit() {
+        works.repka.ryscope.ui.Fails<Object> fails = new works.repka.ryscope.ui.Fails<>();
+        Object r = new Object(), other = new Object();
+        int limit = works.repka.ryscope.ui.Fails.LIMIT;
+        assertTrue(limit > 1, "единичный сбой не должен менять строку");
+        // сбои до предела оставляют прежнюю строку и «+» (без моргания)
+        for (int i = 1; i < limit; i++) assertFalse(fails.again(r));
+        assertTrue(fails.again(r), "после нескольких сбоев подряд «неизвестно»");
+        // удачный пересчёт сбрасывает счёт
+        fails.ok(r);
+        assertFalse(fails.again(r));
+        // счёт у каждого рецепта свой
+        assertFalse(fails.again(other));
+    }
 }

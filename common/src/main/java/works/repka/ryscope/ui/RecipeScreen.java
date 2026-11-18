@@ -149,6 +149,8 @@ public final class RecipeScreen extends ScaledScreen {
     private int transferInputs = Integer.MIN_VALUE;
     private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
     private final Map<RecipeView, Status> statuses = new IdentityHashMap<>();
+    /** Сбои подряд при пересчёте строки наличия и «+»: см. {@link Fails}. */
+    private final Fails<RecipeView> statusFails = new Fails<>(), transferFails = new Fails<>();
     private int transferAge;
     /** Пересчитать «+» и статусы на ближайшем тике, не стирая прежних: до пересчёта рисуются старые. */
     private boolean transferStale;
@@ -459,6 +461,8 @@ public final class RecipeScreen extends ScaledScreen {
         pageScroll = 0;
         transfers.clear();
         statuses.clear();
+        statusFails.clear();
+        transferFails.clear();
         pagesFor = null;
         widthFor = null;
     }
@@ -1657,7 +1661,7 @@ public final class RecipeScreen extends ScaledScreen {
             w = (int) (w * 0.58f);
         }
         if (s == null) return;
-        if (Kit.indicator(g, t, x, cy - 2.25f, 4.5f, s.state, mx, my)) {
+        if (s.state != null && Kit.indicator(g, t, x, cy - 2.25f, 4.5f, s.state, mx, my)) {
             pendingTip = tr(switch (s.state) {
                 case FULL -> "ryscope.status.state.full";
                 case PARTIAL -> "ryscope.status.state.partial";
@@ -1897,22 +1901,28 @@ public final class RecipeScreen extends ScaledScreen {
         for (Placed p : placed) {
             try {
                 statuses.put(p.recipe, statusOf(p.recipe));
+                statusFails.ok(p.recipe);
             } catch (Throwable t) {
-                // чужой рецепт споткнулся: остаётся прежняя строка, если она была
-                statuses.putIfAbsent(p.recipe, null);
+                // чужой рецепт споткнулся: сначала остаётся прежняя строка, после нескольких сбоев подряд «неизвестно»
+                if (statusFails.again(p.recipe)) statuses.put(p.recipe, unknownStatus());
+                else statuses.putIfAbsent(p.recipe, null);
             }
             if (host != null) {
                 AbstractContainerScreen<?> acs = host;
-                Transfer tr;
                 try {
-                    tr = p.recipe.transfer(acs, false, true);
+                    transfers.put(p.recipe, p.recipe.transfer(acs, false, true));
+                    transferFails.ok(p.recipe);
                 } catch (Throwable t) {
-                    tr = transfers.getOrDefault(p.recipe, Transfer.UNSUPPORTED);
+                    // так же: прежний «+», после нескольких сбоев подряд погашен
+                    if (transferFails.again(p.recipe) || !transfers.containsKey(p.recipe)) transfers.put(p.recipe, Transfer.UNSUPPORTED);
                 }
-                transfers.put(p.recipe, tr);
             }
         }
         // ушедшие с экрана рецепты держатся до смены страницы или раздела: там оба кэша стираются целиком
+    }
+
+    private static Status unknownStatus() {
+        return new Status(tr("ryscope.status.unknown"), "", null);
     }
 
     private void setGroup(int index) {
@@ -1929,6 +1939,8 @@ public final class RecipeScreen extends ScaledScreen {
         pageScroll = 0;
         transfers.clear();
         statuses.clear();
+        statusFails.clear();
+        transferFails.clear();
     }
 
     private boolean goBack() {
