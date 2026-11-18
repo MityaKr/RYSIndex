@@ -77,6 +77,10 @@ public final class Lookup {
                 RYScope.LOG.warn("Источник {} не ответил на запрос рецептов", foreign.name(), t);
             }
         }
+        // сведения модов семьи (магазин и награды книги квестов): на лету, как источник JEI, в снимок не попадают
+        for (Group g : Links.groups(stack, mode)) {
+            groups.computeIfAbsent(g.category(), k -> new ArrayList<>()).addAll(g.recipes());
+        }
         List<Group> out = preferOriginals(groups);
         out.sort(java.util.Comparator.comparingInt(g -> rank(g.category(), stack, mode, snap)));
         if (mode == Mode.RECIPES && !(stack instanceof works.repka.ryscope.model.ItemRes)) {
@@ -122,12 +126,14 @@ public final class Lookup {
 
     /**
      * Порядок вкладок: у машины в «Использованиях» сначала то, что она делает; затем верстак;
-     * дальше машины и процессы в своём порядке; служебное (теги, квесты) и лут (сундуки, зачарования,
+     * дальше машины и процессы в своём порядке; сведения модов семьи (магазин книги); служебное (теги, квесты) и лут (сундуки, зачарования,
      * мобы, генерация мира) в самом конце.
      */
     private static int rank(Category c, Stack stack, Mode mode, Snapshot snap) {
         String ns = c.id.getNamespace(), path = c.id.getPath();
         if (mode == Mode.USES && isStation(c, stack, snap)) return 0;
+        // сделки и награды модов семьи: после машин, перед торговлей жителей и лутом
+        if (c instanceof Links.LinkCategory) return 6;
         if (path.equals("crafting") && (ns.equals("minecraft") || ns.equals(RYScope.MOD_ID))) return 1;
         if (LOOT_NAMESPACES.contains(ns) || LOOT_PATHS.contains(path) || path.endsWith("_loot") || path.endsWith("_drops")) return 9;
         if (path.startsWith("tag_recipes") || path.equals("information") || path.equals("info") || ns.equals("ftbquests") || ns.equals("rysquests")) return 8;

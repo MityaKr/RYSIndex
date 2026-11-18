@@ -281,6 +281,10 @@ final class AutoTest {
             buildDesign();
             return;
         }
+        if ("links".equals(System.getProperty("ryscope.autotest"))) {
+            buildLinks();
+            return;
+        }
         if ("strip".equals(System.getProperty("ryscope.autotest"))) {
             buildStrip();
             return;
@@ -3271,6 +3275,202 @@ final class AutoTest {
         step("design: settings", () -> mc().setScreen(new works.repka.ryscope.ui.SettingsScreen(null)), 10);
         shot("design_settings");
         step("quit", () -> mc().stop(), 0);
+    }
+
+    // --- сценарий links: сведения модов семьи (магазин и награды книги, чип квестов) на тестовом поставщике ---
+
+    private static void linksOpen(net.minecraft.world.item.Item item, Lookup.Mode mode) {
+        mc().setScreen(new InventoryScreen(mc().player));
+        RecipeScreen.clearTabs();
+        RecipeScreen.open(new ItemRes(new ItemStack(item)), mode);
+    }
+
+    /** Навести мышь на середину прямоугольника в единицах карточки. */
+    private static void linksHover(int[] r) {
+        if (r == null) return;
+        moveMouse(works.repka.ryscore.ui.UiScale.toGui(r[0] + r[2] / 2.0), works.repka.ryscore.ui.UiScale.toGui(r[1] + r[3] / 2.0));
+    }
+
+    private static void linksClick(int[] r, String expect, String tag) {
+        RecipeScreen rs = AutoTestLinks.screen();
+        if (rs == null || r == null) {
+            AutoTestLinks.check(tag, false, "нечего нажать");
+            return;
+        }
+        AutoTestLinks.lastAction = "";
+        rs.clickForTest(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, 0);
+        AutoTestLinks.check(tag, expect.equals(AutoTestLinks.lastAction), "действие «" + AutoTestLinks.lastAction + "», ждали «" + expect + "»");
+    }
+
+    private static void buildLinks() {
+        step("links: setup", () -> {
+            Overlay.setSearch("");
+            ThemeManager.select("ryscore:slate");
+            stripWindow(1280, 800);
+            AutoTestLinks.uninstall();
+            AutoTestLinks.install();
+        }, 5);
+        // осколок эха: рецептов нет, «Источники» с магазином и наградой квеста, чип «2 квеста»
+        step("links: open shard", () -> {
+            parkMouse();
+            linksOpen(Items.ECHO_SHARD, Lookup.Mode.RECIPES);
+        }, 20);
+        step("links: shop", () -> {
+            RecipeScreen rs = AutoTestLinks.screen();
+            boolean found = rs != null && rs.selectGroupForTest(AutoTestLinks::isShop);
+            AutoTestLinks.check("магазин", found, "категория магазина в «Источниках»");
+        }, 6);
+        step("links: shop log", () -> {
+            AutoTestLinks.log("магазин, страница 1");
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs == null) return;
+            AutoTestLinks.check("раздел", "sources".equals(rs.sectionsForTest().current()), "открыт раздел " + rs.sectionsForTest().current());
+            AutoTestLinks.check("счётчик", rs.stripForTest().pager().contains("сделк") || rs.stripForTest().pager().contains("из"),
+                "счётчик «" + rs.stripForTest().pager() + "»");
+            List<works.repka.ryscope.content.LinkCardView> cards = AutoTestLinks.cards();
+            AutoTestLinks.check("карточка во всю ширину", !cards.isEmpty() && cards.get(0).width() > works.repka.ryscope.content.LinkCardView.MIN_W,
+                cards.isEmpty() ? "карточек нет" : "ширина " + cards.get(0).width());
+        }, 1);
+        shot("links_shop_locked");
+        // предмет цены ведёт себя как предмет просмотрщика: подсказка игры
+        step("links: hover cost", () -> {
+            List<works.repka.ryscope.content.LinkCardView> cards = AutoTestLinks.cards();
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs == null || cards.isEmpty()) return;
+            for (RecipeScreen.Placed p : rs.placed()) {
+                if (p.recipe() != cards.get(0)) continue;
+                // первая строка «Нужно доставить»: шапка 22, промежуток 5, заголовок 6, промежуток 5
+                moveMouse(works.repka.ryscore.ui.UiScale.toGui(p.x() + 9), works.repka.ryscore.ui.UiScale.toGui(p.y() + 38 + 9));
+                Stack s = rs.hoveredStackAtMouse();
+                AutoTestLinks.check("предмет цены", s != null && s.item().is(Items.NETHERITE_INGOT), "под курсором " + (s == null ? "ничего" : s.id()));
+            }
+        }, 6);
+        shot("links_cost_tooltip");
+        step("links: lock link", () -> {
+            parkMouse();
+            List<works.repka.ryscope.content.LinkCardView> cards = AutoTestLinks.cards();
+            linksClick(cards.isEmpty() ? null : cards.get(0).actionRectForTest(true), "lock_link", "ссылка под замком");
+        }, 4);
+        step("links: open button", () -> {
+            List<works.repka.ryscope.content.LinkCardView> cards = AutoTestLinks.cards();
+            linksClick(cards.isEmpty() ? null : cards.get(0).actionRectForTest(false), "open_shop_locked", "кнопка «Открыть в магазине»");
+        }, 4);
+        step("links: next page", () -> mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT, 0, 0), 6);
+        step("links: page 2 log", () -> AutoTestLinks.log("магазин, страница 2"), 1);
+        shot("links_shop_open");
+        // карточка обновляется сама: поставщик поднял версию, числа новые, страница на месте
+        step("links: version", () -> {
+            AutoTestLinks.PROVIDER.delivered = 1984;
+            AutoTestLinks.PROVIDER.version++;
+        }, 4);
+        step("links: version log", () -> {
+            AutoTestLinks.log("после новой версии");
+            boolean updated = false;
+            for (works.repka.ryscope.content.LinkCardView v : AutoTestLinks.cards()) {
+                if (v.card().id().getPath().endsWith("trophy_open")) updated = v.card().takes().get(0).have() == 1984;
+            }
+            AutoTestLinks.check("версия", updated, "открытая карточка перечитала поставку");
+        }, 1);
+        shot("links_shop_updated");
+        step("links: rewards", () -> {
+            RecipeScreen rs = AutoTestLinks.screen();
+            AutoTestLinks.check("награды квестов", rs != null && rs.selectGroupForTest(AutoTestLinks::isRewards), "категория наград в «Источниках»");
+        }, 6);
+        step("links: rewards log", () -> AutoTestLinks.log("награды квестов"), 1);
+        shot("links_rewards");
+        // чип в шапке и список
+        step("links: chip", () -> {
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs == null) return;
+            RecipeScreen.LinksForTest l = rs.linksForTest();
+            AutoTestLinks.check("чип", l.chips().equals(List.of("2 квеста")) && l.chipRects().get(0) != null, "чипы " + l.chips());
+            linksHover(l.chipRects().isEmpty() ? null : l.chipRects().get(0));
+        }, 8);
+        step("links: chip log", () -> {
+            AutoTestLinks.log("список по наведению");
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs == null) return;
+            RecipeScreen.LinksForTest l = rs.linksForTest();
+            AutoTestLinks.check("список", l.open() == 0 && l.rows().size() == 3, "открыт " + l.open() + ", строк " + l.rows().size());
+        }, 1);
+        shot("links_chip_popover");
+        step("links: hover row", () -> {
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs != null && !rs.linksForTest().rowRects().isEmpty()) linksHover(rs.linksForTest().rowRects().get(1));
+        }, 6);
+        shot("links_chip_row_hover");
+        step("links: click row", () -> {
+            RecipeScreen rs = AutoTestLinks.screen();
+            linksClick(rs == null || rs.linksForTest().rowRects().isEmpty() ? null : rs.linksForTest().rowRects().get(1), "mention_eternity", "строка списка");
+        }, 4);
+        step("links: themes glass", () -> {
+            parkMouse();
+            ThemeManager.select("ryscore:glass");
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs != null) {
+                rs.selectGroupForTest(AutoTestLinks::isShop);
+                rs.openMentionsForTest(0);
+            }
+        }, 8);
+        shot("links_glass");
+        step("links: themes vanilla", () -> ThemeManager.select("ryscore:vanilla"), 8);
+        shot("links_vanilla");
+        step("links: slate", () -> {
+            ThemeManager.select("ryscore:slate");
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs != null) rs.openMentionsForTest(-1);
+        }, 4);
+        // продажа: предмет в цене сделки уходит в «Использования»
+        step("links: uses", () -> {
+            parkMouse();
+            linksOpen(Items.ECHO_SHARD, Lookup.Mode.USES);
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs != null) {
+                rs.switchSectionForTest("uses");
+                AutoTestLinks.check("продажа", rs.selectGroupForTest(AutoTestLinks::isShop), "сделка в «Использованиях»");
+            }
+        }, 20);
+        step("links: uses log", () -> AutoTestLinks.log("использования"), 1);
+        shot("links_uses");
+        // узкое окно: сжатая база, чип и карточка помещаются
+        step("links: narrow", () -> {
+            mc().setScreen(null);
+            stripWindow(960, 540);
+        }, 10);
+        step("links: narrow open", () -> {
+            linksOpen(Items.ECHO_SHARD, Lookup.Mode.RECIPES);
+            RecipeScreen rs = AutoTestLinks.screen();
+            if (rs != null) rs.selectGroupForTest(AutoTestLinks::isShop);
+        }, 20);
+        step("links: narrow log", () -> AutoTestLinks.log("узкое окно"), 1);
+        shot("links_narrow");
+        step("links: wide", () -> {
+            mc().setScreen(null);
+            stripWindow(1280, 800);
+        }, 10);
+        // сломанный поставщик: ошибка в лог один раз, окно работает
+        step("links: broken", () -> {
+            works.repka.ryscore.links.ItemLinks.register(new AutoTestLinks.Broken());
+            linksOpen(Items.ECHO_SHARD, Lookup.Mode.RECIPES);
+            AutoTestLinks.check("сломанный поставщик", AutoTestLinks.screen() != null, "карточка открылась");
+        }, 20);
+        step("links: broken log", () -> AutoTestLinks.log("со сломанным поставщиком"), 1);
+        // без поставщика: категорий и чипа нет, всё как раньше
+        step("links: none", () -> {
+            AutoTestLinks.uninstall();
+            linksOpen(Items.ECHO_SHARD, Lookup.Mode.RECIPES);
+        }, 20);
+        step("links: none log", () -> {
+            AutoTestLinks.log("без поставщика");
+            RecipeScreen rs = AutoTestLinks.screen();
+            boolean clean = rs == null || rs.linksForTest().chips().isEmpty() && !rs.selectGroupForTest(c -> c instanceof works.repka.ryscope.runtime.Links.LinkCategory);
+            AutoTestLinks.check("без поставщика", clean, rs == null ? "карточка не открылась (у предмета ничего нет)" : "ни чипа, ни категорий поставщика");
+        }, 1);
+        shot("links_none");
+        step("quit", () -> {
+            mc().setScreen(null);
+            mc().stop();
+        }, 0);
     }
 
     // --- сценарий strip: строка категории карточки (станции 12, счётчик, «+N», длинное название, узкое окно) ---

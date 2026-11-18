@@ -104,6 +104,8 @@ public final class RecipeScreen extends ScaledScreen {
         /** Рецепт, страницу которого показать при первой раскладке (открыта закладка на рецепт). */
         @Nullable
         works.repka.ryscope.runtime.RecipeRef reveal;
+        /** Версия сведений модов семьи, по которой собраны их категории: при новой версии карточки перечитываются. */
+        int links = works.repka.ryscope.runtime.Links.version();
 
         Nav(@Nullable Stack focus, Section section, Map<Section, List<Group>> sections) {
             this.focus = focus;
@@ -164,6 +166,22 @@ public final class RecipeScreen extends ScaledScreen {
     private String popupTitle = "";
     private final int[] popupAnchor = new int[4];
     private static final int POPUP_MAX = 72;
+
+    /** Чип «N квестов» в шапке (макет {@code _audit/ryscope-quests/3_quests_chip}): упоминания предмета от модов семьи. */
+    private static final int CHIP_H = 13, MENTION_W = 165, MENTION_ROW = 24, MENTION_RUBRIC = 12, MENTION_HEAD = 13, MENTION_MAX = 200;
+    private List<works.repka.ryscope.runtime.Links.Shown> mentions = List.of();
+    @Nullable
+    private Stack mentionsFor;
+    private int mentionsVersion = Integer.MIN_VALUE;
+    /** Раскрытый список: номер чипа (-1: закрыт), закреплён ли кликом, место панельки и строк. */
+    private int mentionsOpen = -1;
+    private boolean mentionsPinned;
+    private int[] mentionsBox = new int[4];
+    private final Scroller mentionsScroll = new Scroller();
+
+    private record MentionSpot(int x, int y, int w, int h, works.repka.ryscore.links.ItemLinks.Mention mention) {}
+
+    private final List<MentionSpot> mentionSpots = new ArrayList<>();
 
     private RecipeScreen(@Nullable Screen parent, Nav nav) {
         super(Component.translatable("ryscope.recipes.title"));
@@ -574,7 +592,9 @@ public final class RecipeScreen extends ScaledScreen {
             int need = 0;
             for (RecipeView r : current.recipes()) {
                 int plate = r.needsPlate() ? 3 : 0;
-                need = Math.max(need, r.width() + plate * 2);
+                // карточка поставщика растягивается на блок сама: в ширину окна идёт её наименьшая ширина
+                int w = r instanceof works.repka.ryscope.content.LinkCardView ? works.repka.ryscope.content.LinkCardView.MIN_W : r.width();
+                need = Math.max(need, w + plate * 2);
             }
             widthFor = current;
             widthNeed = need;
@@ -662,10 +682,13 @@ public final class RecipeScreen extends ScaledScreen {
         placed.clear();
         stations.clear();
         historySpots.clear();
+        chipAt = new int[0][];
+        refreshLinks();
         relayout();
         renderBackground(g, mx, my, partialTick);
         Overlay.renderBackground(this, g, mx, my, partialTick);
         if (Overlay.cardCollapsed()) {
+            closeMentions();
             renderCardStrip(g, t, mx, my);
             Overlay.renderTop(this, g, mx, my, partialTick);
             return;
@@ -684,6 +707,7 @@ public final class RecipeScreen extends ScaledScreen {
         renderRecipes(g, t, mx, my, partialTick, y);
         renderPopup(g, t, mx, my);
         Overlay.renderTop(this, g, mx, my, partialTick);
+        renderMentions(g, t, mx, my);
         renderTooltips(g, t, mx, my, hoveredCategory);
     }
 
@@ -793,7 +817,7 @@ public final class RecipeScreen extends ScaledScreen {
             }
             if (hot) hovered = category;
             hits.add(x, y, RAIL_SLOT, RAIL_SLOT, b -> {
-                if (b == 1) {
+                if (b == 1 && !(category instanceof works.repka.ryscope.runtime.Links.LinkCategory)) {
                     // правый клик: «у меня есть» → «нет» → определять самому
                     works.repka.ryscope.runtime.Stations.cycleMark(category);
                     Boolean mark = works.repka.ryscope.runtime.Stations.mark(category);
@@ -843,7 +867,8 @@ public final class RecipeScreen extends ScaledScreen {
         hintHover = mx >= infoX - 1 && mx < infoX + 11 && my >= infoY - 1 && my < infoY + 11;
         Draw.info(g, infoX, infoY, hintHover ? t.c("accent") : t.c("text.dim"));
         float textX = left + 20 + 6;
-        float room = infoX - 6 - textX;
+        int chipRight = renderChips(g, t, infoX - 6, buttonY + 1, textX, mx, my);
+        float room = chipRight - 6 - textX;
         String title = shown != null ? shown.name().getString() : group().category().title.getString();
         Draw.label(g, Draw.ellipsize(title, room, 17, Weight.SEMIBOLD), textX, iconY + 5.5f, 17, Weight.SEMIBOLD, t.c("text.primary"));
         String full = subtitle();
@@ -886,11 +911,15 @@ public final class RecipeScreen extends ScaledScreen {
         int x = cardX + railWidth() + PAD_X;
         List<Stack> all = group.category().stations;
         Stack mainStation = all.isEmpty() ? null : all.get(0);
+        // у категории мода семьи (магазин книги) станций нет: её значок, картинка, а не предмет
+        boolean linkIcon = mainStation == null && group.category() instanceof works.repka.ryscope.runtime.Links.LinkCategory lc && lc.icon != null;
         if (mainStation != null) {
             renderStation(g, mainStation, x, y);
             stations.add(new StationSpot(mainStation, x, y, ROW_ICON));
+        } else if (linkIcon) {
+            renderStation(g, group.category().icon, x, y);
         }
-        float textX = x + (mainStation != null ? ROW_ICON + 3 : 0);
+        float textX = x + (mainStation != null || linkIcon ? ROW_ICON + 3 : 0);
         int right = cardX + cardW - PAD_X;
         // счётчик: на одной странице сколько всего рецептов, без стрелок; на нескольких номера на странице и стрелки
         float pagerLeft = right;
@@ -918,7 +947,8 @@ public final class RecipeScreen extends ScaledScreen {
         // заголовок открывает все рецепты категории, как в JEI
         float titleW = Draw.labelWidth(title, 12.5f, Weight.REGULAR);
         // в самом просмотре категории ссылка не нужна, у справки тоже: все страницы игры разом ни к чему
-        boolean titleLink = nav.focus != null && nav.section != Section.HELP;
+        // категория мода семьи живёт только в карточке предмета: отдельного просмотра у неё нет
+        boolean titleLink = nav.focus != null && nav.section != Section.HELP && !(group.category() instanceof works.repka.ryscope.runtime.Links.LinkCategory);
         boolean titleOver = over(mx, my, (int) textX, textTop, (int) Math.ceil(titleW), 11);
         boolean titleHot = titleLink && titleOver;
         Draw.label(g, title, textX, cy, 12.5f, Weight.REGULAR, titleHot ? t.c("accent") : t.c("text.primary"));
@@ -964,7 +994,11 @@ public final class RecipeScreen extends ScaledScreen {
 
     /** Текст счётчика: «5 рецептов» на единственной странице, «1–2 из 5» при нескольких. */
     private String pagerText(int total) {
-        if (pageCount() <= 1) return Overlay.plural("ryscope.recipes.total", total, Integer.toString(total));
+        if (pageCount() <= 1) {
+            // поставщик считает своими словами: «3 сделки»
+            String own = works.repka.ryscope.runtime.Links.count(group().category(), total);
+            return own != null ? own : Overlay.plural("ryscope.recipes.total", total, Integer.toString(total));
+        }
         Page page = pages.isEmpty() ? new Page(0, 0) : pages.get(nav.page);
         String range = page.end - page.start > 1 ? (page.start + 1) + "–" + page.end : Integer.toString(page.start + 1);
         return tr("ryscope.recipes.range", range, total);
@@ -1039,6 +1073,259 @@ public final class RecipeScreen extends ScaledScreen {
         g.pose().popPose();
     }
 
+    // --- сведения модов семьи: чип «N квестов» и его список ---
+
+    /**
+     * Раз в кадр: если поставщик поднял версию, перечитать его категории (только их, рецепты JEI не трогаются)
+     * и упоминания для чипа. Сравнение двух чисел, пока ничего не менялось.
+     */
+    private void refreshLinks() {
+        int v = works.repka.ryscope.runtime.Links.version();
+        if (nav.links != v) {
+            nav.links = v;
+            if (nav.focus != null) relinkSections();
+        }
+        if (mentionsFor != nav.focus || mentionsVersion != v) {
+            mentionsFor = nav.focus;
+            mentionsVersion = v;
+            mentions = nav.focus == null ? List.of() : works.repka.ryscope.runtime.Links.mentions(nav.focus);
+            if (mentionsOpen >= mentions.size()) closeMentions();
+        }
+    }
+
+    private void relinkSections() {
+        List<Group> gives = works.repka.ryscope.runtime.Links.groups(nav.focus, Lookup.Mode.RECIPES);
+        List<Group> takes = works.repka.ryscope.runtime.Links.groups(nav.focus, Lookup.Mode.USES);
+        java.util.function.Predicate<Group> isLink = g -> g.category() instanceof works.repka.ryscope.runtime.Links.LinkCategory;
+        Map<Section, List<Group>> next = new EnumMap<>(nav.sections);
+        next.put(Section.SOURCES, works.repka.ryscope.runtime.LinkMath.replace(nav.sections.get(Section.SOURCES), gives, Group::category, isLink));
+        next.put(Section.USES, works.repka.ryscope.runtime.LinkMath.replace(nav.sections.get(Section.USES), takes, Group::category, isLink));
+        Section section = nav.section;
+        if (next.get(section).isEmpty()) {
+            // открытый раздел опустел (сделка исчезла): соседний непустой; если пусто всё, остаётся прежний вид
+            section = null;
+            for (Section s : new Section[] {Section.RECIPES, Section.SOURCES, Section.USES, Section.HELP}) {
+                if (!next.get(s).isEmpty()) {
+                    section = s;
+                    break;
+                }
+            }
+            if (section == null) return;
+        }
+        Category current = nav.groups.isEmpty() ? null : group().category();
+        nav.sections.putAll(next);
+        nav.section = section;
+        nav.groups = nav.sections.get(section);
+        int index = -1;
+        for (int i = 0; i < nav.groups.size(); i++) if (nav.groups.get(i).category().equals(current)) index = i;
+        nav.group = index >= 0 ? index : Math.min(nav.group, nav.groups.size() - 1);
+        // страница и прокрутка на месте: обновились числа на карточке, а не её место
+        pagesFor = null;
+        widthFor = null;
+        transfers.clear();
+        statuses.clear();
+    }
+
+    /**
+     * Чипы поставщиков справа налево от {@code right}; название предмета сохраняет хотя бы 48 единиц.
+     * @return левый край крайнего чипа или {@code right + 6}, если чипов нет
+     */
+    private int renderChips(GuiGraphics g, Theme t, int right, int y, float textX, int mx, int my) {
+        chipAt = new int[mentions.size()][];
+        int x = right, left = right + 6;
+        for (int i = mentions.size() - 1; i >= 0; i--) {
+            String label = mentions.get(i).mentions().label().getString();
+            String shown = Draw.ellipsize(label, 80, 11.5f, Weight.REGULAR);
+            int w = (int) Math.ceil(3.5f + 7 + 3 + Draw.labelWidth(shown, 11.5f, Weight.REGULAR) + 3 + 5 + 4);
+            int cx = x - w;
+            if (cx - 6 - textX < 48) break;
+            boolean over = over(mx, my, cx, y, w, CHIP_H), hot = over || mentionsOpen == i;
+            if (t.beveled()) {
+                t.button(g, cx, y, w, CHIP_H, hot, false);
+            } else {
+                Draw.roundBox(g, cx, y, w, CHIP_H, 3.5f, hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg"), t.c("button.border"));
+            }
+            Icons.draw(g, Icons.Shape.BOOK, cx + 3.5f, y + 3f, 7f, t.c("link"));
+            Draw.label(g, shown, cx + 13.5f, y + CHIP_H / 2f, 11.5f, Weight.REGULAR, t.c("text.primary"));
+            Icons.draw(g, Icons.Shape.CHEVRON_DOWN, cx + w - 9f, y + 4f, 5f, t.c("button.fg"));
+            if (over && !shown.equals(label)) pendingTip = label;
+            chipAt[i] = new int[] {cx, y, w, CHIP_H};
+            left = cx;
+            x = cx - 4;
+        }
+        return left;
+    }
+
+    private int[][] chipAt = new int[0][];
+
+    private boolean overMentions(double mx, double my) {
+        return mentionsOpen >= 0 && over(mx, my, mentionsBox[0], mentionsBox[1], mentionsBox[2], mentionsBox[3]);
+    }
+
+    private void closeMentions() {
+        mentionsOpen = -1;
+        mentionsPinned = false;
+        mentionsBox = new int[4];
+    }
+
+    /**
+     * Список упоминаний под чипом: открыт, пока курсор над чипом, щелью или самим списком, а после клика по чипу
+     * закреплён до клика мимо или Esc. Группы «Нужен в задачах», «Даётся в награду», «Магазин» от поставщика,
+     * в строке значок, название, пояснение и состояние; клик по строке выполняет действие поставщика.
+     */
+    private void renderMentions(GuiGraphics g, Theme t, int mx, int my) {
+        mentionSpots.clear();
+        int hover = -1;
+        for (int i = 0; i < chipAt.length; i++) if (chipAt[i] != null && over(mx, my, chipAt[i][0], chipAt[i][1], chipAt[i][2], chipAt[i][3])) hover = i;
+        if (!mentionsPinned) {
+            boolean keep = false;
+            if (mentionsOpen >= 0 && mentionsOpen < chipAt.length && chipAt[mentionsOpen] != null) {
+                int[] chip = chipAt[mentionsOpen];
+                int top = Math.min(chip[1], mentionsBox[1]), bottom = Math.max(chip[1] + chip[3], mentionsBox[1] + mentionsBox[3]);
+                keep = overMentions(mx, my) || over(mx, my, chip[0], top, chip[2], bottom - top);
+            }
+            int open = hover >= 0 ? hover : keep ? mentionsOpen : -1;
+            if (open != mentionsOpen) mentionsScroll.reset();
+            mentionsOpen = open;
+        }
+        if (mentionsOpen < 0 || mentionsOpen >= chipAt.length || chipAt[mentionsOpen] == null || Overlay.cardCollapsed()) {
+            closeMentions();
+            return;
+        }
+        works.repka.ryscore.links.ItemLinks.Mentions shown = mentions.get(mentionsOpen).mentions();
+        Map<String, List<works.repka.ryscore.links.ItemLinks.Mention>> sections =
+            works.repka.ryscope.runtime.LinkMath.byGroup(shown.items(), m -> m.section().getString());
+        int content = 0;
+        for (List<works.repka.ryscore.links.ItemLinks.Mention> list : sections.values()) content += MENTION_RUBRIC + list.size() * MENTION_ROW;
+        int[] window = works.repka.ryscope.runtime.LinkMath.window(content, Math.min(MENTION_MAX, height - 8 - MENTION_HEAD - 9 - (chipAt[mentionsOpen][1] + CHIP_H)));
+        int listH = window[0], maxScroll = window[1];
+        int h = 5 + MENTION_HEAD + listH + 4;
+        int[] chip = chipAt[mentionsOpen];
+        String title = shown.title().getString();
+        int fmx = mx, fmy = my, fcontent = content;
+        mentionsBox = Kit.popover(g, t, chip[0] + chip[2] - MENTION_W, chip[1], MENTION_W, chip[3], MENTION_W, h, Kit.Side.BELOW, null, (gg, bx, by, bw, bh) -> {
+            Draw.label(gg, Draw.ellipsize(title, bw - 16, 12, Weight.MEDIUM), bx + 8, by + 5 + 4.5f, 12, Weight.MEDIUM, t.c("text.primary"));
+            int top = by + 5 + MENTION_HEAD, bottom = Math.min(by + bh - 4, top + listH);
+            float pos = mentionsScroll.update(maxScroll);
+            Draw.scissor(gg, bx, top, bx + bw, bottom);
+            float y = top - pos;
+            for (Map.Entry<String, List<works.repka.ryscore.links.ItemLinks.Mention>> e : sections.entrySet()) {
+                Kit.caps(gg, t, e.getKey() + " · " + e.getValue().size(), bx + 8, y + 7.5f, 11, 0.44f);
+                y += MENTION_RUBRIC;
+                for (works.repka.ryscore.links.ItemLinks.Mention m : e.getValue()) {
+                    int ry = Math.round(y);
+                    boolean visible = ry + MENTION_ROW > top && ry < bottom;
+                    boolean hot = visible && m.open() != null && fmy >= top && fmy < bottom && over(fmx, fmy, bx + 4, ry, bw - 8, MENTION_ROW);
+                    if (visible) renderMention(gg, t, m, bx, ry, bw, hot, fmx, fmy);
+                    if (visible) mentionSpots.add(new MentionSpot(bx + 4, Math.max(ry, top), bw - 8, Math.min(ry + MENTION_ROW, bottom) - Math.max(ry, top), m));
+                    y += MENTION_ROW;
+                }
+            }
+            gg.disableScissor();
+            if (maxScroll > 0) {
+                int areaH = bottom - top, thumb = Math.max(10, areaH * areaH / fcontent);
+                int thumbY = top + Math.round((areaH - thumb) * Math.max(0, Math.min(1, pos / maxScroll)));
+                Draw.round(gg, bx + bw - 4, thumbY, 2, thumb, 1f, Draw.alpha(t.c("text.dim"), 0.7f));
+            }
+        });
+    }
+
+    private void renderMention(GuiGraphics g, Theme t, works.repka.ryscore.links.ItemLinks.Mention m, int bx, int y, int bw, boolean hot, int mx, int my) {
+        if (hot) Draw.round(g, bx + 4, y, bw - 8, MENTION_ROW, 4f, t.c("slot.hover"));
+        int sx = bx + 8, sy = y + 3;
+        Draw.roundBox(g, sx, sy, 18, 18, 3.5f, t.c("slot.bg"), t.c("slot.border"));
+        if (!m.icon().isEmpty()) {
+            try {
+                g.renderFakeItem(m.icon(), sx + 1, sy + 1);
+            } catch (Throwable ignored) {
+                // чужой рендер значка
+            }
+        } else {
+            Icons.draw(g, Icons.Shape.BOOK, sx + 4, sy + 4, 10f, t.c("link"));
+        }
+        float tx = sx + 18 + 5, room = bx + bw - 16 - tx;
+        String title = m.title().getString(), detail = m.detail() == null ? "" : m.detail().getString();
+        String titleShown = Draw.ellipsize(title, room, 12.5f, Weight.REGULAR), detailShown = Draw.ellipsize(detail, room, 11, Weight.REGULAR);
+        Draw.label(g, titleShown, tx, y + 8.5f, 12.5f, Weight.REGULAR, t.c("text.primary"));
+        if (!detail.isEmpty()) Draw.label(g, detailShown, tx, y + 16.5f, 11, Weight.REGULAR, t.c("text.muted"));
+        float ix = bx + bw - 13, iy = y + (MENTION_ROW - 5) / 2f;
+        switch (m.state()) {
+            case DONE -> Kit.indicator(g, t, ix, iy, 5f, Kit.State.FULL, -1, -1);
+            case ACTIVE -> Kit.indicator(g, t, ix, iy, 5f, Kit.State.PARTIAL, -1, -1);
+            case OPEN -> Draw.ring(g, ix + 2.5f, iy + 2.5f, 2.5f, 0.75f, t.c("text.muted"));
+            case LOCKED -> Draw.lock(g, Math.round(ix) - 1, Math.round(iy) - 1, t.c("text.dim"));
+        }
+        // обрезанное многоточием показывает себя целиком
+        if (over(mx, my, (int) tx, y, (int) room, MENTION_ROW) && (!titleShown.equals(title) || !detailShown.equals(detail))) {
+            pendingTip = detail.isEmpty() ? title : title + "\n" + detail;
+        }
+    }
+
+    /** Нажатие по чипу (закрепить или снять список) и по строке списка. */
+    private boolean mentionsClick(double mx, double my, int button) {
+        for (int i = 0; i < chipAt.length; i++) {
+            int[] c = chipAt[i];
+            if (c == null || !over(mx, my, c[0], c[1], c[2], c[3])) continue;
+            if (button == 0) {
+                if (mentionsOpen == i && mentionsPinned) {
+                    closeMentions();
+                } else {
+                    if (mentionsOpen != i) mentionsScroll.reset();
+                    mentionsOpen = i;
+                    mentionsPinned = true;
+                }
+            }
+            return true;
+        }
+        if (overMentions(mx, my)) {
+            for (MentionSpot s : mentionSpots) {
+                if (button != 0 || s.mention.open() == null || !over(mx, my, s.x, s.y, s.w, s.h)) continue;
+                works.repka.ryscore.links.ItemLinks.Action open = s.mention.open();
+                closeMentions();
+                works.repka.ryscope.runtime.Links.run(open);
+                break;
+            }
+            return true;
+        }
+        if (mentionsPinned) {
+            // клик мимо закреплённого списка только закрывает его
+            closeMentions();
+            return true;
+        }
+        return false;
+    }
+
+    /** Для автотеста: чипы, раскрытый список и его строки последнего кадра. */
+    public record LinksForTest(List<String> chips, List<int[]> chipRects, int open, int[] box, List<String> rows, List<int[]> rowRects) {}
+
+    public LinksForTest linksForTest() {
+        List<String> labels = new ArrayList<>();
+        List<int[]> rects = new ArrayList<>();
+        for (int i = 0; i < mentions.size(); i++) {
+            labels.add(mentions.get(i).mentions().label().getString());
+            rects.add(i < chipAt.length && chipAt[i] != null ? chipAt[i].clone() : null);
+        }
+        List<String> rows = new ArrayList<>();
+        List<int[]> rowRects = new ArrayList<>();
+        for (MentionSpot s : mentionSpots) {
+            rows.add(s.mention.title().getString());
+            rowRects.add(new int[] {s.x, s.y, s.w, s.h});
+        }
+        return new LinksForTest(labels, rects, mentionsOpen, mentionsBox.clone(), rows, rowRects);
+    }
+
+    /** Для автотеста: раскрыть список чипа, как кликом. */
+    public void openMentionsForTest(int index) {
+        mentionsOpen = index;
+        mentionsPinned = index >= 0;
+        mentionsScroll.reset();
+    }
+
+    /** Для автотеста: нажатие в координатах карточки (единицы интерфейса), как мышью. */
+    public boolean clickForTest(double x, double y, int button) {
+        return onClick(x, y, button);
+    }
+
     // --- рецепты ---
 
     private void renderRecipes(GuiGraphics g, Theme t, int mx, int my, float partialTick, int top) {
@@ -1070,6 +1357,8 @@ public final class RecipeScreen extends ScaledScreen {
         for (int i = page.start; i < page.end; i++) {
             RecipeView r = recipes.get(i);
             int h = blockHeight(r);
+            // кнопок справа у карточки поставщика нет: она занимает весь блок
+            if (r instanceof works.repka.ryscope.content.LinkCardView link) link.stretch(blockW - BLOCK_PAD * 2);
             if (y + h < top || y > bottom) {
                 // прокручен за край: не рисуется и не ловит мышь
                 y += h + BLOCK_MARGIN * 2;
@@ -1463,6 +1752,13 @@ public final class RecipeScreen extends ScaledScreen {
         } else if (hoveredCategory != null) {
             List<String> lines = new java.util.ArrayList<>();
             lines.add(hoveredCategory.title.getString());
+            if (hoveredCategory instanceof works.repka.ryscope.runtime.Links.LinkCategory) {
+                // у сделок и наград мода семьи нет станции: только название
+                Kit.tooltip(g, t, lines, mx, my);
+                TooltipDefer.flush();
+                g.pose().popPose();
+                return;
+            }
             works.repka.ryscope.runtime.Stations.State station = works.repka.ryscope.runtime.Stations.state(hoveredCategory);
             boolean manual = works.repka.ryscope.runtime.Stations.mark(hoveredCategory) != null;
             if (station == works.repka.ryscope.runtime.Stations.State.OWNED) lines.add(tr(manual ? "ryscope.stations.tip.owned_mark" : "ryscope.stations.tip.owned"));
@@ -1534,6 +1830,8 @@ public final class RecipeScreen extends ScaledScreen {
     private Stack recipeStackAt(int mx, int my) {
         Stack popup = popupStackAt(mx, my);
         if (popup != null) return popup;
+        // значки строк списка квестов это картинки, и сквозь панельку предметы карточки не видны
+        if (overMentions(mx, my)) return null;
         for (Placed p : placed) {
             if (!inRecipes(my)) break;
             if (!over(mx, my, p.x - 4, p.y - 4, p.recipe.width() + 8, p.recipe.height() + 8)) continue;
@@ -1639,6 +1937,7 @@ public final class RecipeScreen extends ScaledScreen {
     @Override
     protected boolean onClick(double mx, double my, int button) {
         if (Overlay.mouseClicked(this, mx, my, button)) return true;
+        if (mentionsClick(mx, my, button)) return true;
         if (stationsOpen && over(mx, my, stationsPopup[0], stationsPopup[1], stationsPopup[2], stationsPopup[3])) {
             Stack station = popupStackAt(mx, my);
             if (station != null && button == 2) toggleMark(station);
@@ -1728,6 +2027,10 @@ public final class RecipeScreen extends ScaledScreen {
     @Override
     protected boolean onScroll(double mx, double my, double scrollX, double scrollY) {
         if (Overlay.mouseScrolled(this, mx, my, scrollY)) return true;
+        if (mentionsOpen >= 0 && over(mx, my, mentionsBox[0], mentionsBox[1], mentionsBox[2], mentionsBox[3])) {
+            mentionsScroll.by(-(float) scrollY * MENTION_ROW);
+            return true;
+        }
         if (hasRail() && over(mx, my, cardX, cardY, RAIL_W, cardH)) {
             rail.by(-(float) scrollY * (RAIL_SLOT + RAIL_GAP));
             return true;
@@ -1757,6 +2060,10 @@ public final class RecipeScreen extends ScaledScreen {
     @Override
     public boolean keyPressed(int key, int scan, int mods) {
         if (Overlay.keyPressed(this, key, scan, mods)) return true;
+        if (key == GLFW.GLFW_KEY_ESCAPE && mentionsOpen >= 0) {
+            closeMentions();
+            return true;
+        }
         if (key == GLFW.GLFW_KEY_ESCAPE) {
             onClose();
             return true;
