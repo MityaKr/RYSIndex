@@ -149,13 +149,21 @@ public final class JeiRecipeView<T> implements RecipeView {
         return (int) Math.ceil(nativeHeight() * scale() - 1e-6);
     }
 
+    /**
+     * Угол рецепта на экране, привязанный к пикселю ({@link JeiScale#snap}). По нему и рисуется, и считается курсор,
+     * поэтому подсветка ячейки и клик совпадают.
+     */
+    private static double corner(int v) {
+        return JeiScale.snap(works.repka.ryscore.ui.UiScale.pixels(), v);
+    }
+
     /** Курсор окна в единицах раскладки JEI относительно угла рецепта. */
     private double localX(double mouseX, int x) {
-        return (mouseX - x) / scale;
+        return (mouseX - corner(x)) / scale;
     }
 
     private double localY(double mouseY, int y) {
-        return (mouseY - y) / scale;
+        return (mouseY - corner(y)) / scale;
     }
 
     private static int floor(double v) {
@@ -165,7 +173,7 @@ public final class JeiRecipeView<T> implements RecipeView {
     /** Поза: угол рецепта и масштаб; внутри всё в единицах JEI от угла рецепта. */
     private void enter(GuiGraphics g, int x, int y) {
         g.pose().pushPose();
-        g.pose().translate(x, y, 0);
+        g.pose().translate(corner(x), corner(y), 0);
         g.pose().scale((float) scale, (float) scale, 1f);
     }
 

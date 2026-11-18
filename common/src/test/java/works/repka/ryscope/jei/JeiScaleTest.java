@@ -88,6 +88,20 @@ class JeiScaleTest {
     }
 
     @Test
+    void cornerSnapsToPixel() {
+        // 125 %: единица 2,5 пикселя, нечётный угол попадал на полпикселя
+        double c = JeiScale.snap(2.5, 101);
+        assertEquals(Math.round(c * 2.5), c * 2.5, 1e-9);
+        assertTrue(Math.abs(c - 101) <= 0.5 / 2.5 + 1e-9);
+        // 150 %: и чётный, и нечётный угол на целом пикселе
+        assertEquals(101, JeiScale.snap(3, 101), 1e-9);
+        double h = JeiScale.snap(1.5, 7);
+        assertEquals(Math.round(h * 1.5), h * 1.5, 1e-9);
+        // целая единица не сдвигается
+        assertEquals(57, JeiScale.snap(2, 57), 1e-9);
+    }
+
+    @Test
     void tallDoesNotGrowPastLimit() {
         double s = JeiScale.pick(2, 124, 200, 300, 300, 220);
         assertTrue(200 * s <= 220 || s == 1, "высота " + 200 * s);

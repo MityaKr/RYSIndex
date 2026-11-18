@@ -56,4 +56,10 @@ public final class JeiScale {
         }
         return 1;
     }
+
+    /** Угол рецепта, привязанный к пикселю экрана: при 125 % и 150 % единица окна дробная, и угол не должен мылить текст JEI. */
+    public static double snap(double px, int v) {
+        if (px <= 0) return v;
+        return Math.round(v * px) / px;
+    }
 }
