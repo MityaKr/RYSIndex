@@ -40,6 +40,8 @@ public final class JeiRecipeView<T> implements RecipeView {
     private int border = 4;
     /** Насколько ячейки рецепта выходят за размер категории: слева, сверху, справа, снизу. */
     private int padLeft, padTop, padRight, padBottom;
+    /** Насколько ячейка может отстоять от края категории и всё ещё растягивать окошко рецепта. */
+    private static final int SLOT_REACH = 32;
     private List<Ing> inputs;
     private List<Stack> outputs;
     /** Ответ обработчика переноса: сам рисует на рецепте, чего не хватает. */
@@ -76,6 +78,10 @@ public final class JeiRecipeView<T> implements RecipeView {
     /**
      * Ячейки, которые мод ставит за край своей категории (шкала энергии Modular Machinery Reborn выше, чем рецепт задал себе
      * высоты), растягивают окошко рецепта, а не вылезают из него.
+     * <p>
+     * Ячейки далеко за краем не считаются: так моды прячут ингредиенты для поиска. JEI Mekanism Multiblocks ставит все
+     * затраты калькулятора в точку (9999, 9999), чтобы блоки находились в «Использованиях», и окошко растягивалось на весь
+     * экран. Ячейка, которая не касается рецепта даже с запасом {@link #SLOT_REACH}, на экране не видна и в размер не идёт.
      */
     private void measureSlots(IRecipeLayoutDrawable<T> l) {
         int w = category.getWidth(), h = category.getHeight();
@@ -84,6 +90,8 @@ public final class JeiRecipeView<T> implements RecipeView {
             for (IRecipeSlotView slot : l.getRecipeSlotsView().getSlotViews()) {
                 if (!(slot instanceof mezz.jei.api.gui.ingredient.IRecipeSlotDrawable drawable)) continue;
                 Rect2i r = drawable.getRect();
+                if (r.getX() >= w + SLOT_REACH || r.getY() >= h + SLOT_REACH
+                    || r.getX() + r.getWidth() <= -SLOT_REACH || r.getY() + r.getHeight() <= -SLOT_REACH) continue;
                 left = Math.min(left, r.getX());
                 top = Math.min(top, r.getY());
                 right = Math.max(right, r.getX() + r.getWidth());

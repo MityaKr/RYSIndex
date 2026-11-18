@@ -670,6 +670,10 @@ final class AutoTest {
             buildOriginals();
             return;
         }
+        if ("mekcalc".equals(System.getProperty("ryscope.autotest"))) {
+            buildMekCalc();
+            return;
+        }
         if ("mmr".equals(System.getProperty("ryscope.autotest"))) {
             buildMmr();
             return;
@@ -1608,6 +1612,35 @@ final class AutoTest {
             }, 40);
             shot("originals_" + id.replace(':', '_'));
         }
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    /**
+     * Калькуляторы JEI Mekanism Multiblocks: категория 180×120 прячет затраты ячейками в (9999, 9999), карточка не должна
+     * растягиваться под них (0.2.9).
+     */
+    private static void buildMekCalc() {
+        java.util.function.Predicate<works.repka.ryscope.model.Category> calc = c -> c.id.getNamespace().equals("jei_mekanism_multiblocks");
+        step("mekcalc: sizes", () -> {
+            ItemStack stack = new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("mekanism:thermal_evaporation_controller")));
+            int seen = 0, bad = 0;
+            for (Lookup.Group g : Lookup.find(new ItemRes(stack), Lookup.Mode.USES)) {
+                if (!calc.test(g.category())) continue;
+                for (var r : g.recipes()) {
+                    seen++;
+                    if (r.width() > 400 || r.height() > 300) bad++;
+                    RYScope.LOG.info("[mekcalc] {} {}x{}", g.category().id, r.width(), r.height());
+                }
+            }
+            RYScope.LOG.info("[mekcalc] {}: рецептов {}, слишком больших {}", seen > 0 && bad == 0 ? "PASS" : "FAIL", seen, bad);
+            RecipeScreen.open(new ItemRes(stack), Lookup.Mode.USES);
+        }, 40);
+        step("mekcalc: select", () -> {
+            boolean found = mc().screen instanceof RecipeScreen rs && rs.selectGroupForTest(calc);
+            RYScope.LOG.info("[mekcalc] категория калькулятора выбрана: {}", found);
+            parkMouse();
+        }, 20);
+        shot("mekcalc_evaporation");
         step("quit", () -> mc().stop(), 0);
     }
 
