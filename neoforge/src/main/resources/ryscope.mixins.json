@@ -2,6 +2,7 @@
   "required": false,
   "minVersion": "0.8",
   "package": "works.repka.ryscope.neoforge.mixin",
+  "plugin": "works.repka.ryscope.neoforge.mixin.RyscopeMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "ServerCommonPacketListenerImplMixin",
