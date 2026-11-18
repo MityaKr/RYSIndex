@@ -89,6 +89,21 @@ class JeiScaleTest {
     }
 
     @Test
+    void nativeByDefault() {
+        // 0.2.12: без настройки увеличения рецепт родного размера, предметы 16
+        for (double px : new double[] {2, 2.5, 3}) {
+            for (int w = 20; w <= HARD; w += 7) {
+                assertEquals(1, JeiScale.pick(px, w, 62, AREA, HARD, 220, false), EPS, "ширина " + w + " при " + px);
+            }
+            // широкий, что не влезает в 1×, ужимается так же, как с увеличением
+            assertEquals(JeiScale.pick(px, 400, 120, AREA, HARD, 220, true), JeiScale.pick(px, 400, 120, AREA, HARD, 220, false), EPS);
+            assertTrue(400 * JeiScale.pick(px, 400, 120, AREA, HARD, 220, false) <= HARD + 1e-6);
+        }
+        // с настройкой верстак растёт, как в 0.2.10
+        assertEquals(1.5, JeiScale.pick(2, 124, 62, AREA, HARD, 220, true), EPS);
+    }
+
+    @Test
     void cornerSnapsToPixel() {
         // 125 %: единица 2,5 пикселя, нечётный угол попадал на полпикселя
         double c = JeiScale.snap(2.5, 101);

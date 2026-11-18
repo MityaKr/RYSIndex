@@ -69,6 +69,11 @@ public final class Config {
     public int designVersion = 0;
     /** Перекрашивать серые окна рецептов модов под тему. */
     public boolean restyleRecipes = true;
+    /**
+     * Увеличивать рецепты JEI примерно в 1,35 раза (0.2.10). По умолчанию выключено: автор оставил родной размер,
+     * предметы 16 (18.11).
+     */
+    public boolean enlargeJeiRecipes = false;
     /** Сворачивать однотипные предметы (шерсть, зелья, яйца призыва) в одну ячейку. */
     public boolean groupItems = true;
     public List<String> expandedGroups = new ArrayList<>();

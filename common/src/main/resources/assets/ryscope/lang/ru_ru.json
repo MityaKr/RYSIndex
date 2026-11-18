@@ -337,6 +337,8 @@
   "ryscope.settings.list_paged": "Список страницами",
   "ryscope.settings.restyle": "Рецепты модов в стиле темы",
   "ryscope.settings.restyle.note": "Перекрашивает серые окна рецептов, цветные элементы не меняются",
+  "ryscope.settings.jei_large": "Крупные рецепты JEI",
+  "ryscope.settings.jei_large.note": "Рецепты модов примерно в 1,35 раза крупнее, предметы в них больше обычных 16",
   "ryscope.search.loading": "Ищу предметы",
   "ryscope.planner.loading": "Считаю план",
   "ryscope.compare.loading": "Сравниваю маршруты",

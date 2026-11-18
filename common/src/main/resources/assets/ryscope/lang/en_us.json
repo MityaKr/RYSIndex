@@ -337,6 +337,8 @@
   "ryscope.settings.list_paged": "Paged list",
   "ryscope.settings.restyle": "Theme mod recipe windows",
   "ryscope.settings.restyle.note": "Recolors gray recipe windows, colored elements stay as they are",
+  "ryscope.settings.jei_large": "Large JEI recipes",
+  "ryscope.settings.jei_large.note": "Mod recipes about 1.35 times larger, items in them bigger than the usual 16",
   "ryscope.search.loading": "Searching items",
   "ryscope.planner.loading": "Calculating the plan",
   "ryscope.compare.loading": "Comparing routes",

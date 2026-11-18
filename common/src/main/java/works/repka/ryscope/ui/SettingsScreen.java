@@ -101,6 +101,7 @@ public final class SettingsScreen extends ScaledScreen {
         toggle("ryscope.settings.search_bottom", () -> c.searchBottom, () -> c.searchBottom = !c.searchBottom, null);
         toggle("ryscope.settings.list_paged", () -> c.listPaged, () -> c.listPaged = !c.listPaged, null);
         toggle("ryscope.settings.restyle", () -> c.restyleRecipes, () -> c.restyleRecipes = !c.restyleRecipes, "ryscope.settings.restyle.note");
+        toggle("ryscope.settings.jei_large", () -> c.enlargeJeiRecipes, () -> c.enlargeJeiRecipes = !c.enlargeJeiRecipes, "ryscope.settings.jei_large.note");
         toggle("ryscope.settings.animations", () -> c.animations, () -> c.animations = !c.animations, null);
         toggle("ryscope.settings.lens_world", () -> c.lensInWorld, () -> c.lensInWorld = !c.lensInWorld, null);
         toggle("ryscope.settings.fuzzy", () -> c.fuzzySearch, () -> c.fuzzySearch = !c.fuzzySearch, "ryscope.settings.fuzzy.note");

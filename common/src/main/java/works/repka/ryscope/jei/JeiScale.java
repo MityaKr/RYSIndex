@@ -1,9 +1,9 @@
 package works.repka.ryscope.jei;
 
 /**
- * Масштаб рецептов JEI в окне RYScope. Их ячейки и мелкий текст рассчитаны на единицы GUI игры и рядом со шрифтами и
- * плашками окна выглядели мелко. Рецепт увеличивается примерно в {@link #TARGET} раза так, чтобы на пиксель JEI
- * приходилось целое число пикселей экрана: тогда текст JEI не мылится. Широкие рецепты вписываются в карточку целиком.
+ * Масштаб рецептов JEI в окне RYScope. По умолчанию рецепт родного размера (предметы 16, как в JEI; решение автора 18.11).
+ * С настройкой «Крупные рецепты JEI» он увеличивается примерно в {@link #TARGET} раза так, чтобы на пиксель JEI
+ * приходилось целое число пикселей экрана: тогда текст JEI не мылится. Широкие рецепты в обоих случаях вписываются в карточку целиком.
  */
 public final class JeiScale {
     /** Желаемый множитель; настоящий ближайший к нему с целым числом пикселей. */
@@ -40,6 +40,11 @@ public final class JeiScale {
      * </ul>
      */
     public static double pick(double px, int w, int h, int maxW, int hardW, int maxH) {
+        return pick(px, w, h, maxW, hardW, maxH, true);
+    }
+
+    /** То же; при {@code grow = false} рецепт не увеличивается: до {@code hardW} он своего размера, шире вписывается. */
+    public static double pick(double px, int w, int h, int maxW, int hardW, int maxH, boolean grow) {
         if (px <= 0 || w <= 0 || h <= 0) return 1;
         hardW = Math.max(hardW, maxW);
         if (w > hardW) {
@@ -47,7 +52,7 @@ public final class JeiScale {
             double s = Math.floor(px * fit + 1e-6) / px;
             return s >= fit * WHOLE_MIN - 1e-9 ? s : fit;
         }
-        if (w > maxW) return 1;
+        if (w > maxW || !grow) return 1;
         double fitW = (double) maxW / w;
         double most = Math.min(fitW, Math.max(1, (double) maxH / h));
         for (long p = Math.round(px * TARGET); p / px >= 1 - 1e-6; p--) {

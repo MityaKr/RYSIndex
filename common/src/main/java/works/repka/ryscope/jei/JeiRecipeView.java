@@ -42,9 +42,9 @@ public final class JeiRecipeView<T> implements RecipeView {
     private int padLeft, padTop, padRight, padBottom;
     /** Насколько ячейка может отстоять от края категории и всё ещё растягивать окошко рецепта. */
     private static final int SLOT_REACH = 32;
-    /** Масштаб рецепта в окне ({@link JeiScale}) и для каких пикселей экрана в единице он посчитан. */
+    /** Масштаб рецепта в окне ({@link JeiScale}) и для каких пикселей экрана в единице (со знаком настройки увеличения) он посчитан. */
     private double scale = 1;
-    private double scaleKey = -1;
+    private double scaleKey = 0;
     private List<Ing> inputs;
     private List<Stack> outputs;
     /** Ответ обработчика переноса: сам рисует на рецепте, чего не хватает. */
@@ -67,7 +67,7 @@ public final class JeiRecipeView<T> implements RecipeView {
                     Rect2i inner = layout.getRect(), outer = layout.getRectWithBorder();
                     border = Math.max(0, (outer.getWidth() - inner.getWidth()) / 2);
                     measureSlots(layout);
-                    scaleKey = -1;
+                    scaleKey = 0;
                     // раскладка живёт в своих единицах от угла рецепта; на экран её переводит поза в render
                     layout.setPosition(border + padLeft, border + padTop);
                 } else {
@@ -133,9 +133,12 @@ public final class JeiRecipeView<T> implements RecipeView {
     double scale() {
         layout();
         double px = works.repka.ryscore.ui.UiScale.pixels();
-        if (px == scaleKey) return scale;
-        scaleKey = px;
-        scale = JeiScale.pick(px, nativeWidth(), nativeHeight(), JeiScale.maxWidth(), JeiScale.hardWidth(), JeiScale.MAX_H);
+        boolean grow = works.repka.ryscope.runtime.Config.get().enlargeJeiRecipes;
+        // ключ помнит и настройку: переключатель в настройках пересчитывает масштаб
+        double key = grow ? px : -px;
+        if (key == scaleKey) return scale;
+        scaleKey = key;
+        scale = JeiScale.pick(px, nativeWidth(), nativeHeight(), JeiScale.maxWidth(), JeiScale.hardWidth(), JeiScale.MAX_H, grow);
         return scale;
     }
 
