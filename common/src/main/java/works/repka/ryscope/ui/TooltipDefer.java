@@ -31,6 +31,22 @@ public final class TooltipDefer {
         return capturing;
     }
 
+    /**
+     * Рисует {@code body} в увеличенной позе так, чтобы подсказки из неё легли в список отложенных и потом нарисовались
+     * обычного размера у курсора. Если сейчас ничего не откладывается, отложенное рисуется сразу после {@code body}:
+     * к этому времени {@code body} должен вернуть позу, как была.
+     */
+    public static void unscaled(Runnable body) {
+        boolean was = capturing;
+        capturing = true;
+        try {
+            body.run();
+        } finally {
+            capturing = was;
+        }
+        if (!was) flush();
+    }
+
     public static void add(Runnable tooltip) {
         PENDING.add(tooltip);
     }

@@ -670,6 +670,10 @@ final class AutoTest {
             buildOriginals();
             return;
         }
+        if ("jeiscale".equals(System.getProperty("ryscope.autotest"))) {
+            buildJeiScale();
+            return;
+        }
         if ("mekcalc".equals(System.getProperty("ryscope.autotest"))) {
             buildMekCalc();
             return;
@@ -1612,6 +1616,52 @@ final class AutoTest {
             }, 40);
             shot("originals_" + id.replace(':', '_'));
         }
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    /**
+     * Масштаб рецептов JEI (0.2.10): у каждой категории множитель, размер и влезает ли рецепт в предел ширины; снимок окна.
+     * Предмет, режим и пространство имён категории, которую показать.
+     */
+    private static void buildJeiScale() {
+        String[][] cases = {
+            {"mekanism:thermal_evaporation_controller", "USES", "jei_mekanism_multiblocks"},
+            {"create:andesite_alloy", "RECIPES", "create"},
+            {"create:mechanical_press", "USES", "create"},
+            {"extendedcrafting:ultimate_table", "USES", "extendedcrafting"},
+            {"minecraft:iron_ingot", "RECIPES", "minecraft"},
+            {"minecraft:crafting_table", "USES", "minecraft"},
+        };
+        int[] bad = {0}, seen = {0};
+        for (String[] c : cases) {
+            String id = c[0], ns = c[2];
+            Lookup.Mode mode = Lookup.Mode.valueOf(c[1]);
+            java.util.function.Predicate<works.repka.ryscope.model.Category> pick = cat -> cat.id.getNamespace().equals(ns);
+            step("jeiscale: " + id, () -> {
+                ItemStack stack = new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse(id)));
+                int limit = works.repka.ryscope.jei.JeiScale.maxWidth(works.repka.ryscore.ui.UiScale.width());
+                for (Lookup.Group g : Lookup.find(new ItemRes(stack), mode)) {
+                    if (g.recipes().isEmpty()) continue;
+                    var r = g.recipes().get(0);
+                    boolean jei = r instanceof works.repka.ryscope.jei.JeiRecipeView<?>;
+                    if (jei) {
+                        seen[0]++;
+                        if (r.width() > limit + 1) bad[0]++;
+                    }
+                    RYScope.LOG.info("[jeiscale] {} {} {}: {} {}x{}, предел {}, пикселей {}", id, mode, g.category().id, jei ? "JEI" : "наш",
+                        r.width(), r.height(), limit, works.repka.ryscore.ui.UiScale.pixels());
+                }
+                RecipeScreen.open(new ItemRes(stack), mode);
+            }, 40);
+            step("jeiscale: select " + ns, () -> {
+                boolean found = mc().screen instanceof RecipeScreen rs && rs.selectGroupForTest(pick);
+                RYScope.LOG.info("[jeiscale] {}: категория {} выбрана: {}", id, ns, found);
+                parkMouse();
+            }, 20);
+            shot("jeiscale_" + id.replace(':', '_'));
+        }
+        step("jeiscale: verdict", () -> RYScope.LOG.info("[jeiscale] {}: рецептов JEI {}, шире предела {}",
+            seen[0] > 0 && bad[0] == 0 ? "PASS" : "FAIL", seen[0], bad[0]), 1);
         step("quit", () -> mc().stop(), 0);
     }
 

@@ -42,6 +42,11 @@ public final class JeiRecipeView<T> implements RecipeView {
     private int padLeft, padTop, padRight, padBottom;
     /** Насколько ячейка может отстоять от края категории и всё ещё растягивать окошко рецепта. */
     private static final int SLOT_REACH = 32;
+    /** Масштаб рецепта в окне ({@link JeiScale}) и для каких пикселей и ширины экрана он посчитан. */
+    private double scale = 1;
+    private double scaleKey = -1;
+    /** Где рецепт был нарисован в последний раз: события мыши приходят без координат рецепта. */
+    private int lastX, lastY;
     private List<Ing> inputs;
     private List<Stack> outputs;
     /** Ответ обработчика переноса: сам рисует на рецепте, чего не хватает. */
@@ -64,6 +69,9 @@ public final class JeiRecipeView<T> implements RecipeView {
                     Rect2i inner = layout.getRect(), outer = layout.getRectWithBorder();
                     border = Math.max(0, (outer.getWidth() - inner.getWidth()) / 2);
                     measureSlots(layout);
+                    scaleKey = -1;
+                    // раскладка живёт в своих единицах от угла рецепта; на экран её переводит поза в render
+                    layout.setPosition(border + padLeft, border + padTop);
                 } else {
                     failed = true;
                 }
@@ -115,16 +123,54 @@ public final class JeiRecipeView<T> implements RecipeView {
         }
     }
 
+    private int nativeWidth() {
+        return category.getWidth() + border * 2 + padLeft + padRight;
+    }
+
+    private int nativeHeight() {
+        return category.getHeight() + border * 2 + padTop + padBottom;
+    }
+
+    /** Масштаб рецепта в окне: см. {@link JeiScale}. Пересчитывается, когда меняется размер окна игры или настройка масштаба. */
+    double scale() {
+        layout();
+        double px = works.repka.ryscore.ui.UiScale.pixels();
+        int screenW = works.repka.ryscore.ui.UiScale.width();
+        double key = px * 100_000 + screenW;
+        if (key == scaleKey) return scale;
+        scaleKey = key;
+        scale = JeiScale.pick(px, nativeWidth(), nativeHeight(), JeiScale.maxWidth(screenW), JeiScale.MAX_H);
+        return scale;
+    }
+
     @Override
     public int width() {
-        layout();
-        return category.getWidth() + border * 2 + padLeft + padRight;
+        return (int) Math.ceil(nativeWidth() * scale() - 1e-6);
     }
 
     @Override
     public int height() {
-        layout();
-        return category.getHeight() + border * 2 + padTop + padBottom;
+        return (int) Math.ceil(nativeHeight() * scale() - 1e-6);
+    }
+
+    /** Курсор окна в единицах раскладки JEI относительно угла рецепта. */
+    private double localX(double mouseX, int x) {
+        return (mouseX - x) / scale;
+    }
+
+    private double localY(double mouseY, int y) {
+        return (mouseY - y) / scale;
+    }
+
+    private static int floor(double v) {
+        return (int) Math.floor(v);
+    }
+
+    /** Поза: угол рецепта и масштаб; внутри всё в единицах JEI от угла рецепта. */
+    private void enter(GuiGraphics g, int x, int y) {
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0);
+        g.pose().scale((float) scale, (float) scale, 1f);
     }
 
     @Override
@@ -134,39 +180,45 @@ public final class JeiRecipeView<T> implements RecipeView {
             theme.plate(g, x, y, width(), height());
             return;
         }
-        l.setPosition(x + border + padLeft, y + border + padTop);
-        boolean restyled = works.repka.ryscope.ui.RecipeRestyle.begin(theme);
-        try {
-            if (padLeft > 0 || padTop > 0 || padRight > 0 || padBottom > 0) {
-                // окошко рецепта растянуто под ячейки за его краем: подложка того же серого, что фон окон модов (перекраска переведёт его в тему)
-                int w = category.getWidth() + padLeft + padRight, h = category.getHeight() + padTop + padBottom;
-                int x0 = x + border, y0 = y + border;
-                // как окно мода в ванильном стиле: тёмный контур, светлая грань, серый фон
-                g.fill(x0 - 1, y0 - 1, x0 + w + 1, y0 + h + 1, 0xFF000000);
-                g.fill(x0, y0, x0 + w, y0 + h, 0xFFFFFFFF);
-                g.fill(x0 + 1, y0 + 1, x0 + w - 1, y0 + h - 1, 0xFFC6C6C6);
-            }
-            works.repka.ryscore.ui.Draw.isolated(g, () -> l.drawRecipe(g, mouseX, mouseY));
-        } finally {
-            if (restyled) {
-                works.repka.ryscope.ui.RecipeRestyle.end();
-                com.mojang.blaze3d.systems.RenderSystem.disableBlend();
-            }
-        }
-        if (transferError != null && works.repka.ryscope.content.NativeRecipe.missingBadges) {
+        scale();
+        lastX = x;
+        lastY = y;
+        int lx = floor(localX(mouseX, x)), ly = floor(localY(mouseY, y));
+        works.repka.ryscore.ui.Draw.isolated(g, () -> {
+            enter(g, x, y);
+            boolean restyled = works.repka.ryscope.ui.RecipeRestyle.begin(theme);
             try {
-                transferError.showError(g, mouseX, mouseY, l.getRecipeSlotsView(), x + border + padLeft, y + border + padTop);
-            } catch (Throwable t) {
-                transferError = null;
+                if (padLeft > 0 || padTop > 0 || padRight > 0 || padBottom > 0) {
+                    // окошко рецепта растянуто под ячейки за его краем: подложка того же серого, что фон окон модов (перекраска переведёт его в тему)
+                    int w = category.getWidth() + padLeft + padRight, h = category.getHeight() + padTop + padBottom;
+                    int x0 = border, y0 = border;
+                    // как окно мода в ванильном стиле: тёмный контур, светлая грань, серый фон
+                    g.fill(x0 - 1, y0 - 1, x0 + w + 1, y0 + h + 1, 0xFF000000);
+                    g.fill(x0, y0, x0 + w, y0 + h, 0xFFFFFFFF);
+                    g.fill(x0 + 1, y0 + 1, x0 + w - 1, y0 + h - 1, 0xFFC6C6C6);
+                }
+                l.drawRecipe(g, lx, ly);
+            } finally {
+                if (restyled) {
+                    works.repka.ryscope.ui.RecipeRestyle.end();
+                    com.mojang.blaze3d.systems.RenderSystem.disableBlend();
+                }
             }
-        }
+            if (transferError != null && works.repka.ryscope.content.NativeRecipe.missingBadges) {
+                try {
+                    transferError.showError(g, lx, ly, l.getRecipeSlotsView(), border + padLeft, border + padTop);
+                } catch (Throwable t) {
+                    transferError = null;
+                }
+            }
+        });
     }
 
     @Override
     public Stack stackAt(int x, int y, int mouseX, int mouseY) {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return null;
-        return l.getRecipeSlotUnderMouse(mouseX, mouseY)
+        return l.getRecipeSlotUnderMouse(localX(mouseX, x), localY(mouseY, y))
             .flatMap(IRecipeSlotView::getDisplayedIngredient)
             .map(bridge::fromTyped)
             .orElse(null);
@@ -176,7 +228,12 @@ public final class JeiRecipeView<T> implements RecipeView {
     public boolean renderTooltip(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return false;
-        works.repka.ryscore.ui.Draw.isolated(g, () -> l.drawOverlays(g, mouseX, mouseY));
+        int lx = floor(localX(mouseX, x)), ly = floor(localY(mouseY, y));
+        // подсветка ячейки увеличена вместе с рецептом, а подсказка откладывается и рисуется обычного размера у курсора
+        works.repka.ryscope.ui.TooltipDefer.unscaled(() -> works.repka.ryscore.ui.Draw.isolated(g, () -> {
+            enter(g, x, y);
+            l.drawOverlays(g, lx, ly);
+        }));
         return true;
     }
 
@@ -196,7 +253,7 @@ public final class JeiRecipeView<T> implements RecipeView {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return false;
         try {
-            return l.getInputHandler().handleMouseScrolled(mouseX, mouseY, scrollX, scrollY);
+            return l.getInputHandler().handleMouseScrolled(localX(mouseX, lastX), localY(mouseY, lastY), scrollX, scrollY);
         } catch (Throwable t) {
             return false;
         }
@@ -209,7 +266,7 @@ public final class JeiRecipeView<T> implements RecipeView {
         if (l == null) return false;
         InputConstants.Key key = InputConstants.Type.MOUSE.getOrCreate(button);
         try {
-            return l.getInputHandler().handleInput(mouseX, mouseY, new Click(key, true));
+            return l.getInputHandler().handleInput(localX(mouseX, lastX), localY(mouseY, lastY), new Click(key, true));
         } catch (Throwable t) {
             return false;
         }
@@ -220,7 +277,7 @@ public final class JeiRecipeView<T> implements RecipeView {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return;
         try {
-            l.getInputHandler().handleInput(mouseX, mouseY, new Click(InputConstants.Type.MOUSE.getOrCreate(button), false));
+            l.getInputHandler().handleInput(localX(mouseX, lastX), localY(mouseY, lastY), new Click(InputConstants.Type.MOUSE.getOrCreate(button), false));
         } catch (Throwable t) {
             // чужая категория
         }
@@ -231,7 +288,8 @@ public final class JeiRecipeView<T> implements RecipeView {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return false;
         try {
-            return l.getInputHandler().handleMouseDragged(mouseX, mouseY, InputConstants.Type.MOUSE.getOrCreate(button), dragX, dragY);
+            return l.getInputHandler().handleMouseDragged(localX(mouseX, lastX), localY(mouseY, lastY), InputConstants.Type.MOUSE.getOrCreate(button),
+                dragX / scale, dragY / scale);
         } catch (Throwable t) {
             return false;
         }
@@ -349,7 +407,7 @@ public final class JeiRecipeView<T> implements RecipeView {
     public Ing ingAt(int x, int y, int mouseX, int mouseY) {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return null;
-        return l.getRecipeSlotUnderMouse(mouseX, mouseY).map(slot -> {
+        return l.getRecipeSlotUnderMouse(localX(mouseX, x), localY(mouseY, y)).map(slot -> {
             List<Stack> options = new ArrayList<>();
             slot.getAllIngredients().forEach(t -> {
                 Stack s = bridge.fromTyped(t);
