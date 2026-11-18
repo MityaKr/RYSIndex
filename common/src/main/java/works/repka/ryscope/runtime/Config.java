@@ -86,6 +86,11 @@ public final class Config {
     public String listSort = "mod";
     /** Не показывать в списке предметы закрытых стадий (иначе они видны с замком). */
     public boolean hideLocked = false;
+    /**
+     * Служебные категории рецептов, которые уходят в конец вкладок (рядом со «Сведениями»): «пространство имён» или
+     * «пространство:путь». По умолчанию распаковка и содержимое пакетов PackagedAuto и его аддонов.
+     */
+    public List<String> serviceCategories = new ArrayList<>(CategoryOrder.DEFAULT_SERVICE);
 
     public int slotSize() {
         return switch (density) {
@@ -134,6 +139,7 @@ public final class Config {
             // повторы одного запроса: убранный крестиком или Ctrl+Z запрос иначе продолжает скрывать
             instance.hiddenQueries = new ArrayList<>(new java.util.LinkedHashSet<>(instance.hiddenQueries));
             if (instance.hiddenItems == null) instance.hiddenItems = new ArrayList<>();
+            if (instance.serviceCategories == null) instance.serviceCategories = new ArrayList<>(CategoryOrder.DEFAULT_SERVICE);
             if (!"sum".equals(instance.stickerMode)) instance.stickerMode = "goals";
             // записи старого формата ни с чем не совпадают и копятся: компоненты в них строкой с хешами объектов
             if (instance.hiddenItems.removeIf(HiddenItems::legacy)) RYScope.LOG.info("Убраны скрытые предметы в старом формате");

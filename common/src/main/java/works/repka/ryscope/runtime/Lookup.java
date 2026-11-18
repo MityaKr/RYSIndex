@@ -124,27 +124,11 @@ public final class Lookup {
         return egg == null ? null : works.repka.ryscope.model.ItemRes.of(new net.minecraft.world.item.ItemStack(egg));
     }
 
-    /**
-     * Порядок вкладок: у машины в «Использованиях» сначала то, что она делает; затем верстак;
-     * дальше машины и процессы в своём порядке; сведения модов семьи (магазин книги); служебное (теги, квесты) и лут (сундуки, зачарования,
-     * мобы, генерация мира) в самом конце.
-     */
+    /** Порядок вкладок: см. {@link CategoryOrder}. Служебные категории (содержимое пакетов и подобное) берутся из настроек. */
     private static int rank(Category c, Stack stack, Mode mode, Snapshot snap) {
-        String ns = c.id.getNamespace(), path = c.id.getPath();
-        if (mode == Mode.USES && isStation(c, stack, snap)) return 0;
-        // сделки и награды модов семьи: после машин, перед торговлей жителей и лутом
-        if (c instanceof Links.LinkCategory) return 6;
-        if (path.equals("crafting") && (ns.equals("minecraft") || ns.equals(RYScope.MOD_ID))) return 1;
-        if (LOOT_NAMESPACES.contains(ns) || LOOT_PATHS.contains(path) || path.endsWith("_loot") || path.endsWith("_drops")) return 9;
-        if (path.startsWith("tag_recipes") || path.equals("information") || path.equals("info") || ns.equals("ftbquests") || ns.equals("rysquests")) return 8;
-        if (path.equals("trades")) return 7;
-        return 5;
+        return CategoryOrder.rank(c.id.getNamespace(), c.id.getPath(), mode == Mode.USES && isStation(c, stack, snap),
+            c instanceof Links.LinkCategory, RYScope.MOD_ID, Config.get().serviceCategories);
     }
-
-    /** Лут и сведения о мире: всегда в конце. Машины вроде «loot_fabricator» сюда не попадают. */
-    private static final java.util.Set<String> LOOT_NAMESPACES = java.util.Set.of("jeresources", "lootjs", "jei_biome", "jei_structures");
-    private static final java.util.Set<String> LOOT_PATHS = java.util.Set.of("loot", "loot_crate", "chest_loot", "mob_drops", "dungeon",
-        "enchantment", "villager", "worldgen", "plant", "mob");
 
     private static boolean isStation(Category c, Stack stack, Snapshot snap) {
         for (Stack st : c.stations) if (st.key().equals(stack.key())) return true;
