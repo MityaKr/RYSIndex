@@ -138,6 +138,8 @@ public final class RecipeScreen extends ScaledScreen {
     private final Map<RecipeView, Transfer> transfers = new IdentityHashMap<>();
     private final Map<RecipeView, Status> statuses = new IdentityHashMap<>();
     private int transferAge;
+    /** Пересчитать «+» и статусы на ближайшем тике, не стирая прежних: до пересчёта рисуются старые. */
+    private boolean transferStale;
     private final Scroller edge = new Scroller();
     private final Scroller rail = new Scroller();
     @Nullable
@@ -1122,8 +1124,9 @@ public final class RecipeScreen extends ScaledScreen {
         // страница и прокрутка на месте: обновились числа на карточке, а не её место
         pagesFor = null;
         widthFor = null;
-        transfers.clear();
-        statuses.clear();
+        // Рецепты JEI те же объекты, их «+» и строка наличия остаются до пересчёта. Раньше здесь всё стиралось,
+        // а версия ссылок растёт с каждым пакетом прогресса книги, и на сервере строка с «+» моргали до тика.
+        transferStale = true;
     }
 
     /**
@@ -1868,16 +1871,21 @@ public final class RecipeScreen extends ScaledScreen {
             }
         }
         // пересчёт сразу, как изменились инвентарь или содержимое сети AE2, и раз в секунду на всякий случай
-        // (у чужих окон состояние может зависеть от другого); statuses пуст сразу после смены страницы
+        // (у чужих окон состояние может зависеть от другого); сразу, если у рецепта на экране ещё нет статуса
+        // (смена страницы) или ссылки книги перестроили разделы. Старые значения не стираются до прихода новых.
         int inputs = works.repka.ryscope.runtime.InventoryView.version() * 31 + works.repka.ryscope.runtime.Ae2Terminal.networkVersion();
-        boolean changed = inputs != transferInputs;
+        boolean changed = inputs != transferInputs || transferStale;
         transferInputs = inputs;
-        if (transferAge++ % 20 != 0 && !changed && !statuses.isEmpty()) return;
+        boolean unknown = false;
+        for (Placed p : placed) unknown |= !statuses.containsKey(p.recipe);
+        if (transferAge++ % 20 != 0 && !changed && !unknown) return;
+        transferStale = false;
         for (Placed p : placed) {
             try {
                 statuses.put(p.recipe, statusOf(p.recipe));
             } catch (Throwable t) {
-                statuses.remove(p.recipe);
+                // чужой рецепт споткнулся: остаётся прежняя строка, если она была
+                statuses.putIfAbsent(p.recipe, null);
             }
             if (host != null) {
                 AbstractContainerScreen<?> acs = host;
@@ -1885,11 +1893,12 @@ public final class RecipeScreen extends ScaledScreen {
                 try {
                     tr = p.recipe.transfer(acs, false, true);
                 } catch (Throwable t) {
-                    tr = Transfer.UNSUPPORTED;
+                    tr = transfers.getOrDefault(p.recipe, Transfer.UNSUPPORTED);
                 }
                 transfers.put(p.recipe, tr);
             }
         }
+        // ушедшие с экрана рецепты держатся до смены страницы или раздела: там оба кэша стираются целиком
     }
 
     private void setGroup(int index) {
