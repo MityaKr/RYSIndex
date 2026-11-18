@@ -67,6 +67,8 @@ public final class RecipeScreen extends ScaledScreen {
      * Под него подбирается масштаб рецептов JEI ({@link works.repka.ryscope.jei.JeiScale}).
      */
     public static final int RECIPE_AREA = CARD_W - RAIL_W - PAD_X * 2 - BLOCK_PAD * 2 - BUTTON - 6;
+    /** То же место в окне наибольшей ширины {@link #MAX_CARD_W}: шире рецепт JEI не бывает, он уменьшается. */
+    public static final int RECIPE_AREA_MAX = MAX_CARD_W - RAIL_W - PAD_X * 2 - BLOCK_PAD * 2 - BUTTON - 6;
     private static final int SCROLL_STEP = 24;
     private static final int MAX_TABS = 11;
 

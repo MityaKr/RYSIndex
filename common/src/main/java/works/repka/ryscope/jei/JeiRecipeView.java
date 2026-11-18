@@ -137,7 +137,7 @@ public final class JeiRecipeView<T> implements RecipeView {
         double px = works.repka.ryscore.ui.UiScale.pixels();
         if (px == scaleKey) return scale;
         scaleKey = px;
-        scale = JeiScale.pick(px, nativeWidth(), nativeHeight(), JeiScale.maxWidth(), JeiScale.MAX_H);
+        scale = JeiScale.pick(px, nativeWidth(), nativeHeight(), JeiScale.maxWidth(), JeiScale.hardWidth(), JeiScale.MAX_H);
         return scale;
     }
 
