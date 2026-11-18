@@ -142,17 +142,17 @@ final class AutoTest {
         }
         step("rotate and zoom", () -> {
             RecipeScreen.Placed p = ((RecipeScreen) mc().screen).placed().get(0);
-            p.recipe().mouseClicked(p.x() + 100, p.y() + 60, 0);
-            p.recipe().mouseDragged(p.x() + 100, p.y() + 60, 0, 60, 20);
-            p.recipe().mouseReleased(p.x() + 100, p.y() + 60, 0);
-            p.recipe().mouseScrolled(p.x() + 100, p.y() + 60, 0, 3);
+            p.recipe().mouseClicked(p.x(), p.y(), p.x() + 100, p.y() + 60, 0);
+            p.recipe().mouseDragged(p.x(), p.y(), p.x() + 100, p.y() + 60, 0, 60, 20);
+            p.recipe().mouseReleased(p.x(), p.y(), p.x() + 100, p.y() + 60, 0);
+            p.recipe().mouseScrolled(p.x(), p.y(), p.x() + 100, p.y() + 60, 0, 3);
         }, 10);
         shot("structures_rotated");
         step("layer", () -> {
             RecipeScreen.Placed p = ((RecipeScreen) mc().screen).placed().get(0);
             for (int i = 0; i < 3; i++) {
-                p.recipe().mouseClicked(p.x() + 43, p.y() + 9, 0);
-                p.recipe().mouseReleased(p.x() + 43, p.y() + 9, 0);
+                p.recipe().mouseClicked(p.x(), p.y(), p.x() + 43, p.y() + 9, 0);
+                p.recipe().mouseReleased(p.x(), p.y(), p.x() + 43, p.y() + 9, 0);
             }
         }, 30);
         shot("structures_layer3");
@@ -3936,7 +3936,7 @@ final class AutoTest {
                 if (scrollFound || !(mc().screen instanceof RecipeScreen rs)) return;
                 for (RecipeScreen.Placed p : rs.placed()) {
                     if (p.recipe() instanceof works.repka.ryscope.jei.JeiRecipeView<?>) {
-                        boolean took = p.recipe().mouseScrolled(p.x() + p.recipe().width() / 2.0, p.y() + p.recipe().height() / 2.0, 0, -1);
+                        boolean took = p.recipe().mouseScrolled(p.x(), p.y(), p.x() + p.recipe().width() / 2.0, p.y() + p.recipe().height() / 2.0, 0, -1);
                         if (took) {
                             scrollFound = true;
                             RYScope.LOG.info("[autotest] колесо принято рецептом JEI в группе {}", index);

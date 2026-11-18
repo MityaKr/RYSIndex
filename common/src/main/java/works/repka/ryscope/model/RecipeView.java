@@ -51,21 +51,26 @@ public interface RecipeView {
      */
     default void release() {}
 
+    /*
+     * Ввод мышью, как и stackAt: x/y это угол рецепта в той карточке, где кликнули. Один объект рисуют в нескольких
+     * местах (окно рецептов, линза, подсказка закладки), поэтому угол с последней отрисовки брать нельзя.
+     */
+
     /** Колесо над рецептом. True, если рецепт прокрутил что-то своё и страницу листать не надо. */
-    default boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    default boolean mouseScrolled(int x, int y, double mouseX, double mouseY, double scrollX, double scrollY) {
         return false;
     }
 
     /** Нажатие по рецепту, например на его полосу прокрутки. */
-    default boolean mouseClicked(double mouseX, double mouseY, int button) {
+    default boolean mouseClicked(int x, int y, double mouseX, double mouseY, int button) {
         return false;
     }
 
-    default boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    default boolean mouseDragged(int x, int y, double mouseX, double mouseY, int button, double dragX, double dragY) {
         return false;
     }
 
-    default void mouseReleased(double mouseX, double mouseY, int button) {}
+    default void mouseReleased(int x, int y, double mouseX, double mouseY, int button) {}
 
     /** Длительность одного выполнения в тиках; 0, если рецепт ручной или время неизвестно. */
     default int ticks() {

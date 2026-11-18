@@ -442,12 +442,19 @@ public final class StructureRecipeView implements RecipeView {
         return inputs.get(index).shown(System.currentTimeMillis());
     }
 
+    /** Угол той карточки, где пришло событие мыши: тот же рецепт может рисовать и линза. */
+    private void at(int x, int y) {
+        lastX = x;
+        lastY = y;
+    }
+
     private boolean overScene(double mx, double my) {
         return mx >= lastX && mx < lastX + WIDTH && my >= lastY && my < lastY + SCENE_H;
     }
 
     @Override
-    public boolean mouseClicked(double mx, double my, int button) {
+    public boolean mouseClicked(int x, int y, double mx, double my, int button) {
+        at(x, y);
         if (button != 0 || view == null || !overScene(mx, my)) return false;
         int left = lastX + CONTROL_X, right = left + ARROW + LABEL_W + 4;
         rotating = false;
@@ -471,19 +478,20 @@ public final class StructureRecipeView implements RecipeView {
     }
 
     @Override
-    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+    public boolean mouseDragged(int x, int y, double mx, double my, int button, double dx, double dy) {
         if (!rotating || view == null) return false;
         view.drag(dx, dy);
         return true;
     }
 
     @Override
-    public void mouseReleased(double mx, double my, int button) {
+    public void mouseReleased(int x, int y, double mx, double my, int button) {
         rotating = false;
     }
 
     @Override
-    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+    public boolean mouseScrolled(int x, int y, double mx, double my, double scrollX, double scrollY) {
+        at(x, y);
         if (view == null || !overScene(mx, my)) return false;
         view.scroll(scrollY);
         return true;

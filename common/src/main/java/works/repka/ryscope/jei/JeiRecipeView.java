@@ -45,8 +45,6 @@ public final class JeiRecipeView<T> implements RecipeView {
     /** Масштаб рецепта в окне ({@link JeiScale}) и для каких пикселей экрана в единице он посчитан. */
     private double scale = 1;
     private double scaleKey = -1;
-    /** Где рецепт был нарисован в последний раз: события мыши приходят без координат рецепта. */
-    private int lastX, lastY;
     private List<Ing> inputs;
     private List<Stack> outputs;
     /** Ответ обработчика переноса: сам рисует на рецепте, чего не хватает. */
@@ -179,8 +177,6 @@ public final class JeiRecipeView<T> implements RecipeView {
             return;
         }
         scale();
-        lastX = x;
-        lastY = y;
         int lx = floor(localX(mouseX, x)), ly = floor(localY(mouseY, y));
         works.repka.ryscore.ui.Draw.isolated(g, () -> {
             enter(g, x, y);
@@ -247,11 +243,11 @@ public final class JeiRecipeView<T> implements RecipeView {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(int x, int y, double mouseX, double mouseY, double scrollX, double scrollY) {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return false;
         try {
-            return l.getInputHandler().handleMouseScrolled(localX(mouseX, lastX), localY(mouseY, lastY), scrollX, scrollY);
+            return l.getInputHandler().handleMouseScrolled(localX(mouseX, x), localY(mouseY, y), scrollX, scrollY);
         } catch (Throwable t) {
             return false;
         }
@@ -259,34 +255,34 @@ public final class JeiRecipeView<T> implements RecipeView {
 
     /** В JEI нажатие приходит пробным вызовом, а настоящий идёт при отпускании кнопки. */
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(int x, int y, double mouseX, double mouseY, int button) {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return false;
         InputConstants.Key key = InputConstants.Type.MOUSE.getOrCreate(button);
         try {
-            return l.getInputHandler().handleInput(localX(mouseX, lastX), localY(mouseY, lastY), new Click(key, true));
+            return l.getInputHandler().handleInput(localX(mouseX, x), localY(mouseY, y), new Click(key, true));
         } catch (Throwable t) {
             return false;
         }
     }
 
     @Override
-    public void mouseReleased(double mouseX, double mouseY, int button) {
+    public void mouseReleased(int x, int y, double mouseX, double mouseY, int button) {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return;
         try {
-            l.getInputHandler().handleInput(localX(mouseX, lastX), localY(mouseY, lastY), new Click(InputConstants.Type.MOUSE.getOrCreate(button), false));
+            l.getInputHandler().handleInput(localX(mouseX, x), localY(mouseY, y), new Click(InputConstants.Type.MOUSE.getOrCreate(button), false));
         } catch (Throwable t) {
             // чужая категория
         }
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    public boolean mouseDragged(int x, int y, double mouseX, double mouseY, int button, double dragX, double dragY) {
         IRecipeLayoutDrawable<T> l = layout();
         if (l == null) return false;
         try {
-            return l.getInputHandler().handleMouseDragged(localX(mouseX, lastX), localY(mouseY, lastY), InputConstants.Type.MOUSE.getOrCreate(button),
+            return l.getInputHandler().handleMouseDragged(localX(mouseX, x), localY(mouseY, y), InputConstants.Type.MOUSE.getOrCreate(button),
                 dragX / scale, dragY / scale);
         } catch (Throwable t) {
             return false;

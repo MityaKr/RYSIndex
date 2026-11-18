@@ -155,7 +155,8 @@ public final class RecipeScreen extends ScaledScreen {
     private final Scroller edge = new Scroller();
     private final Scroller rail = new Scroller();
     @Nullable
-    private RecipeView dragging;
+    /** Рецепт, по которому нажали, с углом его карточки: отпускание и перетаскивание идут туда же. */
+    private Placed dragging;
     private List<Page> pages = List.of();
     private Object pagesFor;
     private Object widthFor;
@@ -2001,8 +2002,8 @@ public final class RecipeScreen extends ScaledScreen {
             return true;
         }
         for (Placed p : placed) {
-            if (inRecipes(my) && over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseClicked(mx, my, button)) {
-                dragging = p.recipe;
+            if (inRecipes(my) && over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseClicked(p.x, p.y, mx, my, button)) {
+                dragging = p;
                 return true;
             }
         }
@@ -2033,7 +2034,7 @@ public final class RecipeScreen extends ScaledScreen {
     @Override
     protected boolean onRelease(double mx, double my, int button) {
         if (dragging != null) {
-            dragging.mouseReleased(mx, my, button);
+            dragging.recipe.mouseReleased(dragging.x, dragging.y, mx, my, button);
             dragging = null;
             return true;
         }
@@ -2042,7 +2043,7 @@ public final class RecipeScreen extends ScaledScreen {
 
     @Override
     protected boolean onDrag(double mx, double my, int button, double dx, double dy) {
-        if (dragging != null && dragging.mouseDragged(mx, my, button, dx, dy)) return true;
+        if (dragging != null && dragging.recipe.mouseDragged(dragging.x, dragging.y, mx, my, button, dx, dy)) return true;
         return Overlay.mouseDragged(this, mx, my, button) || super.onDrag(mx, my, button, dx, dy);
     }
 
@@ -2058,7 +2059,7 @@ public final class RecipeScreen extends ScaledScreen {
             return true;
         }
         for (Placed p : placed) {
-            if (inRecipes(my) && over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseScrolled(mx, my, scrollX, scrollY)) return true;
+            if (inRecipes(my) && over(mx, my, p.x, p.y, p.recipe.width(), p.recipe.height()) && p.recipe.mouseScrolled(p.x, p.y, mx, my, scrollX, scrollY)) return true;
         }
         if (over(mx, my, cardX, cardY, cardW, cardH)) {
             // страница выше карточки: сначала прокрутка, у края листание
