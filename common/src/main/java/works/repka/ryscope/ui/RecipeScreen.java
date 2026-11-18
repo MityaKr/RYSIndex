@@ -57,6 +57,16 @@ public final class RecipeScreen extends ScaledScreen {
     private static final int MAX_PER_PAGE = 3;
     /** Карточка всегда одной высоты, как окно рецептов JEI: вся доступная высота, но не больше этого. */
     private static final int MAX_CARD_H = 360;
+    /**
+     * Шире окно не растёт, что бы ни лежало в разделе. Свои раскладки шириной до 200 (справка, структура) дают 272;
+     * рецепты JEI подгоняются под {@link #RECIPE_AREA} и окно не раздвигают.
+     */
+    private static final int MAX_CARD_W = 280;
+    /**
+     * Место под рецепт в карточке стандартной ширины с рейкой категорий: поля карточки и блока, кнопки «+» справа.
+     * Под него подбирается масштаб рецептов JEI ({@link works.repka.ryscope.jei.JeiScale}).
+     */
+    public static final int RECIPE_AREA = CARD_W - RAIL_W - PAD_X * 2 - BLOCK_PAD * 2 - BUTTON - 6;
     private static final int SCROLL_STEP = 24;
     private static final int MAX_TABS = 11;
 
@@ -602,7 +612,8 @@ public final class RecipeScreen extends ScaledScreen {
             widthNeed = need;
         }
         int need = widthNeed;
-        widestCard = Math.max(widestCard, Math.max(CARD_W, need + BUTTON + 6 + BLOCK_PAD * 2 + PAD_X * 2 + railWidth()));
+        // окно стандартной ширины; свои широкие раскладки раздвигают его немного, но не дальше MAX_CARD_W
+        widestCard = Math.max(widestCard, Math.min(MAX_CARD_W, Math.max(CARD_W, need + BUTTON + 6 + BLOCK_PAD * 2 + PAD_X * 2 + railWidth())));
         return widestCard + testExtraWidth;
     }
 

@@ -8,20 +8,17 @@ package works.repka.ryscope.jei;
 public final class JeiScale {
     /** Желаемый множитель; настоящий ближайший к нему с целым числом пикселей. */
     public static final double TARGET = 1.35;
-    /** Шире этого рецепт не увеличивается, а более широкий уменьшается: карточка с ним остаётся на экране рядом со списком. */
-    public static final int MAX_W = 300;
     /** Выше этого рецепт не увеличивается (высокие листаются прокруткой и не уменьшаются). */
     public static final int MAX_H = 220;
-    /** Наименьшая ширина, до которой ужимается предел на тесном экране. */
-    public static final int MIN_W = 140;
-    /** Место окна, которое занято не рецептом: список справа, рейка, поля и кнопки карточки. */
-    public static final int WINDOW_CHROME = 360;
 
     private JeiScale() {}
 
-    /** Предел ширины рецепта для экрана шириной {@code screenW} единиц. */
-    public static int maxWidth(int screenW) {
-        return Math.max(MIN_W, Math.min(MAX_W, screenW - WINDOW_CHROME));
+    /**
+     * Предел ширины рецепта: место под рецепт в карточке стандартного окна. Масштаб подстраивается под карточку,
+     * а не окно под рецепт.
+     */
+    public static int maxWidth() {
+        return works.repka.ryscope.ui.RecipeScreen.RECIPE_AREA;
     }
 
     /**

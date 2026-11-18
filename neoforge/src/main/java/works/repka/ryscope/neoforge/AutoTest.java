@@ -1639,7 +1639,7 @@ final class AutoTest {
             java.util.function.Predicate<works.repka.ryscope.model.Category> pick = cat -> cat.id.getNamespace().equals(ns);
             step("jeiscale: " + id, () -> {
                 ItemStack stack = new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse(id)));
-                int limit = works.repka.ryscope.jei.JeiScale.maxWidth(works.repka.ryscore.ui.UiScale.width());
+                int limit = works.repka.ryscope.jei.JeiScale.maxWidth();
                 for (Lookup.Group g : Lookup.find(new ItemRes(stack), mode)) {
                     if (g.recipes().isEmpty()) continue;
                     var r = g.recipes().get(0);
@@ -1656,6 +1656,12 @@ final class AutoTest {
             step("jeiscale: select " + ns, () -> {
                 boolean found = mc().screen instanceof RecipeScreen rs && rs.selectGroupForTest(pick);
                 RYScope.LOG.info("[jeiscale] {}: категория {} выбрана: {}", id, ns, found);
+                parkMouse();
+            }, 20);
+            step("jeiscale: window " + ns, () -> {
+                int[] card = mc().screen instanceof RecipeScreen rs ? rs.cardBounds() : new int[4];
+                if (card[2] > 280) bad[0]++;
+                RYScope.LOG.info("[jeiscale] {}: окно {}x{}", id, card[2], card[3]);
                 parkMouse();
             }, 20);
             shot("jeiscale_" + id.replace(':', '_'));

@@ -42,7 +42,7 @@ public final class JeiRecipeView<T> implements RecipeView {
     private int padLeft, padTop, padRight, padBottom;
     /** Насколько ячейка может отстоять от края категории и всё ещё растягивать окошко рецепта. */
     private static final int SLOT_REACH = 32;
-    /** Масштаб рецепта в окне ({@link JeiScale}) и для каких пикселей и ширины экрана он посчитан. */
+    /** Масштаб рецепта в окне ({@link JeiScale}) и для каких пикселей экрана в единице он посчитан. */
     private double scale = 1;
     private double scaleKey = -1;
     /** Где рецепт был нарисован в последний раз: события мыши приходят без координат рецепта. */
@@ -135,11 +135,9 @@ public final class JeiRecipeView<T> implements RecipeView {
     double scale() {
         layout();
         double px = works.repka.ryscore.ui.UiScale.pixels();
-        int screenW = works.repka.ryscore.ui.UiScale.width();
-        double key = px * 100_000 + screenW;
-        if (key == scaleKey) return scale;
-        scaleKey = key;
-        scale = JeiScale.pick(px, nativeWidth(), nativeHeight(), JeiScale.maxWidth(screenW), JeiScale.MAX_H);
+        if (px == scaleKey) return scale;
+        scaleKey = px;
+        scale = JeiScale.pick(px, nativeWidth(), nativeHeight(), JeiScale.maxWidth(), JeiScale.MAX_H);
         return scale;
     }
 

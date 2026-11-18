@@ -18,23 +18,27 @@ class JeiScaleTest {
     @Test
     void craftingGrowsToWholePixels() {
         // 125 %: 2,5 пикселя в единице; верстак JEI 116×54 с рамкой 4
-        double s = JeiScale.pick(2.5, 124, 62, 300, 220);
+        int area = JeiScale.maxWidth();
+        double s = JeiScale.pick(2.5, 124, 62, area, 220);
         assertEquals(1.2, s, EPS);
         assertWholePixels(2.5, s);
-        // 100 %: 2 пикселя, растёт в полтора раза
-        assertEquals(1.5, JeiScale.pick(2, 124, 62, 280, 220), EPS);
+        // 100 %: 2 пикселя, растёт в полтора раза и всё ещё влезает в карточку
+        assertEquals(1.5, JeiScale.pick(2, 124, 62, area, 220), EPS);
+        assertTrue(124 * 1.5 <= area);
         // 150 %: 3 пикселя, четыре на пиксель JEI
-        assertEquals(4 / 3.0, JeiScale.pick(3, 124, 62, 300, 220), EPS);
+        assertEquals(4 / 3.0, JeiScale.pick(3, 124, 62, area, 220), EPS);
     }
 
     @Test
     void wideCalculatorStaysInCard() {
         // калькулятор JEI Mekanism Multiblocks 180×120 с рамкой
+        // занимает всё место карточки стандартного окна: остаётся своего размера и окно не раздвигает
+        assertEquals(1, JeiScale.pick(2.5, 188, 128, JeiScale.maxWidth(), 220), EPS);
+        assertEquals(1, JeiScale.pick(2, 188, 128, JeiScale.maxWidth(), 220), EPS);
+        // с местом пошире рос бы до целого числа пикселей
         double s = JeiScale.pick(2.5, 188, 128, 300, 220);
         assertTrue(188 * s <= 300);
         assertWholePixels(2.5, s);
-        // при 100 % полтора раза не влезает в 280: остаётся свой размер
-        assertEquals(1, JeiScale.pick(2, 188, 128, 280, 220), EPS);
     }
 
     @Test
@@ -54,9 +58,8 @@ class JeiScaleTest {
     }
 
     @Test
-    void narrowScreenLimit() {
-        assertEquals(300, JeiScale.maxWidth(768));
-        assertEquals(280, JeiScale.maxWidth(640));
-        assertEquals(JeiScale.MIN_W, JeiScale.maxWidth(480));
+    void limitIsStandardCardArea() {
+        // карточка 260: рейка 28, поля 7 и 5 с двух сторон, кнопка «+» 14 и зазор 6
+        assertEquals(188, JeiScale.maxWidth());
     }
 }
