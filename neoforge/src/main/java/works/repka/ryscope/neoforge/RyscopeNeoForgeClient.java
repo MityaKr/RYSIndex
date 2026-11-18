@@ -124,7 +124,7 @@ public final class RyscopeNeoForgeClient {
         Keys.THEME = gui("theme", KeyModifier.CONTROL, GLFW.GLFW_KEY_T);
         Keys.TOGGLE = gui("toggle", KeyModifier.CONTROL, GLFW.GLFW_KEY_O);
         Keys.BACK = gui("back", KeyModifier.NONE, GLFW.GLFW_KEY_BACKSPACE);
-        Keys.TREE = gui("tree", KeyModifier.NONE, GLFW.GLFW_KEY_G);
+        Keys.TREE = gui("tree", KeyModifier.NONE, GLFW.GLFW_KEY_UNKNOWN); // G занята книжками AE2 (guideme): по умолчанию без клавиши
         Keys.HIDE = gui("hide", KeyModifier.CONTROL, GLFW.GLFW_KEY_DELETE);
         Keys.HIDE_QUERY = gui("hide_query", KeyModifier.CONTROL, GLFW.GLFW_KEY_H);
         Keys.SAVE_SEARCH = gui("save_search", KeyModifier.CONTROL, GLFW.GLFW_KEY_S);

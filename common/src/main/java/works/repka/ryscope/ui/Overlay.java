@@ -774,8 +774,11 @@ public final class Overlay {
         }
         if (LIST.visible() && overInfo(listInfo, mx, my)) {
             text = (LIST.paged ? Component.translatable("ryscope.list.count", listCount).getString() + " · " : "")
-                + Component.translatable("ryscope.list.keys", Keys.label(Keys.RECIPES), Keys.label(Keys.USES),
-                    Keys.label(Keys.BOOKMARK), Keys.label(Keys.TREE)).getString();
+                + (Keys.TREE == null || Keys.TREE.isUnbound()
+                    ? Component.translatable("ryscope.list.keys.no_tree", Keys.label(Keys.RECIPES), Keys.label(Keys.USES),
+                        Keys.label(Keys.BOOKMARK))
+                    : Component.translatable("ryscope.list.keys", Keys.label(Keys.RECIPES), Keys.label(Keys.USES),
+                        Keys.label(Keys.BOOKMARK), Keys.label(Keys.TREE))).getString();
         }
         if (text == null) return;
         List<String> tip = new ArrayList<>();

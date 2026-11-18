@@ -215,6 +215,7 @@
   "ryscope.settings.ftb_dock": "Themed FTB buttons",
   "ryscope.settings.ftb_dock.note": "Shows FTB buttons in our panel at the top left instead of their own",
   "ryscope.list.keys": "%s: recipes · %s: uses · %s: bookmark · %s: craft tree",
+  "ryscope.list.keys.no_tree": "%s: recipes · %s: uses · %s: bookmark",
   "ryscope.value.heated": "heated",
   "ryscope.value.superheated": "superheated",
   "ryscope.value.fluid": "throw into fluid",

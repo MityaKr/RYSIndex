@@ -215,6 +215,7 @@
   "ryscope.settings.ftb_dock": "Кнопки FTB в стиле мода",
   "ryscope.settings.ftb_dock.note": "Показывает кнопки FTB нашей панелью слева сверху вместо их собственной",
   "ryscope.list.keys": "%s: рецепты · %s: использования · %s: закладка · %s: дерево крафта",
+  "ryscope.list.keys.no_tree": "%s: рецепты · %s: использования · %s: закладка",
   "ryscope.value.heated": "нагрев",
   "ryscope.value.superheated": "сильный нагрев",
   "ryscope.value.fluid": "бросить в жидкость",
