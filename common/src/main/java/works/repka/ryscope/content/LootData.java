@@ -96,13 +96,21 @@ public final class LootData {
     }
 
     public static List<Table> extract(MinecraftServer server) {
+        return extract(server.reloadableRegistries());
+    }
+
+    /**
+     * Из снимка реестров, взятого в главном потоке: так таблицы можно разбирать в фоне (0.2.16), и /reload посреди
+     * разбора не смешает старые таблицы с новыми. Реестры после загрузки только читаются.
+     */
+    public static List<Table> extract(net.minecraft.server.ReloadableServerRegistries.Holder registries) {
         List<Table> out = new ArrayList<>();
         Map<String, JsonObject> raw = new LinkedHashMap<>();
         try {
-            DynamicOps<JsonElement> ops = server.reloadableRegistries().get().createSerializationContext(JsonOps.INSTANCE);
-            for (ResourceLocation id : server.reloadableRegistries().getKeys(Registries.LOOT_TABLE)) {
+            DynamicOps<JsonElement> ops = registries.get().createSerializationContext(JsonOps.INSTANCE);
+            for (ResourceLocation id : registries.getKeys(Registries.LOOT_TABLE)) {
                 try {
-                    LootTable table = server.reloadableRegistries().getLootTable(ResourceKey.create(Registries.LOOT_TABLE, id));
+                    LootTable table = registries.getLootTable(ResourceKey.create(Registries.LOOT_TABLE, id));
                     LootTable.DIRECT_CODEC.encodeStart(ops, table).result().ifPresent(json -> {
                         if (json.isJsonObject()) raw.put(id.toString(), json.getAsJsonObject());
                     });
