@@ -1,0 +1,4 @@
+{
+  "match": ".*:.*_smithing_template",
+  "name": "rysindex.group.smithing_templates"
+}

@@ -1,0 +1,7 @@
+{
+  "tags": [
+    "c:concretes"
+  ],
+  "match": "minecraft:.*_concrete",
+  "name": "rysindex.group.concrete"
+}

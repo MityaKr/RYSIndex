@@ -1,4 +1,0 @@
-{
-  "match": "minecraft:(waxed_)?(exposed_|weathered_|oxidized_)?(cut_|chiseled_)?copper(_.*)?",
-  "name": "ryscope.group.copper_variants"
-}

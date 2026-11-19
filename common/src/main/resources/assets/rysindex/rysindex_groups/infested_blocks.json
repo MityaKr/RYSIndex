@@ -1,0 +1,4 @@
+{
+  "match": "minecraft:infested_.*",
+  "name": "rysindex.group.infested_blocks"
+}

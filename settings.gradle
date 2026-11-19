@@ -5,5 +5,5 @@ pluginManagement {
     }
 }
 
-rootProject.name = 'ryscope'
+rootProject.name = 'rysindex'
 include 'common', 'neoforge', 'prodtest'

@@ -1,0 +1,4 @@
+{
+  "match": "minecraft:.*_banner_pattern",
+  "name": "rysindex.group.banner_patterns"
+}

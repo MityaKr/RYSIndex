@@ -1,0 +1,4 @@
+{
+  "match": "minecraft:.*_stained_glass",
+  "name": "rysindex.group.stained_glass"
+}

@@ -1,0 +1,33 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "works.repka.rysindex.neoforge.mixin",
+  "plugin": "works.repka.rysindex.neoforge.mixin.RysIndexMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerCommonPacketListenerImplMixin",
+    "CraftingMenuMixin",
+    "SmithingMenuMixin",
+    "StonecutterMenuMixin",
+    "AbstractFurnaceBlockEntityMixin",
+    "CampfireBlockEntityMixin",
+    "CrafterBlockMixin",
+    "BrewingStandBlockEntityMixin",
+    "SlotMixin",
+    "PatternEncodingTermMenuMixin",
+    "AEProcessingPatternMixin",
+    "ProcessingPatternInputMixin"
+  ],
+  "client": [
+    "StartEventObserverMixin",
+    "JeiErrorUtilMixin",
+    "JeiCycleTickerMixin",
+    "GuiGraphicsMixin",
+    "RenderSystemMixin",
+    "Ae2RepoMixin",
+    "GlStateManagerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

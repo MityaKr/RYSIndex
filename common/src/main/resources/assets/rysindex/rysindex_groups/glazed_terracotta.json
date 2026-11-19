@@ -1,0 +1,7 @@
+{
+  "tags": [
+    "c:glazed_terracottas"
+  ],
+  "match": "minecraft:.*_glazed_terracotta",
+  "name": "rysindex.group.glazed_terracotta"
+}

@@ -2,7 +2,7 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
-// Проверка «как у игрока»: в папке модов только собранный jar RYScope (и моды из -PextraMods).
+// Проверка «как у игрока»: в папке модов только собранный jar RYSIndex (и моды из -PextraMods).
 // Отдельного JEI нет: он должен подняться из вложенного jar.
 neoForge {
     version = neoforge_version
@@ -14,18 +14,18 @@ neoForge {
             // Большую сборку подключать именно так: скопировать её mods в <runDir>/mods.
             // Через -PextraMods (classpath) не работают моды со своим загрузчиком, например Sodium.
             if (project.findProperty('heap') != null) jvmArgument '-Xmx' + project.findProperty('heap')
-            systemProperty 'ryscope.autotest', project.findProperty('autotest') ?: 'default'
-            systemProperty 'ryscope.autotest.asPlayer', 'true'
+            systemProperty 'rysindex.autotest', project.findProperty('autotest') ?: 'default'
+            systemProperty 'rysindex.autotest.asPlayer', 'true'
             // -PjeiGui: оставить родной интерфейс JEI и выключить наш, чтобы сравнить отклик (сценарий -Pautotest=perf)
-            if (project.findProperty('jeiGui') != null) systemProperty 'ryscope.autotest.jeiGui', 'true'
+            if (project.findProperty('jeiGui') != null) systemProperty 'rysindex.autotest.jeiGui', 'true'
             programArguments.addAll '--width', (project.findProperty('winW') ?: '1280').toString(), '--height', (project.findProperty('winH') ?: '720').toString()
-            if (project.findProperty('asyncFail') != null) systemProperty 'ryscope.test.asyncFail', 'true'
-            if (project.findProperty('plan') != null) systemProperty 'ryscope.autotest.plan', project.findProperty('plan')
-            if (project.findProperty('compare') != null) systemProperty 'ryscope.autotest.compare', project.findProperty('compare')
-            if (project.findProperty('cats') != null) systemProperty 'ryscope.autotest.cats', project.findProperty('cats')
+            if (project.findProperty('asyncFail') != null) systemProperty 'rysindex.test.asyncFail', 'true'
+            if (project.findProperty('plan') != null) systemProperty 'rysindex.autotest.plan', project.findProperty('plan')
+            if (project.findProperty('compare') != null) systemProperty 'rysindex.autotest.compare', project.findProperty('compare')
+            if (project.findProperty('cats') != null) systemProperty 'rysindex.autotest.cats', project.findProperty('cats')
             // сценарий leak: -PleakSessions=5 -PleakMinutes=6 (сколько входов в мир и «минут» действий в каждом)
-            if (project.findProperty('leakSessions') != null) systemProperty 'ryscope.leak.sessions', project.findProperty('leakSessions')
-            if (project.findProperty('leakMinutes') != null) systemProperty 'ryscope.leak.minutes', project.findProperty('leakMinutes')
+            if (project.findProperty('leakSessions') != null) systemProperty 'rysindex.leak.sessions', project.findProperty('leakSessions')
+            if (project.findProperty('leakMinutes') != null) systemProperty 'rysindex.leak.minutes', project.findProperty('leakMinutes')
         }
     }
 }
@@ -34,7 +34,7 @@ dependencies {
     runtimeOnly files(rootProject.file("neoforge/build/libs/${mod_id}-neoforge-${minecraft_version}-${mod_version}.jar"))
     if (project.findProperty('extraMods') != null) {
         runtimeOnly fileTree(dir: project.findProperty('extraMods'), include: '*.jar',
-            excludes: ['jei-*.jar', 'mezz_config*.jar', 'ryscope-*.jar'])
+            excludes: ['jei-*.jar', 'mezz_config*.jar', 'rysindex-*.jar', 'ryscope-*.jar'])
     }
 }
 

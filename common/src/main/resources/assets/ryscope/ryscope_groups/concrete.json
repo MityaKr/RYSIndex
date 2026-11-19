@@ -1,7 +1,0 @@
-{
-  "tags": [
-    "c:concretes"
-  ],
-  "match": "minecraft:.*_concrete",
-  "name": "ryscope.group.concrete"
-}

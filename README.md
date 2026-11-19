@@ -1,10 +1,10 @@
-# RYScope
+# RYSIndex
 
 Самостоятельный мод-вьюер рецептов для Minecraft 1.21.x (NeoForge первым, Fabric позже).
 Конкурент JEI / EMI / REI: совместим с плагинами JEI, но с другим UX, темами, фоновой индексацией и своими фичами.
 
 - Автор: Dumitru (MityaYS), RepkaWorks
-- modid: `ryscope`
+- modid: `rysindex`
 - Статус: рабочая версия 0.1.0 под NeoForge 1.21.1, не опубликована
 
 ## Состояние на 09.11.2026
@@ -30,18 +30,18 @@ README.md                 этот файл
 START_PROMPT.md           стартовый промпт для новой сессии
 build.gradle, settings.gradle, gradle.properties, gradlew
 common/                   общий код: чистый Minecraft, без API загрузчика
-  src/main/java/works/repka/ryscope/
+  src/main/java/works/repka/rysindex/
     core/search/          поиск без зависимостей от игры
     model/                ресурсы, ингредиенты, категории, рецепты
     content/              ванильные рецепты, раскладки из JSON, источники, перенос в слоты
     runtime/              индекс, поиск, закладки, дерево, доска, группы, настройки
     ui/                   панели, экраны, линза, темы
     jei/                  мост к JEI
-  src/main/resources/assets/ryscope/
+  src/main/resources/assets/rysindex/
     lang/                 en_us, ru_ru (черновики)
     ryscore_themes/       Slate, Vanilla Refined, Glass
-    ryscope_layouts/      раскладки Create, Mekanism, AE2
-    ryscope_groups/       группы предметов
+    rysindex_layouts/      раскладки Create, Mekanism, AE2
+    rysindex_groups/       группы предметов
 neoforge/                 привязка к NeoForge, сеть, автотест
 prodtest/                 проверка собранного jar «как у игрока»
 THIRD_PARTY.md            сторонний код в составе (JEI, MIT)
@@ -69,7 +69,7 @@ _stale/                   старые скриншоты прогонов
 ## Решения, уже принятые
 
 1. Отдельный мод, не часть сборки RepYS. Должен ставиться в любую сборку.
-2. Название RYScope, modid `ryscope`.
+2. Название RYSIndex, modid `rysindex`.
 3. Визуальный язык по умолчанию: вариант A «Slate». Варианты B и C идут как встроенные темы. Темы описываются JSON + текстуры в ресурспаке.
 4. Слой совместимости с плагинами JEI обязателен с первой версии.
 5. Ничего тяжёлого в главном потоке: индекс, граф, поиск в фоне, кэш индекса на диске.
