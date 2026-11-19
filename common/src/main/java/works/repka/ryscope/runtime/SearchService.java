@@ -52,7 +52,12 @@ public final class SearchService {
     });
     private static final AtomicInteger GENERATION = new AtomicInteger();
     /** Сколько главного потока за тик отдаётся заранее собираемым подсказкам. */
-    private static final long WARM_NANOS_PER_TICK = 2_000_000L;
+    private static final long WARM_NANOS_PER_TICK = 1_000_000L;
+    /**
+     * Прогрев начинается не сразу после готовности индекса: первые секунды в мире главный поток занят JEI, чанками и
+     * пакетами модов (разбор логики 19.11, 4.4). Поиск с {@code $} не ждёт: он прогревает быстрее и сразу.
+     */
+    private static final long WARM_DELAY_NANOS = 5_000_000_000L;
     /** То же, пока игрок ищет по {@code $} и ждёт подсказок, которые ещё не собраны. */
     private static final long WARM_NANOS_WANTED = 6_000_000L;
     /** Запрос с {@code $} пришёл раньше, чем собраны подсказки: сборка ускоряется, поиск повторяется по мере сборки. */
@@ -257,6 +262,8 @@ public final class SearchService {
 
     private static volatile Snapshot warmFor;
     private static volatile int warmNext;
+    /** Раньше этого момента прогрев без запроса не идёт ({@link #WARM_DELAY_NANOS}). */
+    private static long warmFrom;
 
     /** Снимок сброшен (выход из мира): прогрев подсказок не держит прежний снимок до следующего мира. */
     static void forget() {
@@ -274,9 +281,11 @@ public final class SearchService {
         if (snap != warmFor) {
             warmFor = snap;
             warmNext = 0;
+            warmFrom = System.nanoTime() + WARM_DELAY_NANOS;
         }
         SearchIndex index = snap.index;
         boolean wanted = tooltipsWanted;
+        if (!wanted && System.nanoTime() < warmFrom) return;
         long deadline = System.nanoTime() + (wanted ? WARM_NANOS_WANTED : WARM_NANOS_PER_TICK);
         int next = warmNext, before = next;
         while (next < index.size() && System.nanoTime() < deadline) {

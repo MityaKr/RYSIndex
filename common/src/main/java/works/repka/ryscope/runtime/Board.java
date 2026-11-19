@@ -69,6 +69,20 @@ public final class Board {
     private static int age;
     /** Признак входных данных деревьев ({@link CraftTree#inputsVersion}), по которому построены нынешние деревья. */
     private static long inputs = Long.MIN_VALUE;
+    /** Запасы, под которые деревья пересчитаны в последний раз ({@link #stockVersion}). */
+    private static long stock = Long.MIN_VALUE;
+
+    /**
+     * Номер запасов: инвентарь, запомненные хранилища рядом и содержимое сети AE2. Раз в секунду деревья пересчитываются,
+     * только если он сменился: без перемен пересборка ничего не меняла и только занимала главный поток (разбор логики
+     * 19.11, 4.4).
+     */
+    private static long stockVersion() {
+        long h = InventoryView.version();
+        h = h * 1_000_003L + Storages.version();
+        h = h * 1_000_003L + Ae2Terminal.networkVersion();
+        return h;
+    }
 
     /** Общая сумма по всем целям: последняя готовая и та, что строится. */
     @org.jetbrains.annotations.Nullable
@@ -215,6 +229,11 @@ public final class Board {
         if (GOALS.isEmpty()) return;
         boolean periodic = ++age % 20 == 0;
         if (Indexer.state() != Indexer.State.READY) return;
+        if (periodic) {
+            long now = stockVersion();
+            periodic = now != stock;
+            stock = now;
+        }
         long deadline = System.nanoTime() + TICK_NANOS;
         // сменились настройка автокрафта или данные «сеть сделает»: деревья строятся заново сразу, а не через секунду.
         // Найденные рецепты от этого не устаревают, поэтому перенимаются
