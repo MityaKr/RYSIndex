@@ -2,7 +2,7 @@
 
 Собрана `_shared/tools/make-map.py` 2026-11-19. Руками не править: после структурных правок пересобрать.
 
-Java: 137 файлов, 30537 строк. Модули gradle: `common`. Переводы: `common/src/main/resources/assets/ryscope/lang/en_us.json`, `common/src/main/resources/assets/ryscope/lang/ru_ru.json`.
+Java: 139 файлов, 30735 строк. Модули gradle: `common`. Переводы: `common/src/main/resources/assets/ryscope/lang/en_us.json`, `common/src/main/resources/assets/ryscope/lang/ru_ru.json`.
 Читать сначала: `CLAUDE.md`, `README.md`.
 
 ## Точки входа
@@ -11,12 +11,12 @@ Java: 137 файлов, 30537 строк. Модули gradle: `common`. Пер�
 - миксины: `neoforge/src/main/resources/ryscope.mixins.json`
 
 ## Папки
-- `common/` — 619 файлов
+- `common/` — 509 файлов
 - `design/` — 12 файлов
 - `docs/` — 39 файлов
 - `gradle/` — 2 файлов
-- `neoforge/` — 836 файлов
-- `prodtest/` — 6512 файлов
+- `neoforge/` — 858 файлов
+- `prodtest/` — 6513 файлов
 - `questscope/` — 16 файлов; RYSQuests
 - `ryspulse/` — 12 файлов; RYSPulse
 - `rysquests-companion/` — 10 файлов; RYSQuests Компаньон (вторая версия концепта)
@@ -56,11 +56,12 @@ Java: 137 файлов, 30537 строк. Модули gradle: `common`. Пер�
 - `SearchEntry` 35 — Строки одного элемента списка для поиска.
 - `SearchIndex` 189 — Поиск по списку записей.
 
-**jei** (9)
+**jei** (10)
 - `JeiBridge` 777 — Мост к установленному JEI.
 - `JeiCategory` 28 — Категория рецептов из плагина JEI.
+- `JeiFrame` 44 — Рамка рецепта JEI, когда ячейки мода выходят за размер его категории.
 - `JeiInfoView` 118 — «Сведения» JEI (addInformation) страницей справки нашим видом вместо окна JEI с моноширинным текстом в рамке со своей прокруткой.
-- `JeiRecipeView` 477 — Рецепт из JEI.
+- `JeiRecipeView` 529 — Рецепт из JEI.
 - `JeiRes` 107 — Ингредиент JEI, который не является предметом: жидкость, газ, энергия и всё, что зарегистрировали моды.
 - `JeiScale` 71 — Масштаб рецептов JEI в окне RYScope.
 - `RyscopeJeiPlugin` 213 — Плагин JEI.
@@ -145,7 +146,8 @@ Java: 137 файлов, 30537 строк. Модули gradle: `common`. Пер�
 **core.search** (1)
 - `SearchTest` 160
 
-**jei** (1)
+**jei** (2)
+- `JeiFrameTest` 49 — Рамка рецепта JEI под ячейки за краем категории: шкала энергии Modular Machinery Reborn и спрятанные ячейки.
 - `JeiScaleTest` 150 — Подбор масштаба рецептов JEI: целое число пикселей на пиксель JEI и пределы карточки.
 
 **runtime** (2)
@@ -155,7 +157,7 @@ Java: 137 файлов, 30537 строк. Модули gradle: `common`. Пер�
 ## `neoforge/src/main/java` — пакет `works.repka.ryscope.neoforge`
 
 **(корень)** (10)
-- `AutoTest` 4528 — Автотест для разработки: включается свойством -Dryscope.autotest.
+- `AutoTest` 4581 — Автотест для разработки: включается свойством -Dryscope.autotest.
 - `AutoTestJei` 272 — Часть автотеста, которая разговаривает с JEI напрямую: сверка «что знает JEI и что показываем мы» и замеры родного интерфейса JEI.
 - `AutoTestLinks` 204 — Тестовый поставщик сведений для сценария links: вместо книги RYSQuests.
 - `ClientPayloads` 26 — Обработчики пакетов на клиенте.

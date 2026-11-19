@@ -40,8 +40,8 @@ public final class JeiRecipeView<T> implements RecipeView {
     private int border = 4;
     /** Насколько ячейки рецепта выходят за размер категории: слева, сверху, справа, снизу. */
     private int padLeft, padTop, padRight, padBottom;
-    /** Насколько ячейка может отстоять от края категории и всё ещё растягивать окошко рецепта. */
-    private static final int SLOT_REACH = 32;
+    /** Рамку JEI удалось растянуть под выступающие ячейки ({@link #stretchBackground}); иначе рисуется своя подложка. */
+    private boolean stretched;
     /** Масштаб рецепта в окне ({@link JeiScale}) и для каких пикселей экрана в единице (со знаком настройки увеличения) он посчитан. */
     private double scale = 1;
     private double scaleKey = 0;
@@ -67,6 +67,7 @@ public final class JeiRecipeView<T> implements RecipeView {
                     Rect2i inner = layout.getRect(), outer = layout.getRectWithBorder();
                     border = Math.max(0, (outer.getWidth() - inner.getWidth()) / 2);
                     measureSlots(layout);
+                    stretched = JeiFrame.any(pads()) && stretchBackground(layout, pads());
                     scaleKey = 0;
                     // раскладка живёт в своих единицах от угла рецепта; на экран её переводит поза в render
                     layout.setPosition(border + padLeft, border + padTop);
@@ -87,29 +88,80 @@ public final class JeiRecipeView<T> implements RecipeView {
      * <p>
      * Ячейки далеко за краем не считаются: так моды прячут ингредиенты для поиска. JEI Mekanism Multiblocks ставит все
      * затраты калькулятора в точку (9999, 9999), чтобы блоки находились в «Использованиях», и окошко растягивалось на весь
-     * экран. Ячейка, которая не касается рецепта даже с запасом {@link #SLOT_REACH}, на экране не видна и в размер не идёт.
+     * экран. Ячейка, которая не касается рецепта даже с запасом {@link JeiFrame#SLOT_REACH}, на экране не видна и в размер не идёт.
      */
     private void measureSlots(IRecipeLayoutDrawable<T> l) {
-        int w = category.getWidth(), h = category.getHeight();
-        int left = 0, top = 0, right = w, bottom = h;
+        List<int[]> rects = new ArrayList<>();
         try {
             for (IRecipeSlotView slot : l.getRecipeSlotsView().getSlotViews()) {
                 if (!(slot instanceof mezz.jei.api.gui.ingredient.IRecipeSlotDrawable drawable)) continue;
                 Rect2i r = drawable.getRect();
-                if (r.getX() >= w + SLOT_REACH || r.getY() >= h + SLOT_REACH
-                    || r.getX() + r.getWidth() <= -SLOT_REACH || r.getY() + r.getHeight() <= -SLOT_REACH) continue;
-                left = Math.min(left, r.getX());
-                top = Math.min(top, r.getY());
-                right = Math.max(right, r.getX() + r.getWidth());
-                bottom = Math.max(bottom, r.getY() + r.getHeight());
+                rects.add(new int[] {r.getX(), r.getY(), r.getWidth(), r.getHeight()});
             }
         } catch (Throwable ignored) {
             // чужие ячейки: остаётся размер категории
+            rects.clear();
         }
-        padLeft = -left;
-        padTop = -top;
-        padRight = right - w;
-        padBottom = bottom - h;
+        int[] p = JeiFrame.pads(category.getWidth(), category.getHeight(), rects);
+        padLeft = p[0];
+        padTop = p[1];
+        padRight = p[2];
+        padBottom = p[3];
+    }
+
+    private int[] pads() {
+        return new int[] {padLeft, padTop, padRight, padBottom};
+    }
+
+    /** Для автотеста: выступы ячеек за категорию и растянута ли рамка JEI; null, если рецепт в своих границах. */
+    @Nullable
+    public String frameReport() {
+        if (layout() == null || !JeiFrame.any(pads())) return null;
+        return category.getWidth() + "x" + category.getHeight() + " выступы " + padLeft + "," + padTop + "," + padRight + "," + padBottom
+            + (stretched ? ", рамка JEI растянута" : ", своя подложка");
+    }
+
+    /** Поле с рамкой рецепта в раскладке JEI: JEI рисует её сам по размеру категории, раньше ячеек. */
+    private static final java.lang.reflect.Field BACKGROUND = backgroundField();
+
+    private static java.lang.reflect.Field backgroundField() {
+        try {
+            java.lang.reflect.Field f = Class.forName("mezz.jei.library.gui.recipes.RecipeLayout").getDeclaredField("recipeBackground");
+            if (!mezz.jei.api.gui.drawable.IScalableDrawable.class.isAssignableFrom(f.getType())) return null;
+            f.setAccessible(true);
+            return f;
+        } catch (Throwable t) {
+            RYScope.LOG.debug("Рамку рецепта JEI не растянуть, остаётся своя подложка: {}", t.toString());
+            return null;
+        }
+    }
+
+    /**
+     * Рамку, которую JEI рисует по размеру категории, растянуть на выступающие ячейки. Раньше под рецептом лежала своя
+     * подложка нужного размера, но JEI рисовал поверх неё свою рамку размером с категорию, и шкала энергии Modular
+     * Machinery Reborn торчала из неё вниз. @return false, если JEI устроен иначе (тогда рисуется своя подложка)
+     */
+    private static boolean stretchBackground(IRecipeLayoutDrawable<?> l, int[] pads) {
+        if (BACKGROUND == null || !BACKGROUND.getDeclaringClass().isInstance(l)) return false;
+        try {
+            Object original = BACKGROUND.get(l);
+            if (original instanceof Stretched) return true;
+            if (!(original instanceof mezz.jei.api.gui.drawable.IScalableDrawable drawable)) return false;
+            BACKGROUND.set(l, new Stretched(drawable, pads));
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Рамка JEI, нарисованная шире на выступы ячеек. */
+    private record Stretched(mezz.jei.api.gui.drawable.IScalableDrawable original, int[] pads)
+        implements mezz.jei.api.gui.drawable.IScalableDrawable {
+        @Override
+        public void draw(GuiGraphics g, int x, int y, int width, int height) {
+            int[] r = JeiFrame.stretch(x, y, width, height, pads);
+            original.draw(g, r[0], r[1], r[2], r[3]);
+        }
     }
 
     @Override
@@ -193,7 +245,7 @@ public final class JeiRecipeView<T> implements RecipeView {
             enter(g, x, y);
             boolean restyled = works.repka.ryscope.ui.RecipeRestyle.begin(theme);
             try {
-                if (padLeft > 0 || padTop > 0 || padRight > 0 || padBottom > 0) {
+                if (!stretched && JeiFrame.any(pads())) {
                     // окошко рецепта растянуто под ячейки за его краем: подложка того же серого, что фон окон модов (перекраска переведёт его в тему)
                     int w = category.getWidth() + padLeft + padRight, h = category.getHeight() + padTop + padBottom;
                     int x0 = border, y0 = border;

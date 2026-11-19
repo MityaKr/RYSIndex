@@ -678,6 +678,10 @@ final class AutoTest {
             buildMekCalc();
             return;
         }
+        if ("jeiframe".equals(System.getProperty("ryscope.autotest"))) {
+            buildJeiFrame();
+            return;
+        }
         if ("mmr".equals(System.getProperty("ryscope.autotest"))) {
             buildMmr();
             return;
@@ -1702,6 +1706,55 @@ final class AutoTest {
     }
 
     /** Окно контроллера Modular Machinery: всё окно рисуется внутри его renderBackground. */
+    /**
+     * Рамки рецептов JEI (0.2.14): по первому рецепту каждой категории, у каких ячейки выходят за размер категории
+     * (шкалы энергии Modular Machinery Reborn и прочих) и растянута ли рамка JEI; снимок квантового сборщика.
+     */
+    private static void buildJeiFrame() {
+        step("jeiframe: categories", () -> {
+            var bridge = works.repka.ryscope.jei.RyscopeJeiPlugin.bridge();
+            if (bridge == null) {
+                RYScope.LOG.info("[jeiframe] FAIL: JEI нет");
+                return;
+            }
+            var runtime = bridge.runtime();
+            var focus = runtime.getJeiHelpers().getFocusFactory().getEmptyFocusGroup();
+            int[] seen = {0}, out = {0}, own = {0};
+            runtime.getRecipeManager().createRecipeCategoryLookup().get().forEach(cat -> {
+                seen[0]++;
+                try {
+                    frameOf(bridge, cat, focus, seen, out, own);
+                } catch (Throwable t) {
+                    RYScope.LOG.info("[jeiframe] {}: ошибка {}", cat.getRecipeType().getUid(), t.toString());
+                }
+            });
+            RYScope.LOG.info("[jeiframe] {}: категорий {}, с выступами {}, из них со своей подложкой {}",
+                seen[0] > 0 && own[0] == 0 ? "PASS" : "FAIL", seen[0], out[0], own[0]);
+            RecipeScreen.open(new ItemRes(new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+                net.minecraft.resources.ResourceLocation.parse("kubejs:quantum_processor")))), Lookup.Mode.RECIPES);
+        }, 40);
+        step("jeiframe: select", () -> {
+            boolean found = mc().screen instanceof RecipeScreen rs && rs.selectGroupForTest(c -> c.id.toString().equals("repys:quantum_assembler"));
+            RYScope.LOG.info("[jeiframe] квантовый сборщик выбран: {}", found);
+            parkMouse();
+        }, 20);
+        shot("jeiframe_quantum_assembler");
+        step("quit", () -> mc().stop(), 0);
+    }
+
+    private static <T> void frameOf(works.repka.ryscope.jei.JeiBridge bridge, mezz.jei.api.recipe.category.IRecipeCategory<T> cat,
+                                    mezz.jei.api.recipe.IFocusGroup focus, int[] seen, int[] out, int[] own) {
+        var first = bridge.runtime().getRecipeManager().createRecipeLookup(cat.getRecipeType()).get().findFirst();
+        if (first.isEmpty()) return;
+        var view = new works.repka.ryscope.jei.JeiRecipeView<>(bridge, cat, first.get(), focus);
+        String report = view.frameReport();
+        view.release();
+        if (report == null) return;
+        out[0]++;
+        if (report.endsWith("своя подложка")) own[0]++;
+        RYScope.LOG.info("[jeiframe] {}: {}", cat.getRecipeType().getUid(), report);
+    }
+
     private static void buildMmr() {
         step("mmr: place", () -> {
             command("fill 3 -60 3 3 -58 3 minecraft:air");
