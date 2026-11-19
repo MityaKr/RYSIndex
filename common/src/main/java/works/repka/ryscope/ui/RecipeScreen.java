@@ -582,12 +582,12 @@ public final class RecipeScreen extends ScaledScreen {
 
     // --- раскладка ---
 
-    private boolean hasRail() {
-        return nav.groups.size() > 1;
-    }
-
+    /**
+     * Рейка категорий стоит всегда, даже с одной категорией (автор 19.11: без неё окно и содержимое прыгали
+     * при переходе между вкладками). Её место постоянно, поэтому шапка, вкладки и рецепты не сдвигаются.
+     */
     private int railWidth() {
-        return hasRail() ? RAIL_W : 0;
+        return RAIL_W;
     }
 
     private int chromeHeight() {
@@ -603,17 +603,24 @@ public final class RecipeScreen extends ScaledScreen {
         return BLOCK_PAD * 2 + recipeRow(r) + (r.isCrafting() ? STATUS_GAP + STATUS_H : 0);
     }
 
-    /** Ширина карточки, которая нужна этому разделу. */
+    /**
+     * Ширина карточки, которая нужна этому предмету: по всем его разделам сразу, чтобы окно не меняло ширину
+     * при переходе на «Справку» или «Использования».
+     */
     public int preferredWidth() {
-        // вызывается каждый кадр дважды, а у станции в разделе тысячи рецептов: ширина считается раз на раздел
-        Group current = group();
+        // вызывается каждый кадр дважды, а у станции тысячи рецептов: ширина считается раз на предмет
+        Map<Section, List<Group>> current = nav.sections;
         if (widthFor != current) {
             int need = 0;
-            for (RecipeView r : current.recipes()) {
-                int plate = r.needsPlate() ? 3 : 0;
-                // карточка поставщика растягивается на блок сама: в ширину окна идёт её наименьшая ширина
-                int w = r instanceof works.repka.ryscope.content.LinkCardView ? works.repka.ryscope.content.LinkCardView.MIN_W : r.width();
-                need = Math.max(need, w + plate * 2);
+            for (List<Group> groups : current.values()) {
+                for (Group group : groups) {
+                    for (RecipeView r : group.recipes()) {
+                        int plate = r.needsPlate() ? 3 : 0;
+                        // карточка поставщика растягивается на блок сама: в ширину окна идёт её наименьшая ширина
+                        int w = r instanceof works.repka.ryscope.content.LinkCardView ? works.repka.ryscope.content.LinkCardView.MIN_W : r.width();
+                        need = Math.max(need, w + plate * 2);
+                    }
+                }
             }
             widthFor = current;
             widthNeed = need;
@@ -715,7 +722,7 @@ public final class RecipeScreen extends ScaledScreen {
         }
         renderHistory(g, t, mx, my);
         t.panel(g, cardX, cardY, cardW, cardH);
-        Category hoveredCategory = hasRail() ? renderRail(g, t, mx, my) : null;
+        Category hoveredCategory = renderRail(g, t, mx, my);
         renderHeader(g, t, mx, my);
         int y = cardY + HEADER_H;
         if (nav.focus != null) {
@@ -2066,7 +2073,7 @@ public final class RecipeScreen extends ScaledScreen {
             mentionsScroll.by(-(float) scrollY * MENTION_ROW);
             return true;
         }
-        if (hasRail() && over(mx, my, cardX, cardY, RAIL_W, cardH)) {
+        if (nav.groups.size() > 1 && over(mx, my, cardX, cardY, RAIL_W, cardH)) {
             rail.by(-(float) scrollY * (RAIL_SLOT + RAIL_GAP));
             return true;
         }
