@@ -285,7 +285,7 @@
   "ryscope.settings.export.note": "Пишет items.json и recipes.json; рецепты, которые рисуют плагины JEI, не попадают",
   "ryscope.settings.async_jei": "Загружать рецепты модов в фоне",
   "ryscope.settings.async_jei.note": "Игра не замирает при входе в мир; применяется при следующем входе",
-  "ryscope.settings.async_jei.failed": "Отключилось само: в фоне JEI загрузился с ошибками, а обычным способом без них. Клик включает снова",
+  "ryscope.settings.async_jei.failed": "Отключилось само: фон дважды подряд загрузил JEI хуже обычного способа. Клик: снова пробовать фон",
   "ryscope.jei.failed": "JEI не запустился (%s). Рецепты из плагинов модов недоступны, видны только встроенные.",
   "ryscope.jei.failed.mixin": "Класс %s изменён миксином: %s. Обновите этот мод или JEI. Подробности в logs/latest.log.",
   "ryscope.jei.failed.log": "Подробности в logs/latest.log: ищите «JEI не запустился».",

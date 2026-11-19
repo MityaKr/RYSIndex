@@ -194,6 +194,10 @@ public final class JeiAsync {
             publish = null;
             if (connect != null) connect.run();
             settle();
+            if (cfg.asyncJeiStrikes != 0) {
+                cfg.asyncJeiStrikes = AsyncPolicy.success(cfg.asyncJeiTolerated).strikes();
+                Config.save();
+            }
             if (async.errors() == 0) {
                 RYScope.LOG.info("JEI загружен в фоне за {} мс, главный поток не останавливался", ms);
             } else {
@@ -221,14 +225,21 @@ public final class JeiAsync {
             }
             failure = null;
             settle();
-            if (first.thrown() == null && sync.errors() >= first.errors()) {
-                cfg.asyncJeiTolerated = sync.errors();
+            AsyncPolicy.Verdict v = AsyncPolicy.failure(first.thrown() != null, first.errors(), sync.errors(), cfg.asyncJeiStrikes, cfg.asyncJeiTolerated);
+            cfg.asyncJeiTolerated = v.tolerated();
+            cfg.asyncJeiStrikes = v.strikes();
+            if (v.strikes() == 0) {
                 RYScope.LOG.info("Те же ошибки плагинов ({}) есть и при обычной загрузке JEI: фоновый режим остаётся включён.",
                     sync.errors());
+            } else if (!v.unsafe()) {
+                RYScope.LOG.warn("Обычная загрузка JEI прошла чище (ошибок {} против {}). Похоже на разовую гонку потоков: при следующем входе снова фон"
+                    + " (отключится после {} неудач подряд).", sync.errors(), first.thrown() != null ? "сбоя запуска" : String.valueOf(first.errors()),
+                    AsyncPolicy.STRIKES);
             } else {
                 cfg.asyncJeiUnsafe = true;
-                RYScope.LOG.warn("Обычная загрузка JEI прошла чище (ошибок {} против {}): фоновый режим для этой установки отключён.",
-                    sync.errors(), first.thrown() != null ? "сбоя запуска" : String.valueOf(first.errors()));
+                RYScope.LOG.warn("Обычная загрузка JEI снова прошла чище (ошибок {} против {}), {} раза подряд: фоновый режим для этой установки"
+                    + " отключён, включить снова можно в настройках RYScope.", sync.errors(),
+                    first.thrown() != null ? "сбоя запуска" : String.valueOf(first.errors()), v.strikes());
             }
             Config.save();
         });

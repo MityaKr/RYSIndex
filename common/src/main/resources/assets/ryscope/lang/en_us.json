@@ -285,7 +285,7 @@
   "ryscope.settings.export.note": "Writes items.json and recipes.json; recipes drawn by JEI plugins are not included",
   "ryscope.settings.async_jei": "Load mod recipes in the background",
   "ryscope.settings.async_jei.note": "The game does not freeze when you join a world; takes effect on the next join",
-  "ryscope.settings.async_jei.failed": "Was turned off automatically: JEI loaded with errors in the background but cleanly the normal way. Click to try again",
+  "ryscope.settings.async_jei.failed": "Turned off by itself: background loading did worse than normal loading twice in a row. Click: try background again",
   "ryscope.jei.failed": "JEI failed to start (%s). Recipes from mod plugins are unavailable; only built-in ones are shown.",
   "ryscope.jei.failed.mixin": "Class %s is modified by mixin: %s. Update that mod or JEI. See logs/latest.log for details.",
   "ryscope.jei.failed.log": "See logs/latest.log for details.",

@@ -129,7 +129,9 @@ public final class SettingsScreen extends ScaledScreen {
         }, "ryscope.settings.export.note"));
         toggle("ryscope.settings.async_jei", () -> c.asyncJei && !c.asyncJeiUnsafe, () -> {
             if (c.asyncJeiUnsafe) {
+                // «снова пробовать фон»: счёт неудач с нуля
                 c.asyncJeiUnsafe = false;
+                c.asyncJeiStrikes = 0;
                 c.asyncJei = true;
             } else {
                 c.asyncJei = !c.asyncJei;

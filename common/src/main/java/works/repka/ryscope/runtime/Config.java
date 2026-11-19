@@ -43,6 +43,8 @@ public final class Config {
     public boolean asyncJeiUnsafe = false;
     /** Сколько ошибок плагинов даёт и обычная загрузка JEI в этой сборке: столько в фоне считается нормой. */
     public int asyncJeiTolerated = 0;
+    /** Неудачных фоновых загрузок JEI подряд ({@link AsyncPolicy}): фон отключается на второй. */
+    public int asyncJeiStrikes = 0;
     /** Показывать кнопки FTB нашей панелью вместо их собственной. */
     public boolean replaceFtbSidebar = true;
     /** Учитывать в дереве крафта и на доске то, что игрок видел в хранилищах рядом. */
@@ -132,6 +134,12 @@ public final class Config {
                 // столбцы подбираются под ширину экрана
                 instance.designVersion = 2;
                 if (instance.maxColumns == 8) instance.maxColumns = 0;
+            }
+            if (instance.designVersion < 3) {
+                // 0.2.16: фон отключался после одного сбоя (у автора разовая гонка 18.11); даём ему ещё попытку по новому правилу
+                instance.designVersion = 3;
+                instance.asyncJeiUnsafe = false;
+                instance.asyncJeiStrikes = 0;
             }
             if (instance.searchLanguages == null) instance.searchLanguages = new ArrayList<>(List.of("en_us"));
             if (instance.expandedGroups == null) instance.expandedGroups = new ArrayList<>();
