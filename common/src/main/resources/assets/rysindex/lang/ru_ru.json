@@ -145,7 +145,7 @@
   "rysindex.settings.bookmarks": "Панель закладок",
   "rysindex.settings.animations": "Анимации",
   "rysindex.settings.lens_world": "Линза в мире",
-  "rysindex.settings.lens_world.note": "Alt над блоком или существом в мире. Выключено по умолчанию: Alt в мире нужен Create и другим модам",
+  "rysindex.settings.lens_world.note": "Alt над блоком или существом в мире. Если Alt нужен другому моду, клавишу линзы можно сменить в окне клавиш",
   "rysindex.settings.fuzzy": "Прощать опечатки в поиске",
   "rysindex.settings.fuzzy.note": "Срабатывает, только когда точный поиск почти ничего не нашёл",
   "rysindex.settings.languages": "Языки поиска",

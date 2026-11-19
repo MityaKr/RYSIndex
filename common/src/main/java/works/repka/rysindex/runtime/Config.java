@@ -29,10 +29,10 @@ public final class Config {
     public List<String> searchLanguages = new ArrayList<>(List.of("en_us"));
     public boolean fuzzySearch = true;
     /**
-     * Линза по Alt в мире (блок или существо под прицелом). С 0.2.16 выключена по умолчанию: Alt в мире занят у Create
-     * (меню инструментов, пояс), SFM и других. В окнах линза работает всегда.
+     * Линза по Alt в мире (блок или существо под прицелом). Включена по умолчанию (автор 19.11, в 0.2.16 её выключали
+     * из-за Alt у Create): если Alt в мире нужен другому моду, клавишу линзы меняют в окне клавиш. В окнах линза работает всегда.
      */
-    public boolean lensInWorld = false;
+    public boolean lensInWorld = true;
     public boolean animations = true;
     /** Максимальная ширина панели списка в колонках; 0 = сколько помещается. */
     public int maxColumns = 0;
@@ -149,6 +149,12 @@ public final class Config {
                 // 0.2.16: линза в мире выключена по умолчанию; прежнее «включено» было значением по умолчанию, а не выбором
                 instance.designVersion = 4;
                 instance.lensInWorld = false;
+            }
+            if (instance.designVersion < 5) {
+                // 0.3.1: линза в мире снова включена по умолчанию (автор 19.11); «выключено» у игроков поставила миграция
+                // 0.2.16 выше, а не их выбор, поэтому включаем один раз и у них
+                instance.designVersion = 5;
+                instance.lensInWorld = true;
             }
             if (instance.searchLanguages == null) instance.searchLanguages = new ArrayList<>(List.of("en_us"));
             if (instance.expandedGroups == null) instance.expandedGroups = new ArrayList<>();

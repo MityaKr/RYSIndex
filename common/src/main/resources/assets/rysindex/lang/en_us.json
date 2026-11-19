@@ -145,7 +145,7 @@
   "rysindex.settings.bookmarks": "Bookmarks panel",
   "rysindex.settings.animations": "Animations",
   "rysindex.settings.lens_world": "Lens in the world",
-  "rysindex.settings.lens_world.note": "Alt over a block or entity in the world. Off by default: Create and other mods use Alt in the world",
+  "rysindex.settings.lens_world.note": "Alt over a block or entity in the world. If another mod needs Alt, change the lens key in the key bindings",
   "rysindex.settings.fuzzy": "Forgive typos in search",
   "rysindex.settings.fuzzy.note": "Used only when the exact search finds almost nothing",
   "rysindex.settings.languages": "Search languages",
