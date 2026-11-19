@@ -20,6 +20,7 @@ import works.repka.ryscore.ui.UiScale;
 public final class RysIndexClient {
     private static boolean recipesSeen, tagsSeen;
     private static int indexDelay = -1;
+    private static final PressGuard PRESSES = new PressGuard();
 
     private RysIndexClient() {}
 
@@ -220,13 +221,19 @@ public final class RysIndexClient {
 
     public static boolean mouseClicked(Screen screen, double mx, double my, int button) {
         if (!container(screen)) return false;
-        if (Overlay.mouseClicked(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button)) return true;
         // стрелка печи или машины открывает её рецепты, как в JEI
-        return works.repka.rysindex.ui.ClickAreas.click(screen, mx, my, button);
+        boolean ours = Overlay.mouseClicked(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button)
+            || works.repka.rysindex.ui.ClickAreas.click(screen, mx, my, button);
+        if (ours) PRESSES.press(button, screen);
+        return ours;
     }
 
     public static boolean mouseReleased(Screen screen, double mx, double my, int button) {
-        return container(screen) && Overlay.mouseReleased(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button);
+        boolean pairedWithOurPress = PRESSES.release(button, screen);
+        boolean ours = container(screen) && Overlay.mouseReleased(screen, UiScale.fromGui(mx), UiScale.fromGui(my), button);
+        // отпускание после нашего нажатия окну не отдаём: иначе выданный в режиме читов предмет на курсоре
+        // окно-контейнер выбрасывает как клик мимо окна (AbstractContainerScreen.mouseReleased, слот -999)
+        return ours || pairedWithOurPress;
     }
 
     public static boolean mouseDragged(Screen screen, double mx, double my, int button) {

@@ -102,6 +102,8 @@ public final class Overlay {
     private static final int GHOST_THRESHOLD = 4;
     private static boolean highlight;
     private static long lastSearchClick;
+    /** Подсказка «выдавать нельзя» уже показана в этом запуске игры. */
+    private static boolean cheatDeniedShown;
     private static SearchService.Results highlightFor;
     private static java.util.Set<Object> highlightKeys = java.util.Set.of();
     private static String acBase, acLast;
@@ -1506,6 +1508,12 @@ public final class Overlay {
         if (button == 0 && cheating() && (LIST.at(mx, my) != null || MARKS.at(mx, my) != null)) {
             give(stack, Screen.hasShiftDown());
             return true;
+        }
+        if (button == 0 && Config.get().cheatMode && !cheatDeniedShown && (LIST.at(mx, my) != null || MARKS.at(mx, my) != null)) {
+            // выдача включена, но сейчас нельзя (выживание без прав или RYSIndex нет на сервере): один раз объясняем,
+            // дальше клик просто открывает рецепты
+            cheatDeniedShown = true;
+            toast(Component.translatable("rysindex.cheat.denied").getString());
         }
         if (button == 0 && screen instanceof AbstractContainerScreen<?>) {
             // клик или перетаскивание в фильтр: решится при движении или отпускании

@@ -2,7 +2,7 @@
 
 Собрана `_shared/tools/make-map.py` 2026-11-19. Руками не править: после структурных правок пересобрать.
 
-Java: 155 файлов, 32119 строк. Модули gradle: `common`. Переводы: `common/src/main/resources/assets/rysindex/lang/en_us.json`, `common/src/main/resources/assets/rysindex/lang/ru_ru.json`.
+Java: 157 файлов, 32218 строк. Модули gradle: `common`. Переводы: `common/src/main/resources/assets/rysindex/lang/en_us.json`, `common/src/main/resources/assets/rysindex/lang/ru_ru.json`.
 Читать сначала: `CLAUDE.md`, `README.md`.
 
 ## Точки входа
@@ -11,12 +11,12 @@ Java: 155 файлов, 32119 строк. Модули gradle: `common`. Пер�
 - миксины: `neoforge/src/main/resources/rysindex.mixins.json`
 
 ## Папки
-- `common/` — 780 файлов
+- `common/` — 615 файлов
 - `design/` — 12 файлов
 - `docs/` — 39 файлов
 - `gradle/` — 2 файлов
-- `neoforge/` — 1146 файлов
-- `prodtest/` — 6673 файлов
+- `neoforge/` — 943 файлов
+- `prodtest/` — 6735 файлов
 - `questscope/` — 16 файлов; RYSQuests
 - `ryspulse/` — 12 файлов; RYSPulse
 - `rysquests-companion/` — 10 файлов; RYSQuests Компаньон (вторая версия концепта)
@@ -27,10 +27,11 @@ Java: 155 файлов, 32119 строк. Модули gradle: `common`. Пер�
 **(корень)** (1)
 - `RYSIndex` 13
 
-**client** (4)
+**client** (5)
 - `FreezeWatch` 132 — Сторож зависаний: если кадр не заканчивается дольше FREEZE_MS, несколько раз снимает стек потока отрисовки и пишет в logs/rysindex-freeze-*.txt, где стоит игра, сколько занято памя…
 - `Keys` 105 — Горячие клавиши.
-- `RysIndexClient` 275 — Точка входа клиента.
+- `PressGuard` 26 — Пара «нажатие и отпускание» кнопки мыши.
+- `RysIndexClient` 282 — Точка входа клиента.
 - `Scissor` 47 — Состояние обрезки, как его видит GlStateManager: включена ли она и последний прямоугольник.
 
 **content** (18)
@@ -132,7 +133,7 @@ Java: 155 файлов, 32119 строк. Модули gradle: `common`. Пер�
 - `GridPanel` 268 — Прокручиваемая сетка ресурсов: общая основа списка предметов и закладок.
 - `ItemBatch` 137 — Пачка иконок предметов за один сброс буфера.
 - `Lens` 357 — Линза: зажал клавишу и навёл на что угодно.
-- `Overlay` 1918 — Панели поверх экранов с инвентарём: список ресурсов с поиском справа, закладки слева.
+- `Overlay` 1926 — Панели поверх экранов с инвентарём: список ресурсов с поиском справа, закладки слева.
 - `PlannerScreen` 276 — Планировщик производства: сколько машин нужно, чтобы делать N штук в час, и где узкое место.
 - `QuickCraft` 136 — Быстрый крафт (идея EMI): клавиша над предметом раскладывает его рецепт в сетку открытого окна, не открывая карточку.
 - `RecipeRestyle` 107 — Перекраска окон рецептов модов под тему.
@@ -146,6 +147,9 @@ Java: 155 файлов, 32119 строк. Модули gradle: `common`. Пер�
 - `TreeScreen` 833 — Дерево крафта: раскрывающийся список «что из чего», с учётом инвентаря и итогом по сырью.
 
 ## `common/src/test/java` — пакет `works.repka.rysindex`
+
+**client** (1)
+- `PressGuardTest` 58
 
 **content** (3)
 - `HelpPageTest` 70 — Перенос текста страницы справки: каждая буква и пробел шириной 1.
