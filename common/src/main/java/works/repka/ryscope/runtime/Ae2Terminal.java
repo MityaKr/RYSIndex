@@ -36,7 +36,6 @@ import works.repka.ryscope.platform.Platform;
 public final class Ae2Terminal {
     public enum State { HAVE, CRAFTABLE, MISSING }
 
-    private static final long REFRESH_MS = 500;
 
     private static AbstractContainerMenu active;
     private static AbstractContainerMenu cachedFor;
@@ -101,6 +100,43 @@ public final class Ae2Terminal {
         }
     }
 
+    /**
+     * Те же методы списка сети как {@link java.lang.invoke.MethodHandle}: проход по тысячам записей идёт без
+     * упаковки аргументов и проверок доступа на каждый вызов. Если собрать не удалось, остаётся рефлексия.
+     */
+    private static final class Fast {
+        static final java.lang.invoke.MethodHandle REPO, ALL, WHAT, STORED, CRAFTABLE, ITEM;
+        static final boolean OK;
+
+        static {
+            java.lang.invoke.MethodHandle repo = null, all = null, what = null, stored = null, craft = null, item = null;
+            boolean ok = false;
+            if (Api.OK) {
+                try {
+                    var lookup = java.lang.invoke.MethodHandles.publicLookup();
+                    var objToObj = java.lang.invoke.MethodType.methodType(Object.class, Object.class);
+                    repo = lookup.unreflect(Api.repo).asType(objToObj);
+                    all = lookup.unreflect(Api.allEntries).asType(objToObj);
+                    what = lookup.unreflect(Api.what).asType(objToObj);
+                    stored = lookup.unreflect(Api.stored).asType(java.lang.invoke.MethodType.methodType(long.class, Object.class));
+                    craft = lookup.unreflect(Api.entryCraftable).asType(java.lang.invoke.MethodType.methodType(boolean.class, Object.class));
+                    item = lookup.unreflect(Api.itemOf).asType(objToObj);
+                    ok = true;
+                } catch (Throwable t) {
+                    RYScope.LOG.debug("Быстрый доступ к списку сети AE2 недоступен, остаётся рефлексия: {}", t.toString());
+                }
+            }
+            REPO = repo;
+            ALL = all;
+            WHAT = what;
+            STORED = stored;
+            CRAFTABLE = craft;
+            ITEM = item;
+            OK = ok;
+        }
+    }
+
+
     /** Куда отдать группы взаимозаменяемых предметов разложенного рецепта (замещение в шаблонах обработки). */
     @Nullable
     public static java.util.function.Consumer<List<List<Item>>> alternativesSink;
@@ -144,15 +180,17 @@ public final class Ae2Terminal {
 
     private static void refresh() {
         long now = System.currentTimeMillis();
-        // с перехватом список перечитывается ровно тогда, когда он изменился; без него по таймеру, как раньше
-        boolean fresh = repoHooked ? cachedRepo == repoVersion : now - cachedAt < REFRESH_MS;
-        if (active == cachedFor && fresh) return;
+        // с перехватом список перечитывается, когда он изменился; без него по таймеру, как раньше; не чаще 250 мс
+        if (!NetworkRefresh.due(active == cachedFor, repoHooked, cachedRepo != repoVersion, now - cachedAt)) return;
         cachedFor = active;
         cachedAt = now;
         cachedRepo = repoVersion;
         Map<Item, Long> have = new HashMap<>();
         Set<Item> craft = new java.util.HashSet<>();
         try {
+            if (Fast.OK) {
+                readFast(have, craft);
+            } else {
             Object repo = Api.repo.invoke(active);
             if (repo != null) {
                 for (Object entry : (Iterable<?>) Api.allEntries.invoke(repo)) {
@@ -164,12 +202,26 @@ public final class Ae2Terminal {
                     if ((boolean) Api.entryCraftable.invoke(entry)) craft.add(item);
                 }
             }
+            }
         } catch (Throwable t) {
             RYScope.LOG.debug("Содержимое сети AE2 не прочитано: {}", t.toString());
         }
         network = have;
         if (!craft.equals(craftable)) liveVersion++;
         craftable = craft;
+    }
+
+    private static void readFast(Map<Item, Long> have, Set<Item> craft) throws Throwable {
+        Object repo = (Object) Fast.REPO.invokeExact((Object) active);
+        if (repo == null) return;
+        for (Object entry : (Iterable<?>) (Object) Fast.ALL.invokeExact(repo)) {
+            Object what = (Object) Fast.WHAT.invokeExact(entry);
+            if (!Api.itemKey.isInstance(what)) continue;
+            Item item = (Item) (Object) Fast.ITEM.invokeExact(what);
+            long amount = (long) Fast.STORED.invokeExact(entry);
+            if (amount > 0) have.merge(item, amount, Long::sum);
+            if ((boolean) Fast.CRAFTABLE.invokeExact(entry)) craft.add(item);
+        }
     }
 
     /** Растёт, когда меняется живое множество «можно заказать» открытого терминала. */
