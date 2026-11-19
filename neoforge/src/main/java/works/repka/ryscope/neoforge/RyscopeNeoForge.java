@@ -26,6 +26,7 @@ public final class RyscopeNeoForge {
     /** Генерация руд: реестры генерации загружаются при запуске сервера и после /reload не меняются. */
     private static Object oresFor;
     private static OrePayload ores;
+    private static works.repka.ryscope.neoforge.net.OreBiomesPayload oreBiomes;
 
     public RyscopeNeoForge(IEventBus modBus) {
         RYScope.LOG.info("{} loading", RYScope.NAME);
@@ -43,6 +44,8 @@ public final class RyscopeNeoForge {
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onLoot(payload)));
         registrar.playToClient(OrePayload.TYPE, OrePayload.CODEC,
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onOres(payload)));
+        registrar.playToClient(works.repka.ryscope.neoforge.net.OreBiomesPayload.TYPE, works.repka.ryscope.neoforge.net.OreBiomesPayload.CODEC,
+            (payload, context) -> context.enqueueWork(() -> ClientPayloads.onOreBiomes(payload)));
         registrar.playToClient(works.repka.ryscope.neoforge.net.StageNoticePayload.TYPE, works.repka.ryscope.neoforge.net.StageNoticePayload.CODEC,
             (payload, context) -> context.enqueueWork(() -> ClientPayloads.onStageNotice(payload)));
         registrar.playToClient(works.repka.ryscope.neoforge.net.StagePayload.TYPE, works.repka.ryscope.neoforge.net.StagePayload.CODEC,
@@ -68,6 +71,11 @@ public final class RyscopeNeoForge {
             if (player.connection.hasChannel(LootPayload.TYPE)) PacketDistributor.sendToPlayer(player, payload(server));
             // клиент старой версии этого канала не знает и остаётся на кеше одиночной игры
             if (player.connection.hasChannel(OrePayload.TYPE)) PacketDistributor.sendToPlayer(player, ores(server));
+            // биомы руд отдельным каналом с 0.2.15: клиент 0.2.14 и старше его не знает, и формат жил не меняется
+            if (player.connection.hasChannel(works.repka.ryscope.neoforge.net.OreBiomesPayload.TYPE)) {
+                ores(server);
+                PacketDistributor.sendToPlayer(player, oreBiomes);
+            }
         }
     }
 
@@ -75,9 +83,12 @@ public final class RyscopeNeoForge {
         Object key = server.registryAccess();
         if (ores == null || oresFor != key) {
             long start = System.nanoTime();
-            ores = new OrePayload(OreData.extract(server));
+            java.util.Map<String, List<net.minecraft.world.level.levelgen.placement.PlacedFeature>> features = new java.util.HashMap<>();
+            ores = new OrePayload(OreData.extract(server, features));
+            oreBiomes = new works.repka.ryscope.neoforge.net.OreBiomesPayload(works.repka.ryscope.content.OreBiomeData.extract(server, features));
             oresFor = key;
-            RYScope.LOG.info("Генерация руд подготовлена: {} блоков за {} мс", ores.ores().size(), (System.nanoTime() - start) / 1_000_000);
+            RYScope.LOG.info("Генерация руд подготовлена: {} блоков, биомы у {}, за {} мс", ores.ores().size(), oreBiomes.biomes().size(),
+                (System.nanoTime() - start) / 1_000_000);
         }
         return ores;
     }

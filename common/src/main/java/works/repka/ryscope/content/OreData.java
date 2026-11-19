@@ -53,6 +53,11 @@ public final class OreData {
 
     /** Жилы по блокам; ключ это идентификатор блока. */
     public static Map<String, List<Range>> extract(MinecraftServer server) {
+        return extract(server, null);
+    }
+
+    /** То же; в {@code features} (если не null) складываются все жилы каждого блока: по ним {@link OreBiomes} ищет биомы. */
+    public static Map<String, List<Range>> extract(MinecraftServer server, @org.jetbrains.annotations.Nullable Map<String, List<PlacedFeature>> features) {
         Map<String, List<Range>> out = new LinkedHashMap<>();
         try {
             DynamicOps<JsonElement> ops = server.registryAccess().createSerializationContext(JsonOps.INSTANCE);
@@ -101,8 +106,10 @@ public final class OreData {
                         ResourceLocation id = ResourceLocation.parse(state.get("Name").getAsString());
                         Block block = BuiltInRegistries.BLOCK.get(id);
                         if (block == Blocks.AIR) continue;
-                        List<Range> list = out.computeIfAbsent(BuiltInRegistries.BLOCK.getKey(block).toString(), k -> new ArrayList<>());
+                        String key = BuiltInRegistries.BLOCK.getKey(block).toString();
+                        List<Range> list = out.computeIfAbsent(key, k -> new ArrayList<>());
                         if (!list.contains(range) && list.size() < 4) list.add(range);
+                        if (features != null) features.computeIfAbsent(key, k -> new ArrayList<>()).add(pf);
                     }
                 } catch (Throwable ignored) {
                     // особая конфигурация мода: пропускаем эту жилу

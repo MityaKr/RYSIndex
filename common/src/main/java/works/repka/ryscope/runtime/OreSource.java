@@ -30,7 +30,8 @@ import works.repka.ryscope.platform.Platform;
 public final class OreSource {
     public enum Origin { LIVE, SERVER, CACHE, NONE }
 
-    public record Result(Map<String, List<OreData.Range>> ores, Origin origin) {}
+    /** {@code biomes}: где искать руду на карте ({@link works.repka.ryscope.content.OreBiomes}), может быть пусто. */
+    public record Result(Map<String, List<OreData.Range>> ores, Origin origin, Map<String, works.repka.ryscope.content.OreBiomes.Where> biomes) {}
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private static final String FILE = "ores-cache.json";
@@ -40,6 +41,10 @@ public final class OreSource {
     /** Реестры мира, по которым прочитано live: слабая ссылка, чтобы не держать закрытый мир в памяти. */
     private static java.lang.ref.WeakReference<Object> liveFor = new java.lang.ref.WeakReference<>(null);
     private static Map<String, List<OreData.Range>> live = Map.of();
+    private static Map<String, works.repka.ryscope.content.OreBiomes.Where> liveBiomes = Map.of();
+    @Nullable
+    private static volatile Map<String, works.repka.ryscope.content.OreBiomes.Where> syncedBiomes;
+    private static Map<String, works.repka.ryscope.content.OreBiomes.Where> fileBiomes = Map.of();
     /** Файл кеша читается один раз за сеанс игры; запись в одиночной игре обновляет и эту копию. */
     private static boolean fileRead;
     @Nullable
@@ -55,8 +60,15 @@ public final class OreSource {
         Indexer.request("получена генерация руд от сервера");
     }
 
+    /** Биомы руд от сервера (пакет приходит отдельно от жил: старый клиент его не знает). */
+    public static void setSyncedBiomes(Map<String, works.repka.ryscope.content.OreBiomes.Where> biomes) {
+        syncedBiomes = biomes;
+        Indexer.request("получены биомы руд от сервера");
+    }
+
     public static void clear() {
         synced = null;
+        syncedBiomes = null;
     }
 
     /** Вызывается из потока индексации. */
@@ -66,17 +78,22 @@ public final class OreSource {
             // реестры генерации загружаются при запуске мира и после /reload не меняются
             Object k = server.registryAccess();
             if (k != liveFor.get()) {
-                live = OreData.extract(server);
+                Map<String, List<net.minecraft.world.level.levelgen.placement.PlacedFeature>> features = new java.util.HashMap<>();
+                live = OreData.extract(server, features);
+                liveBiomes = works.repka.ryscope.content.OreBiomeData.extract(server, features);
                 liveFor = new java.lang.ref.WeakReference<>(k);
-                if (!live.isEmpty()) save(live);
+                if (!live.isEmpty()) save(live, liveBiomes);
             }
-            return new Result(live, Origin.LIVE);
+            return new Result(live, Origin.LIVE, liveBiomes);
         }
         Map<String, List<OreData.Range>> fromServer = synced;
-        if (fromServer != null) return new Result(fromServer, Origin.SERVER);
+        if (fromServer != null) {
+            Map<String, works.repka.ryscope.content.OreBiomes.Where> b = syncedBiomes;
+            return new Result(fromServer, Origin.SERVER, b != null ? b : Map.of());
+        }
         Map<String, List<OreData.Range>> cached = load();
-        if (cached != null && !cached.isEmpty()) return new Result(cached, Origin.CACHE);
-        return new Result(Map.of(), Origin.NONE);
+        if (cached != null && !cached.isEmpty()) return new Result(cached, Origin.CACHE, fileBiomes);
+        return new Result(Map.of(), Origin.NONE, Map.of());
     }
 
     /** Ключ набора модов: хеш отсортированного списка «modId:версия». Другой набор модов даёт другие руды. */
@@ -114,6 +131,9 @@ public final class OreSource {
                 return null;
             }
             file = OreData.fromJson(root.getAsJsonObject("ores"));
+            // биомов нет в кеше до 0.2.15: тогда без подсветки на карте
+            fileBiomes = root.has("biomes") && root.get("biomes").isJsonObject()
+                ? works.repka.ryscope.content.OreBiomeData.fromJson(root.getAsJsonObject("biomes")) : Map.of();
             RYScope.LOG.info("Генерация руд взята из кеша одиночной игры: {} блоков", file.size());
         } catch (Exception e) {
             RYScope.LOG.warn("Кеш генерации руд не прочитан: {}", e.toString());
@@ -121,16 +141,17 @@ public final class OreSource {
         return file;
     }
 
-    private static void save(Map<String, List<OreData.Range>> ores) {
+    private static void save(Map<String, List<OreData.Range>> ores, Map<String, works.repka.ryscope.content.OreBiomes.Where> biomes) {
         JsonObject root = new JsonObject();
         root.addProperty("format", OreData.FORMAT);
         root.addProperty("key", key());
         root.add("ores", OreData.toJson(ores));
+        root.add("biomes", works.repka.ryscope.content.OreBiomeData.toJson(biomes));
         String text = GSON.toJson(root);
         Path p = path();
         try {
             if (Files.exists(p) && text.equals(Files.readString(p, StandardCharsets.UTF_8))) {
-                remember(ores);
+                remember(ores, biomes);
                 return;
             }
             Files.createDirectories(p.getParent());
@@ -139,15 +160,16 @@ public final class OreSource {
                 w.write(text);
             }
             Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING);
-            remember(ores);
+            remember(ores, biomes);
             RYScope.LOG.info("Кеш генерации руд записан: {} блоков", ores.size());
         } catch (Exception e) {
             RYScope.LOG.warn("Кеш генерации руд не записан: {}", e.toString());
         }
     }
 
-    private static void remember(Map<String, List<OreData.Range>> ores) {
+    private static void remember(Map<String, List<OreData.Range>> ores, Map<String, works.repka.ryscope.content.OreBiomes.Where> biomes) {
         file = ores;
+        fileBiomes = biomes;
         fileRead = true;
     }
 }

@@ -22,4 +22,8 @@ final class ClientPayloads {
     static void onOres(works.repka.ryscope.neoforge.net.OrePayload payload) {
         works.repka.ryscope.runtime.OreSource.setSynced(payload.ores());
     }
+
+    static void onOreBiomes(works.repka.ryscope.neoforge.net.OreBiomesPayload payload) {
+        works.repka.ryscope.runtime.OreSource.setSyncedBiomes(payload.biomes());
+    }
 }
