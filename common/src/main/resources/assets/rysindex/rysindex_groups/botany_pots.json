@@ -1,0 +1,4 @@
+{
+  "match": "botanypots:(?!.*_(?:hopper|waxed)_botany_pot).+_botany_pot",
+  "name": "rysindex.group.botany_pots"
+}
