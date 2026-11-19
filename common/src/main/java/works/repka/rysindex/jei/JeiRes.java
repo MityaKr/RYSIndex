@@ -63,17 +63,14 @@ public final class JeiRes<T> extends Stack {
         renderer.render(g, typed.getIngredient(), x + ox, y + oy);
     }
 
-    /** Как в JEI: последней строкой мод, если её ещё нет и настройка включена. */
+    /** Как в JEI: одна строка с модом в конце, если её ещё нет (Jade мог дописать) и настройка включена. */
     @Override
     public List<Component> tooltipLines() {
         List<Component> lines = renderer.getTooltip(typed.getIngredient(), TooltipFlag.NORMAL);
         if (!works.repka.rysindex.runtime.Config.get().showModName) return lines;
         try {
             String mod = works.repka.rysindex.platform.Platform.get().modName(helper.getDisplayModId(typed.getIngredient()));
-            if (!lines.isEmpty() && lines.get(lines.size() - 1).getString().equals(mod)) return lines;
-            List<Component> out = new ArrayList<>(lines);
-            out.add(Component.literal(mod).withStyle(net.minecraft.ChatFormatting.BLUE, net.minecraft.ChatFormatting.ITALIC));
-            return out;
+            return works.repka.rysindex.model.ModNameTooltip.finish(lines, mod);
         } catch (Throwable t) {
             return lines;
         }

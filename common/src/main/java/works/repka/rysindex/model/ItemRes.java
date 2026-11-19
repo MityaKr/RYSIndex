@@ -53,23 +53,32 @@ public final class ItemRes extends Stack {
 
     @Override
     public List<Component> tooltipLines() {
-        return Screen.getTooltipFromItem(Minecraft.getInstance(), stack);
+        List<Component> lines = Screen.getTooltipFromItem(Minecraft.getInstance(), stack);
+        return ourTooltip ? withModName(lines) : lines;
     }
 
     /**
-     * Сейчас рисуется подсказка из наших панелей или карточки: модуль загрузчика тогда дописывает в неё мод,
-     * если его ещё нет (Jade дописывает сам), как JEI в своём списке.
+     * Строки собираются для подсказки наших панелей или карточки: тогда в них подпись мода, как в списке JEI.
+     * Без флага (поиск по тексту подсказки и прочее) строки игры как есть.
      */
     public static boolean ourTooltip;
 
+    /**
+     * Подпись мода дописывается в готовый список, когда все слушатели события подсказки уже отработали: Jade пишет
+     * её в том же событии, и порядок слушателей случаен, поэтому проверка внутри события иногда давала две строки.
+     */
+    private List<Component> withModName(List<Component> lines) {
+        var platform = works.repka.rysindex.platform.Platform.get();
+        String mod = platform.modName(platform.itemModId(stack));
+        return ModNameTooltip.finish(lines, mod);
+    }
+
     @Override
     public void renderTooltip(GuiGraphics g, int mouseX, int mouseY) {
-        ourTooltip = true;
-        try {
-            g.renderTooltip(Minecraft.getInstance().font, stack, mouseX, mouseY);
-        } finally {
-            ourTooltip = false;
-        }
+        // как GuiGraphics.renderTooltip(font, stack, …), только строки уже с подписью мода; картинка подсказки и
+        // предмет для события сбора подсказки (рамки, цвета других модов) те же
+        works.repka.rysindex.platform.Platform.get().renderItemTooltip(g,
+            withModName(Screen.getTooltipFromItem(Minecraft.getInstance(), stack)), stack, mouseX, mouseY);
     }
 
     @Override

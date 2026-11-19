@@ -39,6 +39,17 @@ public interface Platform {
 
     net.minecraft.network.chat.Component fluidName(net.minecraft.world.level.material.Fluid fluid);
 
+    /** Мод, добавивший предмет (может отличаться от namespace, если мод выдаёт его за себя). */
+    default String itemModId(net.minecraft.world.item.ItemStack stack) {
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace();
+    }
+
+    /** Подсказка предмета готовыми строками, но с самим предметом для события сбора подсказки (рамки и цвета модов). */
+    default void renderItemTooltip(net.minecraft.client.gui.GuiGraphics g, List<net.minecraft.network.chat.Component> lines,
+                                   net.minecraft.world.item.ItemStack stack, int mouseX, int mouseY) {
+        g.renderTooltip(net.minecraft.client.Minecraft.getInstance().font, lines, stack.getTooltipImage(), mouseX, mouseY);
+    }
+
     /** Количество в стеке жидкости загрузчика (в миллибакетах); для чужого объекта возвращает ведро. */
     long fluidAmount(Object fluidStack);
 

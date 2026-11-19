@@ -89,14 +89,8 @@ public final class RysIndexNeoForgeClient {
             }
         });
 
-        // мод в подсказках наших панелей, как в списке JEI; Jade его уже дописал, тогда второй раз не пишем
-        bus.addListener(net.neoforged.bus.api.EventPriority.LOWEST, (net.neoforged.neoforge.event.entity.player.ItemTooltipEvent e) -> {
-            if (!works.repka.rysindex.model.ItemRes.ourTooltip || !works.repka.rysindex.runtime.Config.get().showModName || e.getItemStack().isEmpty()) return;
-            String mod = works.repka.rysindex.platform.Platform.get().modName(e.getItemStack().getItem().getCreatorModId(e.getItemStack()));
-            var lines = e.getToolTip();
-            if (!lines.isEmpty() && lines.get(lines.size() - 1).getString().equals(mod)) return;
-            lines.add(net.minecraft.network.chat.Component.literal(mod).withStyle(net.minecraft.ChatFormatting.BLUE, net.minecraft.ChatFormatting.ITALIC));
-        });
+        // подпись мода в подсказках наших панелей дописывает ItemRes по готовому списку строк, не в событии:
+        // Jade пишет её в том же событии с тем же приоритетом, и порядок слушателей случаен (были две строки)
         // выдача в режиме читов идёт через сервер, если там тоже стоит RYSIndex
         works.repka.rysindex.runtime.Give.serverSupports = () -> {
             var connection = Minecraft.getInstance().getConnection();

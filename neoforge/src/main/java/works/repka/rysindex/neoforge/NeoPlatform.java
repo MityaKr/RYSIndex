@@ -98,6 +98,17 @@ public final class NeoPlatform implements Platform {
     }
 
     @Override
+    public String itemModId(net.minecraft.world.item.ItemStack stack) {
+        return stack.getItem().getCreatorModId(stack);
+    }
+
+    @Override
+    public void renderItemTooltip(net.minecraft.client.gui.GuiGraphics g, List<net.minecraft.network.chat.Component> lines,
+                                  net.minecraft.world.item.ItemStack stack, int mouseX, int mouseY) {
+        g.renderTooltip(net.minecraft.client.Minecraft.getInstance().font, lines, stack.getTooltipImage(), stack, mouseX, mouseY);
+    }
+
+    @Override
     public boolean plainFluid(Object fluidStack) {
         return fluidStack instanceof net.neoforged.neoforge.fluids.FluidStack stack && stack.getComponentsPatch().isEmpty();
     }
