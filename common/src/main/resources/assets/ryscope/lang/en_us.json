@@ -145,6 +145,7 @@
   "ryscope.settings.bookmarks": "Bookmarks panel",
   "ryscope.settings.animations": "Animations",
   "ryscope.settings.lens_world": "Lens in the world",
+  "ryscope.settings.lens_world.note": "Alt over a block or entity in the world. Off by default: Create and other mods use Alt in the world",
   "ryscope.settings.fuzzy": "Forgive typos in search",
   "ryscope.settings.fuzzy.note": "Used only when the exact search finds almost nothing",
   "ryscope.settings.languages": "Search languages",

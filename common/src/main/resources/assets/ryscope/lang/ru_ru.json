@@ -145,6 +145,7 @@
   "ryscope.settings.bookmarks": "Панель закладок",
   "ryscope.settings.animations": "Анимации",
   "ryscope.settings.lens_world": "Линза в мире",
+  "ryscope.settings.lens_world.note": "Alt над блоком или существом в мире. Выключено по умолчанию: Alt в мире нужен Create и другим модам",
   "ryscope.settings.fuzzy": "Прощать опечатки в поиске",
   "ryscope.settings.fuzzy.note": "Срабатывает, только когда точный поиск почти ничего не нашёл",
   "ryscope.settings.languages": "Языки поиска",
