@@ -9,6 +9,14 @@
 
 Если в папке mods есть свой JEI, загрузчик NeoForge берёт его, даже когда он старее вложенного. Минимальная версия, с которой работает мод: 19.42.0.379.
 
-## Inter
+## Inter и Space Grotesk
 
-Шрифт в RYSCore, `assets/ryscore/fonts/`. Copyright 2016 The Inter Project Authors, SIL Open Font License 1.1, текст лицензии лежит рядом со шрифтом (`OFL.txt`).
+Шрифты в RYSCore, `assets/ryscore/fonts/`. Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter), Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk), SIL Open Font License 1.1. Текст лицензии лежит рядом со шрифтами (`OFL.txt`) и есть в jar RYSCore, который вложен в jar RYSIndex.
+
+## RYSCore
+
+Наш общий код (MPL-2.0, тот же владелец), вложен в `META-INF/jarjar/`.
+
+## Свой код и графика
+
+Код RYSIndex под MPL-2.0 (`LICENSE`), графика и название RYS: All Rights Reserved, см. `NOTICE.md`.
