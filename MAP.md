@@ -2,7 +2,7 @@
 
 Собрана `_shared/tools/make-map.py` 2026-11-19. Руками не править: после структурных правок пересобрать.
 
-Java: 160 файлов, 32383 строк. Модули gradle: `common`. Переводы: `common/src/main/resources/assets/rysindex/lang/en_us.json`, `common/src/main/resources/assets/rysindex/lang/ru_ru.json`.
+Java: 161 файлов, 32469 строк. Модули gradle: `common`. Переводы: `common/src/main/resources/assets/rysindex/lang/en_us.json`, `common/src/main/resources/assets/rysindex/lang/ru_ru.json`.
 Читать сначала: `CLAUDE.md`, `README.md`.
 
 ## Точки входа
@@ -11,11 +11,11 @@ Java: 160 файлов, 32383 строк. Модули gradle: `common`. Пер�
 - миксины: `neoforge/src/main/resources/rysindex.mixins.json`
 
 ## Папки
-- `common/` — 630 файлов
+- `common/` — 595 файлов
 - `design/` — 12 файлов
 - `docs/` — 39 файлов
 - `gradle/` — 2 файлов
-- `neoforge/` — 950 файлов
+- `neoforge/` — 889 файлов
 - `prodtest/` — 6735 файлов
 - `questscope/` — 16 файлов; RYSQuests
 - `ryspulse/` — 12 файлов; RYSPulse
@@ -35,7 +35,7 @@ Java: 160 файлов, 32383 строк. Модули gradle: `common`. Пер�
 - `Scissor` 47 — Состояние обрезки, как его видит GlStateManager: включена ли она и последний прямоугольник.
 
 **content** (18)
-- `ClickTransfer` 216 — Перенос рецепта в слоты без серверной части мода.
+- `ClickTransfer` 229 — Перенос рецепта в слоты без серверной части мода.
 - `HelpContent` 115 — Страницы справки: короткий текст о предмете с иконками, ссылками на другие предметы и предупреждениями.
 - `HelpPage` 306 — Страница справки нашим видом: слева сверху предмет на плашке слота, справа колонка текста шрифтом семьи.
 - `HelpView` 142 — Страница справки из JSON.
@@ -170,8 +170,9 @@ Java: 160 файлов, 32383 строк. Модули gradle: `common`. Пер�
 - `JeiFrameTest` 49 — Рамка рецепта JEI под ячейки за краем категории: шкала энергии Modular Machinery Reborn и спрятанные ячейки.
 - `JeiScaleTest` 150 — Подбор масштаба рецептов JEI: целое число пикселей на пиксель JEI и пределы карточки.
 
-**runtime** (5)
+**runtime** (6)
 - `AsyncPolicyTest` 45 — Фоновая загрузка JEI: один сбой не отключает фон, два подряд отключают, удачный запуск прощает.
+- `BotanyPotGroupsTest` 73 — Группы горшков Botany Pots и Botany Pots Tiers: каждый горшок ровно в одной группе своего уровня и типа.
 - `CategoryOrderTest` 68 — Порядок вкладок категорий: служебные (содержимое пакетов PackagedAuto) после настоящих машин.
 - `LegacyMigrationTest` 137 — Перенос данных игрока из RYScope в RYSIndex: папка настроек, клавиши, файлы мира.
 - `LinkMathTest` 68 — Чистая логика сведений модов семьи: разряды, полоса, группы списка, обновление категорий поставщика, высоты.
