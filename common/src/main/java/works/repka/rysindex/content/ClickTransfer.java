@@ -14,6 +14,7 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.inventory.RecipeBookMenu;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.inventory.SmithingMenu;
 import net.minecraft.world.inventory.StonecutterMenu;
 import net.minecraft.world.item.ItemStack;
 import works.repka.rysindex.RYSIndex;
@@ -52,6 +53,10 @@ public final class ClickTransfer {
                 int col = i % recipe.gridW, row = i / recipe.gridW;
                 plan.set(row * gw + col, in.get(i));
             }
+        } else if (recipe.kind == NativeRecipe.Kind.SMITHING) {
+            // шаблон, основа и добавка по своим слотам, как в окне стола
+            List<Ing> in = recipe.inputs();
+            for (int i = 0; i < in.size() && i < targets.size(); i++) plan.set(i, in.get(i));
         } else {
             plan.set(0, recipe.inputs().get(0));
         }
@@ -150,6 +155,14 @@ public final class ClickTransfer {
                 return null;
             case SINGLE:
                 if (menu instanceof StonecutterMenu && !menu.slots.isEmpty()) return List.of(menu.slots.get(0));
+                return null;
+            case SMITHING:
+                // стол кузнеца и его наследники: слоты 0..2 шаблон, основа, добавка
+                // (SmithingMenu.createInputSlotDefinitions), 3 результат
+                if (menu instanceof SmithingMenu && menu.slots.size() > SmithingMenu.ADDITIONAL_SLOT) {
+                    return List.of(menu.slots.get(SmithingMenu.TEMPLATE_SLOT), menu.slots.get(SmithingMenu.BASE_SLOT),
+                        menu.slots.get(SmithingMenu.ADDITIONAL_SLOT));
+                }
                 return null;
             default:
                 return null;
