@@ -10,6 +10,8 @@ modId = "${mod_id}"
 version = "${mod_version}"
 displayName = "${mod_name}"
 authors = "${mod_authors}"
+logoFile = "rysindex.png"
+logoBlur = false
 description = '''
 Recipe viewer with themes, a world lens and background indexing. Works with JEI plugins.
 '''
