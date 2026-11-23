@@ -2,6 +2,11 @@
 
 Подробности разработки в `06-dev-log.md`. До версии 0.3.0 мод назывался RYScope.
 
+## 0.3.6 (24.11.2026)
+
+* Страницы справки умеют целиться в предмет с данными: `{"id": ..., "components": {...}}`. Так у каждого контроллера Modular Machinery своя справка, а не одна на все машины сразу.
+* EN: Help pages can target an item with data components (`{"id": ..., "components": {...}}`), so each Modular Machinery controller gets its own help page.
+
 ## 0.3.5 (24.11.2026)
 
 * Иконка мода (витраж «Роза») в списке модов игры; файл иконки для страницы CurseForge лежит в `docs/icon-400.png`.

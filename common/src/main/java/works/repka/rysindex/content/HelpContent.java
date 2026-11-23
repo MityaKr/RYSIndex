@@ -3,6 +3,8 @@ package works.repka.rysindex.content;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mojang.serialization.DynamicOps;
+import com.mojang.serialization.JsonOps;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -10,6 +12,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
+import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
@@ -96,9 +100,8 @@ public final class HelpContent {
         int n = 0;
         for (Page page : list) {
             try {
-                Ing targets = JsonStacks.ing(target(page.json.get("target")));
-                if (targets.isEmpty()) continue;
-                List<Stack> stacks = new ArrayList<>(targets.options);
+                List<Stack> stacks = targets(page.json.get("target"));
+                if (stacks.isEmpty()) continue;
                 ResourceLocation id = ResourceLocation.fromNamespaceAndPath(RYSIndex.MOD_ID, "help/" + (n++));
                 b.recipe(b.category(category), new HelpView(id, stacks, page.json.has("body") ? page.json.getAsJsonArray("body") : null));
             } catch (Throwable t) {
@@ -107,8 +110,44 @@ public final class HelpContent {
         }
     }
 
-    /** Цель в записи концепта: строка-id, «#тег» или массив. */
-    private static JsonElement target(JsonElement e) {
-        return e;
+    /**
+     * Цели страницы: строка-id, «#тег», массив или объект {@code {"id": ..., "components": {...}}}. С компонентами страница
+     * относится только к этому подтипу предмета: контроллер одной машины Modular Machinery, а не все контроллеры.
+     */
+    static List<Stack> targets(JsonElement e) {
+        List<Stack> out = new ArrayList<>();
+        for (JsonElement part : HelpTargets.parts(e)) {
+            if (HelpTargets.hasComponents(part)) {
+                ItemStack stack = withComponents(part.getAsJsonObject());
+                if (!stack.isEmpty()) out.add(new ItemRes(stack));
+            } else {
+                Ing ing = JsonStacks.ing(part);
+                if (!ing.isEmpty()) out.addAll(ing.options);
+            }
+        }
+        return out;
+    }
+
+    private static ItemStack withComponents(JsonObject o) {
+        String key = o.has("id") ? "id" : o.has("item") ? "item" : null;
+        if (key == null || !o.get(key).isJsonPrimitive()) return ItemStack.EMPTY;
+        ResourceLocation rl = ResourceLocation.tryParse(o.get(key).getAsString());
+        if (rl == null || !BuiltInRegistries.ITEM.containsKey(rl)) return ItemStack.EMPTY;
+        ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(rl));
+        DataComponentPatch.CODEC.parse(ops(), o.get("components"))
+            .resultOrPartial(err -> RYSIndex.LOG.warn("Help target {} components: {}", rl, err))
+            .ifPresent(stack::applyComponents);
+        return stack;
+    }
+
+    /** Компоненты с реестрами мира, если он есть (зачарования и прочее по ссылке на реестр), иначе простой JSON. */
+    private static DynamicOps<JsonElement> ops() {
+        try {
+            var level = net.minecraft.client.Minecraft.getInstance().level;
+            if (level != null) return level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+        } catch (Throwable ignored) {
+            // на сервере клиента нет: хватает простого JSON
+        }
+        return JsonOps.INSTANCE;
     }
 }
