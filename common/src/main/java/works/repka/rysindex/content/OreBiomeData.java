@@ -54,7 +54,7 @@ public final class OreBiomeData {
                 if (where != null) out.put(e.getKey(), where);
             }
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Биомы руд не прочитаны: {}", t.toString());
+            RYSIndex.LOG.warn("Ore biomes could not be read: {}", t.toString());
         }
         return out;
     }

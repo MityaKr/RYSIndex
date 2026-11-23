@@ -125,7 +125,7 @@ public final class Config {
                 try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
                     instance = GSON.fromJson(r, Config.class);
                 } catch (Exception e) {
-                    RYSIndex.LOG.warn("Не удалось прочитать настройки, используются значения по умолчанию: {}", e.toString());
+                    RYSIndex.LOG.warn("Could not read the settings, defaults are used: {}", e.toString());
                 }
             }
             if (instance == null) instance = new Config();
@@ -165,7 +165,7 @@ public final class Config {
             if (instance.serviceCategories == null) instance.serviceCategories = new ArrayList<>(CategoryOrder.DEFAULT_SERVICE);
             if (!"sum".equals(instance.stickerMode)) instance.stickerMode = "goals";
             // записи старого формата ни с чем не совпадают и копятся: компоненты в них строкой с хешами объектов
-            if (instance.hiddenItems.removeIf(HiddenItems::legacy)) RYSIndex.LOG.info("Убраны скрытые предметы в старом формате");
+            if (instance.hiddenItems.removeIf(HiddenItems::legacy)) RYSIndex.LOG.info("Hidden items in the old format were removed");
         }
         return instance;
     }
@@ -178,7 +178,7 @@ public final class Config {
                 GSON.toJson(instance, w);
             }
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось сохранить настройки: {}", e.toString());
+            RYSIndex.LOG.warn("Could not save the settings: {}", e.toString());
         }
     }
 }

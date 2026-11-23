@@ -52,17 +52,17 @@ public final class JeiBridge implements Foreign.Source {
             fluidHelper = runtime.getJeiHelpers().getPlatformFluidHelper();
             fluidType = fluidHelper.getFluidIngredientType();
         } catch (Throwable t) {
-            RYSIndex.LOG.debug("Тип жидкостей JEI недоступен: {}", t.toString());
+            RYSIndex.LOG.debug("JEI fluid type is unavailable: {}", t.toString());
         }
         try {
             runtime.getIngredientVisibility().registerListener(new IIngredientVisibility.IListener() {
                 @Override
                 public <V> void onIngredientVisibilityChanged(ITypedIngredient<V> ingredient, boolean visible) {
-                    Indexer.request("JEI изменил видимость ингредиентов");
+                    Indexer.request("JEI changed ingredient visibility");
                 }
             });
         } catch (Throwable t) {
-            RYSIndex.LOG.debug("Подписка на видимость ингредиентов JEI недоступна: {}", t.toString());
+            RYSIndex.LOG.debug("Subscription to JEI ingredient visibility is unavailable: {}", t.toString());
         }
         try {
             // моды убирают и добавляют ингредиенты во время игры (KubeJS, almostunified): об этом JEI сообщает
@@ -70,16 +70,16 @@ public final class JeiBridge implements Foreign.Source {
             runtime.getIngredientManager().registerIngredientListener(new IIngredientManager.IIngredientListener() {
                 @Override
                 public <V> void onIngredientsAdded(mezz.jei.api.ingredients.IIngredientHelper<V> helper, java.util.Collection<ITypedIngredient<V>> ingredients) {
-                    Indexer.request("JEI добавил ингредиенты");
+                    Indexer.request("JEI added ingredients");
                 }
 
                 @Override
                 public <V> void onIngredientsRemoved(mezz.jei.api.ingredients.IIngredientHelper<V> helper, java.util.Collection<ITypedIngredient<V>> ingredients) {
-                    Indexer.request("JEI убрал ингредиенты");
+                    Indexer.request("JEI removed ingredients");
                 }
             });
         } catch (Throwable t) {
-            RYSIndex.LOG.debug("Подписка на список ингредиентов JEI недоступна: {}", t.toString());
+            RYSIndex.LOG.debug("Subscription to the JEI ingredient list is unavailable: {}", t.toString());
         }
     }
 
@@ -209,7 +209,7 @@ public final class JeiBridge implements Foreign.Source {
                 if (byPlayer) hidden.add(res);
             }
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Ингредиенты JEI типа {} пропущены: {}", type.getUid(), t.toString());
+            RYSIndex.LOG.warn("JEI ingredients of type {} skipped: {}", type.getUid(), t.toString());
         }
     }
 
@@ -246,7 +246,7 @@ public final class JeiBridge implements Foreign.Source {
                 ? mezz.jei.api.runtime.IEditModeConfig.HideMode.WILDCARD : mezz.jei.api.runtime.IEditModeConfig.HideMode.SINGLE);
             return true;
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("JEI не скрыл ингредиент: {}", t.toString());
+            RYSIndex.LOG.warn("JEI did not hide the ingredient: {}", t.toString());
             return null;
         }
     }
@@ -304,7 +304,7 @@ public final class JeiBridge implements Foreign.Source {
                 Category own = isInfo(c) ? works.repka.rysindex.content.HelpContent.category() : snapshot.category(c.getRecipeType().getUid());
                 out.add(new Lookup.Group(own != null ? own : category(c), views));
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Категория JEI {} пропущена: {}", c.getRecipeType().getUid(), t.toString());
+                RYSIndex.LOG.warn("JEI category {} skipped: {}", c.getRecipeType().getUid(), t.toString());
             }
         }
         return out;
@@ -416,7 +416,7 @@ public final class JeiBridge implements Foreign.Source {
             try {
                 collectGhosts(handler, screen, typed.get(), found);
             } catch (Throwable t) {
-                RYSIndex.LOG.debug("Цели перетаскивания не получены: {}", t.toString());
+                RYSIndex.LOG.debug("Drag targets were not obtained: {}", t.toString());
             }
         }
         ghostHandlers = handlers;
@@ -436,7 +436,7 @@ public final class JeiBridge implements Foreign.Source {
             try {
                 if (handler.quickMove(screen, typed.get())) return true;
             } catch (Throwable t) {
-                RYSIndex.LOG.debug("quickMove обработчика не сработал: {}", t.toString());
+                RYSIndex.LOG.debug("Handler quickMove failed: {}", t.toString());
             }
         }
         if (!ghostStart(screen, stack)) return false;
@@ -495,7 +495,7 @@ public final class JeiBridge implements Foreign.Source {
                 ((mezz.jei.api.gui.handlers.IGhostIngredientHandler.Target<Object>) g.target()).accept(g.ingredient());
                 return true;
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Предмет не положен в фильтр: {}", t.toString());
+                RYSIndex.LOG.warn("Item was not put into the filter: {}", t.toString());
                 return false;
             }
         }

@@ -139,7 +139,7 @@ public final class Stages {
             try (Reader reader = e.getValue().openAsReader()) {
                 loaded.add(new Stage(id, JsonParser.parseReader(reader).getAsJsonObject()));
             } catch (Exception ex) {
-                RYSIndex.LOG.warn("Стадия {} не прочитана: {}", e.getKey(), ex.toString());
+                RYSIndex.LOG.warn("Stage {} could not be read: {}", e.getKey(), ex.toString());
             }
         }
         Path dir = Config.dir().resolve("stages");
@@ -150,11 +150,11 @@ public final class Stages {
                     try (Reader reader = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
                         loaded.add(new Stage("config:" + name.substring(0, name.length() - 5), JsonParser.parseReader(reader).getAsJsonObject()));
                     } catch (Exception ex) {
-                        RYSIndex.LOG.warn("Стадия {} не прочитана: {}", f, ex.toString());
+                        RYSIndex.LOG.warn("Stage {} could not be read: {}", f, ex.toString());
                     }
                 });
             } catch (Exception ex) {
-                RYSIndex.LOG.warn("Папка стадий не прочитана: {}", ex.toString());
+                RYSIndex.LOG.warn("Stages folder could not be read: {}", ex.toString());
             }
         }
         loaded.sort((a, b) -> Integer.compare(a.order, b.order));
@@ -275,7 +275,7 @@ public final class Stages {
             }
         } catch (ReflectiveOperationException | RuntimeException e) {
             reflectionFailed = true;
-            RYSIndex.LOG.warn("Прогресс достижений недоступен, стадии считаются закрытыми: {}", e.toString());
+            RYSIndex.LOG.warn("Achievement progress is unavailable, stages count as closed: {}", e.toString());
         }
     }
 
@@ -313,7 +313,7 @@ public final class Stages {
             try {
                 list.add(new Stage(ids.get(i), JsonParser.parseString(jsons.get(i)).getAsJsonObject()));
             } catch (Exception e) {
-                RYSIndex.LOG.warn("Стадия {} от сервера не разобрана: {}", ids.get(i), e.toString());
+                RYSIndex.LOG.warn("Stage {} from the server could not be parsed: {}", ids.get(i), e.toString());
             }
         }
         list.sort((a, b) -> Integer.compare(a.order, b.order));

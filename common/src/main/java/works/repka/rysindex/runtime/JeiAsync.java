@@ -73,7 +73,7 @@ public final class JeiAsync {
     /** Запуск JEI закончился. Если наш мост так и не подключился, индекс строится заново без расчёта на JEI. */
     private static void settle() {
         settled = true;
-        if (Foreign.get() == null) Indexer.request("JEI запущен без моста");
+        if (Foreign.get() == null) Indexer.request("JEI started without the bridge");
     }
 
     /** Ошибка, из-за которой JEI не запустился в этом мире, или null. */
@@ -122,7 +122,7 @@ public final class JeiAsync {
         return () -> {
             settled = false;
             // остановка должна идти строго после запуска: если запуск ушёл в фон, туда же уходит и она
-            if (queued) EXEC.execute(() -> safe(stop, "остановка JEI"));
+            if (queued) EXEC.execute(() -> safe(stop, "JEI stop"));
             else stop.run();
         };
     }
@@ -153,7 +153,7 @@ public final class JeiAsync {
                 root.addAppender(watcher, null, null);
             }
         } catch (Throwable t) {
-            RYSIndex.LOG.debug("Наблюдение за журналом JEI недоступно: {}", t.toString());
+            RYSIndex.LOG.debug("Watching the JEI log is unavailable: {}", t.toString());
         }
         Throwable thrown = null;
         try {
@@ -199,24 +199,24 @@ public final class JeiAsync {
                 Config.save();
             }
             if (async.errors() == 0) {
-                RYSIndex.LOG.info("JEI загружен в фоне за {} мс, главный поток не останавливался", ms);
+                RYSIndex.LOG.info("JEI loaded in the background in {} ms, the main thread was not stopped", ms);
             } else {
-                RYSIndex.LOG.info("JEI загружен в фоне за {} мс. Ошибок плагинов: {}, столько же при обычной загрузке",
+                RYSIndex.LOG.info("JEI loaded in the background in {} ms. Plugin errors: {}, the same as with the normal load",
                     ms, async.errors());
             }
             return;
         }
         if (async.thrown() != null) {
-            RYSIndex.LOG.error("JEI не запустился в фоновом потоке, пробую обычным способом", async.thrown());
+            RYSIndex.LOG.error("JEI did not start in the background thread, trying the normal way", async.thrown());
         } else {
-            RYSIndex.LOG.warn("При фоновой загрузке JEI ошибок плагинов: {}. Сверяю с обычной загрузкой.", async.errors());
+            RYSIndex.LOG.warn("Plugin errors in the background JEI load: {}. Comparing with the normal load.", async.errors());
         }
         queued = false;
         publish = null;
         Outcome first = async;
         Minecraft.getInstance().execute(() -> {
             if (Minecraft.getInstance().level == null) return;
-            safe(rawStop, "остановка JEI");
+            safe(rawStop, "JEI stop");
             Outcome sync = watched(rawStart);
             if (sync.thrown() != null) {
                 // JEI не запускается ни в каком режиме: фоновый поток ни при чём
@@ -229,17 +229,17 @@ public final class JeiAsync {
             cfg.asyncJeiTolerated = v.tolerated();
             cfg.asyncJeiStrikes = v.strikes();
             if (v.strikes() == 0) {
-                RYSIndex.LOG.info("Те же ошибки плагинов ({}) есть и при обычной загрузке JEI: фоновый режим остаётся включён.",
+                RYSIndex.LOG.info("The same plugin errors ({}) occur in the normal JEI load: background mode stays on.",
                     sync.errors());
             } else if (!v.unsafe()) {
-                RYSIndex.LOG.warn("Обычная загрузка JEI прошла чище (ошибок {} против {}). Похоже на разовую гонку потоков: при следующем входе снова фон"
-                    + " (отключится после {} неудач подряд).", sync.errors(), first.thrown() != null ? "сбоя запуска" : String.valueOf(first.errors()),
+                RYSIndex.LOG.warn("The normal JEI load was cleaner (errors {} against {}). Looks like a one-off thread race: the next join uses the background load again"
+                    + " (it turns off after {} failures in a row).", sync.errors(), first.thrown() != null ? "launch failure" : String.valueOf(first.errors()),
                     AsyncPolicy.STRIKES);
             } else {
                 cfg.asyncJeiUnsafe = true;
-                RYSIndex.LOG.warn("Обычная загрузка JEI снова прошла чище (ошибок {} против {}), {} раза подряд: фоновый режим для этой установки"
-                    + " отключён, включить снова можно в настройках RYSIndex.", sync.errors(),
-                    first.thrown() != null ? "сбоя запуска" : String.valueOf(first.errors()), v.strikes());
+                RYSIndex.LOG.warn("The normal JEI load was cleaner again (errors {} against {}), {} times in a row: background mode for this installation"
+                    + " is off, it can be turned on again in the RYSIndex settings.", sync.errors(),
+                    first.thrown() != null ? "launch failure" : String.valueOf(first.errors()), v.strikes());
             }
             Config.save();
         });
@@ -252,12 +252,12 @@ public final class JeiAsync {
         failure = root;
         String brokenClass = brokenClass(root);
         List<String> mixins = brokenClass == null ? List.of() : Platform.get().mixinsOn(brokenClass);
-        RYSIndex.LOG.error("JEI не запустился: рецепты из плагинов модов недоступны. Причина: {}. Класс: {}. Миксины на этом классе: {}",
+        RYSIndex.LOG.error("JEI did not start: recipes from mod plugins are unavailable. Cause: {}. Class: {}. Mixins on this class: {}",
             root.getClass().getSimpleName(), brokenClass, mixins, error);
         String reason = root.getClass().getSimpleName() + (brokenClass == null ? "" : " (" + simpleName(brokenClass) + ")");
         Minecraft mc = Minecraft.getInstance();
         // список ресурсов от JEI не придёт: индекс собирает его сам
-        Indexer.request("JEI не запустился");
+        Indexer.request("JEI did not start");
         mc.execute(() -> {
             Component head = Component.translatable("rysindex.jei.failed", reason).withStyle(ChatFormatting.RED);
             Component hint = mixins.isEmpty()
@@ -291,7 +291,7 @@ public final class JeiAsync {
         try {
             if (r != null) r.run();
         } catch (Throwable t) {
-            RYSIndex.LOG.error("Не удалось: {}", what, t);
+            RYSIndex.LOG.error("Failed: {}", what, t);
         }
     }
 }

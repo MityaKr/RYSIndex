@@ -39,7 +39,7 @@ public final class ClickAreas {
             area.click();
             return true;
         } catch (Throwable t) {
-            RYSIndex.LOG.debug("Нажимаемое место окна не сработало: {}", t.toString());
+            RYSIndex.LOG.debug("A clickable window area failed: {}", t.toString());
             return false;
         }
     }

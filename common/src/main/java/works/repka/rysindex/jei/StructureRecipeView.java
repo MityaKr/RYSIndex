@@ -83,7 +83,7 @@ public final class StructureRecipeView implements RecipeView {
         try {
             return ofMmr(recipe);
         } catch (ReflectiveOperationException | RuntimeException e) {
-            RYSIndex.LOG.warn("Превью структуры Modular Machinery не прочитано: {}", e.toString());
+            RYSIndex.LOG.warn("Modular Machinery structure preview could not be read: {}", e.toString());
             return null;
         }
     }
@@ -135,13 +135,13 @@ public final class StructureRecipeView implements RecipeView {
         try {
             build = defaultBuild(machine);
         } catch (ReflectiveOperationException | RuntimeException e) {
-            RYSIndex.LOG.warn("Постройка по умолчанию {} не прочитана: {}", name, e.toString());
+            RYSIndex.LOG.warn("Default build {} could not be read: {}", name, e.toString());
         }
         ItemStack machineItem = ItemStack.EMPTY;
         try {
             machineItem = (ItemStack) Class.forName(MMR_CONTROLLER_ITEM).getMethod("makeMachineItem", ResourceLocation.class).invoke(null, name);
         } catch (ReflectiveOperationException | RuntimeException e) {
-            RYSIndex.LOG.warn("Предмет машины {} не получен: {}", name, e.toString());
+            RYSIndex.LOG.warn("Machine item {} was not obtained: {}", name, e.toString());
         }
         return new StructureRecipeView(name.withPrefix("multiblock_preview/"), BlockScene.of(states), Map.copyOf(shifted), inputs, build, machineItem);
     }

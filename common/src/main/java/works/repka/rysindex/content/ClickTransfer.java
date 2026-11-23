@@ -135,7 +135,7 @@ public final class ClickTransfer {
                 }
             }
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Перенос рецепта кликами не удался", e);
+            RYSIndex.LOG.warn("Click transfer of the recipe failed", e);
             return Transfer.missing("rysindex.transfer.failed");
         }
         return Transfer.OK;

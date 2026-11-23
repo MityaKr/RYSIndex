@@ -108,7 +108,7 @@ public final class ServerStages {
             try (Reader reader = e.getValue().openAsReader()) {
                 loaded.add(new StageDef(id, JsonParser.parseReader(reader).getAsJsonObject()));
             } catch (Exception ex) {
-                RYSIndex.LOG.warn("Стадия {} не прочитана: {}", e.getKey(), ex.toString());
+                RYSIndex.LOG.warn("Stage {} could not be read: {}", e.getKey(), ex.toString());
             }
         }
         Path dir = FMLPaths.CONFIGDIR.get().resolve(RYSIndex.MOD_ID).resolve("stages");
@@ -119,11 +119,11 @@ public final class ServerStages {
                     try (Reader reader = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
                         loaded.add(new StageDef("config:" + name.substring(0, name.length() - 5), JsonParser.parseReader(reader).getAsJsonObject()));
                     } catch (Exception ex) {
-                        RYSIndex.LOG.warn("Стадия {} не прочитана: {}", f, ex.toString());
+                        RYSIndex.LOG.warn("Stage {} could not be read: {}", f, ex.toString());
                     }
                 });
             } catch (Exception ex) {
-                RYSIndex.LOG.warn("Папка стадий не прочитана: {}", ex.toString());
+                RYSIndex.LOG.warn("Stages folder could not be read: {}", ex.toString());
             }
         }
         loaded.sort((a, b) -> Integer.compare(a.order, b.order));
@@ -131,7 +131,7 @@ public final class ServerStages {
         synchronized (ServerStages.class) {
             recipeCacheFor = null;
         }
-        if (!loaded.isEmpty()) RYSIndex.LOG.info("Стадий на сервере: {}", loaded.size());
+        if (!loaded.isEmpty()) RYSIndex.LOG.info("Stages on the server: {}", loaded.size());
     }
 
     private static synchronized Set<ResourceLocation> recipesOf(MinecraftServer server, StageDef def) {
@@ -379,10 +379,10 @@ public final class ServerStages {
             if (!found) missing.add(target.getSimpleName());
         }
         if (missing.isEmpty()) {
-            RYSIndex.LOG.info("Замки стадий установлены: пакет рецептов, верстак, слот результата, кузнечный стол, камнерез, печи, костёр, автоверстак, варочная стойка");
+            RYSIndex.LOG.info("Stage locks installed: recipe packet, crafting table, result slot, smithing table, stonecutter, furnaces, campfire, auto-crafter, brewing stand");
         } else {
-            RYSIndex.LOG.error("Замки стадий НЕ установлены в: {}. В этих местах закрытые рецепты выполняются. "
-                + "Вероятно, версия игры или загрузчика отличается от той, под которую собран мод.", missing);
+            RYSIndex.LOG.error("Stage locks were NOT installed in: {}. Locked recipes work in those places. "
+                + "Probably the game or loader version differs from the one the mod was built for.", missing);
         }
     }
 
@@ -394,7 +394,7 @@ public final class ServerStages {
             // стадии, выданные до переименования мода, лежат в data/ryscope_stages.dat: копируем один раз, старый файл не трогаем
             Path data = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("data");
             if (works.repka.rysindex.runtime.LegacyMigration.copyIfAbsent(data.resolve("ryscope_stages.dat"), data.resolve("rysindex_stages.dat")))
-                RYSIndex.LOG.info("Стадии мира перенесены из ryscope_stages.dat в rysindex_stages.dat");
+                RYSIndex.LOG.info("World stages moved from ryscope_stages.dat to rysindex_stages.dat");
         }
         return server.overworld().getDataStorage().computeIfAbsent(new SavedData.Factory<>(Grants::new, Grants::load), "rysindex_stages");
     }

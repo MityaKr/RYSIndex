@@ -19,7 +19,7 @@ public final class LootSource {
     /** Данные от сервера в сетевой игре. */
     public static void setSynced(List<LootData.Table> tables) {
         synced = tables;
-        Indexer.request("получены источники от сервера");
+        Indexer.request("sources received from the server");
     }
 
     public static void clear() {

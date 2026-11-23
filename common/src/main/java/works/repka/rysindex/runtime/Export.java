@@ -75,10 +75,10 @@ public final class Export {
                 }
             }
             write(dir.resolve("recipes.json"), recipes);
-            RYSIndex.LOG.info("Экспорт: предметов {}, рецептов {}, папка {}", items.size(), recipes.size(), dir);
+            RYSIndex.LOG.info("Export: items {}, recipes {}, folder {}", items.size(), recipes.size(), dir);
             return dir;
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Экспорт не удался", e);
+            RYSIndex.LOG.warn("Export failed", e);
             return null;
         }
     }

@@ -115,11 +115,11 @@ public final class LootData {
                         if (json.isJsonObject()) raw.put(id.toString(), json.getAsJsonObject());
                     });
                 } catch (Throwable t) {
-                    RYSIndex.LOG.debug("Loot-таблица {} пропущена: {}", id, t.toString());
+                    RYSIndex.LOG.debug("Loot table {} skipped: {}", id, t.toString());
                 }
             }
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Не удалось прочитать loot-таблицы", t);
+            RYSIndex.LOG.warn("Could not read the loot tables", t);
             return out;
         }
         for (Map.Entry<String, JsonObject> e : raw.entrySet()) {
@@ -127,7 +127,7 @@ public final class LootData {
                 List<Drop> drops = merge(table(e.getValue(), raw, 0, ownerOf(e.getKey())));
                 if (!drops.isEmpty()) out.add(new Table(e.getKey(), drops));
             } catch (Throwable t) {
-                RYSIndex.LOG.debug("Loot-таблица {} не разобрана: {}", e.getKey(), t.toString());
+                RYSIndex.LOG.debug("Loot table {} could not be parsed: {}", e.getKey(), t.toString());
             }
         }
         return out;

@@ -85,25 +85,25 @@ public final class LootWire {
         try (InflaterInputStream z = new InflaterInputStream(new ByteArrayInputStream(data))) {
             bytes = z.readNBytes(MAX_RAW + 1);
         }
-        if (bytes.length > MAX_RAW) throw new IOException("loot: слишком большой блок");
+        if (bytes.length > MAX_RAW) throw new IOException("loot: block too large");
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
         int version = in.readInt();
-        if (version != VERSION) throw new IOException("loot: версия " + version);
+        if (version != VERSION) throw new IOException("loot: version " + version);
         int n = in.readInt();
-        if (n < 0 || n > MAX_NAMES) throw new IOException("loot: предметов " + n);
+        if (n < 0 || n > MAX_NAMES) throw new IOException("loot: items " + n);
         String[] names = new String[n];
         for (int i = 0; i < n; i++) names[i] = in.readUTF();
         int count = in.readInt();
-        if (count < 0 || count > MAX_TABLES) throw new IOException("loot: таблиц " + count);
+        if (count < 0 || count > MAX_TABLES) throw new IOException("loot: tables " + count);
         List<LootData.Table> out = new ArrayList<>(count);
         for (int t = 0; t < count; t++) {
             String id = in.readUTF();
             int drops = in.readInt();
-            if (drops < 0 || drops > MAX_DROPS) throw new IOException("loot: выпадений " + drops + " в " + id);
+            if (drops < 0 || drops > MAX_DROPS) throw new IOException("loot: drops " + drops + " in " + id);
             List<LootData.Drop> list = new ArrayList<>(drops);
             for (int i = 0; i < drops; i++) {
                 int item = in.readInt();
-                if (item < 0 || item >= n) throw new IOException("loot: предмет " + item);
+                if (item < 0 || item >= n) throw new IOException("loot: item " + item);
                 boolean tag = in.readBoolean();
                 int min = in.readInt();
                 int max = in.readInt();

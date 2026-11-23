@@ -89,7 +89,7 @@ final class RecipeShot {
             mc.gui.getChat().addMessage(Component.translatable("rysindex.shot.saved", link));
             Overlay.toast(Component.translatable("rysindex.shot.toast").getString());
         } catch (Throwable e) {
-            RYSIndex.LOG.warn("Снимок рецепта не сохранён: {}", e.toString());
+            RYSIndex.LOG.warn("Recipe snapshot was not saved: {}", e.toString());
             Overlay.toast(Component.translatable("rysindex.shot.failed").getString());
         } finally {
             if (image != null) image.close();

@@ -26,7 +26,7 @@ public final class ListSort {
         int i = PRESETS.indexOf(current());
         Config.get().listSort = PRESETS.get((i + 1) % PRESETS.size());
         Config.save();
-        Indexer.request("порядок списка");
+        Indexer.request("list order");
     }
 
     /** Новый список в выбранном порядке. Сортировка устойчивая: при равенстве остаётся порядок источника. */

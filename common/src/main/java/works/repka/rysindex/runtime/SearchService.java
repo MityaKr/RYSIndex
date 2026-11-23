@@ -137,7 +137,7 @@ public final class SearchService {
                 craftable = n;
                 craftableMillis = (System.nanoTime() - start) / 1_000_000;
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Не посчитано «Доступно»", t);
+                RYSIndex.LOG.warn("\"Available\" was not calculated", t);
             }
         });
     }
@@ -154,7 +154,7 @@ public final class SearchService {
             try {
                 run(newText, tab, gen);
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Поиск «{}» завершился ошибкой", newText, t);
+                RYSIndex.LOG.warn("Search '{}' ended with an error", newText, t);
             } finally {
                 if (GENERATION.get() == gen) busy = false;
             }

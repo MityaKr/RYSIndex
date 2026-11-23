@@ -72,7 +72,7 @@ public final class JsonLayout {
         this.namespace = namespace;
         this.file = file;
         for (JsonElement e : JsonStacks.elements(json.get("for"))) types.add(ResourceLocation.parse(e.getAsString()));
-        if (types.isEmpty()) throw new IllegalArgumentException("не указано поле \"for\"");
+        if (types.isEmpty()) throw new IllegalArgumentException("the \"for\" field is missing");
         this.category = json.has("category") ? ResourceLocation.parse(json.get("category").getAsString()) : types.get(0);
         for (JsonElement e : JsonStacks.elements(json.get("replaces"))) replaces.add(ResourceLocation.parse(e.getAsString()));
         this.title = json.has("title") ? json.get("title").getAsString() : category.toString();
@@ -134,11 +134,11 @@ public final class JsonLayout {
                 for (ResourceLocation type : layout.types) byType.put(type, layout);
                 count++;
             } catch (Exception e) {
-                RYSIndex.LOG.warn("Раскладка {} не прочитана: {}", file, e.toString());
+                RYSIndex.LOG.warn("Layout {} could not be read: {}", file, e.toString());
             }
         }
         all = new ArrayList<>(new HashSet<>(byType.values()));
-        RYSIndex.LOG.info("Раскладок категорий из ресурспаков: {} (файлов {})", all.size(), count);
+        RYSIndex.LOG.info("Category layouts from resource packs: {} (files {})", all.size(), count);
     }
 
     public static void provide(Snapshot.Builder b, RecipeManager manager, RegistryAccess registries) {
@@ -175,13 +175,13 @@ public final class JsonLayout {
                 b.recipe(category, recipe);
                 counts.merge(layout, 1, Integer::sum);
             } catch (Throwable t) {
-                RYSIndex.LOG.debug("Рецепт {} не разложен по {}: {}", holder.id(), layout.file, t.toString());
+                RYSIndex.LOG.debug("Recipe {} was not laid out by {}: {}", holder.id(), layout.file, t.toString());
             }
         }
         for (Map.Entry<JsonLayout, Integer> e : counts.entrySet()) {
             replacedNow.add(e.getKey().category);
             replacedNow.addAll(e.getKey().replaces);
-            RYSIndex.LOG.debug("Раскладка {}: рецептов {}", e.getKey().file, e.getValue());
+            RYSIndex.LOG.debug("Layout {}: recipes {}", e.getKey().file, e.getValue());
         }
         replaced = replacedNow;
     }

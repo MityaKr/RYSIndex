@@ -80,7 +80,7 @@ public final class FreezeWatch {
             } catch (InterruptedException e) {
                 return;
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Сторож зависаний: {}", t.toString());
+                RYSIndex.LOG.warn("Freeze watchdog: {}", t.toString());
             }
         }
     }
@@ -99,22 +99,22 @@ public final class FreezeWatch {
         }
         Runtime rt = Runtime.getRuntime();
         StringBuilder out = new StringBuilder();
-        if (stuckFor >= 0) out.append("Кадр не заканчивается уже ").append(stuckFor).append(" мс (поток ").append(thread.getName()).append(")\n");
-        else out.append("Кадры медленные: ").append(-stuckFor).append(" подряд дольше ").append(SLOW_MS).append(" мс (поток ").append(thread.getName()).append(")\n");
-        out.append("Память: занято ").append((rt.totalMemory() - rt.freeMemory()) >> 20).append(" МБ из ").append(rt.maxMemory() >> 20)
-            .append(" МБ; сборок мусора за 2 с: ").append(gcCount() - gcBefore).append(", их время ").append(gcTime() - gcTimeBefore).append(" мс\n\n");
-        out.append("Чаще всего в стеке (из ").append(SAMPLES).append(" снимков):\n");
+        if (stuckFor >= 0) out.append("The frame has not finished for ").append(stuckFor).append(" ms (thread ").append(thread.getName()).append(")\n");
+        else out.append("Frames are slow: ").append(-stuckFor).append(" in a row longer than ").append(SLOW_MS).append(" ms (thread ").append(thread.getName()).append(")\n");
+        out.append("Memory: used ").append((rt.totalMemory() - rt.freeMemory()) >> 20).append(" MB of ").append(rt.maxMemory() >> 20)
+            .append(" MB; garbage collections in 2 s: ").append(gcCount() - gcBefore).append(", their time ").append(gcTime() - gcTimeBefore).append(" ms\n\n");
+        out.append("Most frequent in the stack (of ").append(SAMPLES).append(" samples):\n");
         hits.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).limit(40)
             .forEach(e -> out.append(String.format("%3d  %s%n", e.getValue(), e.getKey())));
-        out.append("\nПервый снимок целиком:\n");
+        out.append("\nFirst sample in full:\n");
         for (StackTraceElement e : samples.get(0)) out.append("    at ").append(e).append('\n');
-        out.append("\nПоследний снимок целиком:\n");
+        out.append("\nLast sample in full:\n");
         for (StackTraceElement e : samples.get(samples.size() - 1)) out.append("    at ").append(e).append('\n');
         File dir = new File(Minecraft.getInstance().gameDirectory, "logs");
         dir.mkdirs();
         File file = new File(dir, "rysindex-freeze-" + new SimpleDateFormat("yyyy-MM-dd_HH.mm.ss").format(new Date()) + ".txt");
         Files.writeString(file.toPath(), out.toString(), StandardCharsets.UTF_8);
-        RYSIndex.LOG.warn("Игра {}: стек потока отрисовки записан в {}", stuckFor >= 0 ? "зависла на " + stuckFor + " мс" : "тормозит", file.getName());
+        RYSIndex.LOG.warn("Game {}: render thread stack written to {}", stuckFor >= 0 ? "froze for " + stuckFor + " ms" : "is lagging", file.getName());
     }
 
     private static long gcCount() {

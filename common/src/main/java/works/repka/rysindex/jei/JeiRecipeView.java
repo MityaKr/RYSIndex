@@ -76,7 +76,7 @@ public final class JeiRecipeView<T> implements RecipeView {
                 }
             } catch (Throwable t) {
                 failed = true;
-                RYSIndex.LOG.debug("JEI не смог построить рецепт {}: {}", category.getRecipeType().getUid(), t.toString());
+                RYSIndex.LOG.debug("JEI could not build recipe {}: {}", category.getRecipeType().getUid(), t.toString());
             }
         }
         return layout;
@@ -117,8 +117,8 @@ public final class JeiRecipeView<T> implements RecipeView {
     @Nullable
     public String frameReport() {
         if (layout() == null || !JeiFrame.any(pads())) return null;
-        return category.getWidth() + "x" + category.getHeight() + " выступы " + padLeft + "," + padTop + "," + padRight + "," + padBottom
-            + (stretched ? ", рамка JEI растянута" : ", своя подложка");
+        return category.getWidth() + "x" + category.getHeight() + " pads " + padLeft + "," + padTop + "," + padRight + "," + padBottom
+            + (stretched ? ", JEI frame stretched" : ", own backing");
     }
 
     /** Поле с рамкой рецепта в раскладке JEI: JEI рисует её сам по размеру категории, раньше ячеек. */
@@ -131,7 +131,7 @@ public final class JeiRecipeView<T> implements RecipeView {
             f.setAccessible(true);
             return f;
         } catch (Throwable t) {
-            RYSIndex.LOG.debug("Рамку рецепта JEI не растянуть, остаётся своя подложка: {}", t.toString());
+            RYSIndex.LOG.debug("The JEI recipe frame cannot be stretched, own backing stays: {}", t.toString());
             return null;
         }
     }

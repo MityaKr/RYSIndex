@@ -164,7 +164,7 @@ public final class RysIndexNeoForgeClient {
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(RYSIndex.MOD_ID, "gui_remap_color"),
                 com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR), works.repka.rysindex.ui.RecipeRestyle::setColored);
         } catch (java.io.IOException e) {
-            RYSIndex.LOG.warn("Шейдер перекраски не загружен, окна рецептов останутся серыми: {}", e.toString());
+            RYSIndex.LOG.warn("The recolor shader was not loaded, recipe windows stay gray: {}", e.toString());
         }
     }
 

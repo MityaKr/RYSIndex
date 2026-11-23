@@ -69,7 +69,7 @@ public final class HelpContent {
             try (Reader reader = e.getValue().openAsReader()) {
                 loaded.add(new Page(e.getKey().toString(), JsonParser.parseReader(reader).getAsJsonObject()));
             } catch (Exception ex) {
-                RYSIndex.LOG.warn("Страница справки {} не прочитана: {}", e.getKey(), ex.toString());
+                RYSIndex.LOG.warn("Help page {} could not be read: {}", e.getKey(), ex.toString());
             }
         }
         Path dir = Config.dir().resolve("help");
@@ -79,11 +79,11 @@ public final class HelpContent {
                     try (Reader reader = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
                         loaded.add(new Page(f.getFileName().toString(), JsonParser.parseReader(reader).getAsJsonObject()));
                     } catch (Exception ex) {
-                        RYSIndex.LOG.warn("Страница справки {} не прочитана: {}", f, ex.toString());
+                        RYSIndex.LOG.warn("Help page {} could not be read: {}", f, ex.toString());
                     }
                 });
             } catch (Exception ex) {
-                RYSIndex.LOG.warn("Папка справки не прочитана: {}", ex.toString());
+                RYSIndex.LOG.warn("Help folder could not be read: {}", ex.toString());
             }
         }
         pages = loaded;
@@ -102,7 +102,7 @@ public final class HelpContent {
                 ResourceLocation id = ResourceLocation.fromNamespaceAndPath(RYSIndex.MOD_ID, "help/" + (n++));
                 b.recipe(b.category(category), new HelpView(id, stacks, page.json.has("body") ? page.json.getAsJsonArray("body") : null));
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Страница справки {} пропущена: {}", page.source, t.toString());
+                RYSIndex.LOG.warn("Help page {} skipped: {}", page.source, t.toString());
             }
         }
     }

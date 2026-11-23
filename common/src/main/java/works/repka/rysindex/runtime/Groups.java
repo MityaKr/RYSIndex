@@ -160,7 +160,7 @@ public final class Groups {
             try (Reader reader = found.get(file).openAsReader()) {
                 loaded.put(id, new Group(id, JsonParser.parseReader(reader).getAsJsonObject()));
             } catch (Exception e) {
-                RYSIndex.LOG.warn("Группа {} не прочитана: {}", file, e.toString());
+                RYSIndex.LOG.warn("Group {} could not be read: {}", file, e.toString());
             }
         }
         groups = new ArrayList<>(loaded.values());
@@ -196,7 +196,7 @@ public final class Groups {
         try {
             assignAutomatic(stacks, map);
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Автоматические группы не построены: {}", t.toString());
+            RYSIndex.LOG.warn("Automatic groups were not built: {}", t.toString());
         }
         byKey = map;
     }

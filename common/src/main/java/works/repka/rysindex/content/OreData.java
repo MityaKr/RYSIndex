@@ -116,7 +116,7 @@ public final class OreData {
                 }
             }
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Данные генерации руд не прочитаны: {}", t.toString());
+            RYSIndex.LOG.warn("Ore generation data could not be read: {}", t.toString());
         }
         return out;
     }

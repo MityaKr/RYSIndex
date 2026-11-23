@@ -34,7 +34,7 @@ public final class LootCache {
             if (len < 0 || len > (64 << 20)) return null;
             return in.readNBytes(len);
         } catch (IOException e) {
-            RYSIndex.LOG.debug("Кеш источников не прочитан: {}", e.toString());
+            RYSIndex.LOG.debug("Source cache could not be read: {}", e.toString());
             return null;
         }
     }
@@ -51,7 +51,7 @@ public final class LootCache {
             }
             Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            RYSIndex.LOG.warn("Кеш источников не записан: {}", e.toString());
+            RYSIndex.LOG.warn("Source cache could not be written: {}", e.toString());
         }
     }
 }

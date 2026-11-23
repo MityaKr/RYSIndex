@@ -143,7 +143,7 @@ final class AutoTestJei {
                     long shown = replaced.contains(uid) && !snap.hasCategory(uid) ? n[1] : ours.getOrDefault(uid, 0);
                     if (shown < n[0]) {
                         worse++;
-                        if (examples.size() < 15) examples.add(stack.id() + " в " + uid + ": у JEI " + n[0] + ", у нас " + shown);
+                        if (examples.size() < 15) examples.add(stack.id() + " in " + uid + ": у JEI " + n[0] + ", у нас " + shown);
                     }
                 }
             } catch (Throwable t) {

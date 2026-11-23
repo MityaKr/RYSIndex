@@ -96,11 +96,11 @@ public final class RecipeDefaults {
                         if (ref != null) out.put(e.getKey(), ref);
                     }
                 } catch (Exception e) {
-                    RYSIndex.LOG.warn("Рецепты по умолчанию {} не прочитаны: {}", file, e.toString());
+                    RYSIndex.LOG.warn("Default recipes {} could not be read: {}", file, e.toString());
                 }
             });
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Рецепты по умолчанию сборки не прочитаны: {}", t.toString());
+            RYSIndex.LOG.warn("Default recipes of the pack could not be read: {}", t.toString());
         }
         pack = out;
     }
@@ -123,7 +123,7 @@ public final class RecipeDefaults {
                 if (ref != null) PLAYER.put(e.getKey(), ref);
             }
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось прочитать рецепты по умолчанию: {}", e.toString());
+            RYSIndex.LOG.warn("Could not read the default recipes: {}", e.toString());
         }
     }
 
@@ -136,7 +136,7 @@ public final class RecipeDefaults {
                 GSON.toJson(root, w);
             }
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось сохранить рецепты по умолчанию: {}", e.toString());
+            RYSIndex.LOG.warn("Could not save the default recipes: {}", e.toString());
         }
     }
 }

@@ -306,7 +306,7 @@ public final class Storages {
                         isCraftable = entry.getMethod("isCraftable");
                     } catch (NoSuchMethodException e) {
                         // количества читаются и без этого, выключен только учёт автокрафта
-                        RYSIndex.LOG.warn("В этой версии AE2 нет GridInventoryEntry.isCraftable: учёт автокрафта отключён");
+                        RYSIndex.LOG.warn("This AE2 version has no GridInventoryEntry.isCraftable: autocraft tracking is disabled");
                     }
                     menuClass = candidate;
                 }
@@ -327,7 +327,7 @@ public final class Storages {
                 return new Read(counts, craftable);
             } catch (Throwable t) {
                 broken = true;
-                RYSIndex.LOG.warn("Не удалось прочитать содержимое сети AE2, учёт сети отключён: {}", t.toString());
+                RYSIndex.LOG.warn("Could not read the AE2 network contents, network tracking is disabled: {}", t.toString());
                 return null;
             }
         }

@@ -74,7 +74,7 @@ public final class RysIndexJeiPlugin implements IModPlugin {
         Runnable connect = () -> {
             if (bridge != created) return;
             Foreign.set(created);
-            RYSIndex.LOG.info("Мост JEI подключён");
+            RYSIndex.LOG.info("JEI bridge connected");
         };
         // при фоновой загрузке другие плагины ещё не закончили: подключаемся, когда JEI загрузится целиком
         if (works.repka.rysindex.runtime.JeiAsync.onLoaderThread()) works.repka.rysindex.runtime.JeiAsync.publishWhenLoaded(connect);

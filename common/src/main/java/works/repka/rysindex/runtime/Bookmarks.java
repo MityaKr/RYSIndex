@@ -188,7 +188,7 @@ public final class Bookmarks {
                 if (obj.has("active")) active = obj.get("active").getAsInt();
             }
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось прочитать закладки: {}", e.toString());
+            RYSIndex.LOG.warn("Could not read the bookmarks: {}", e.toString());
         }
     }
 
@@ -241,7 +241,7 @@ public final class Bookmarks {
                 GSON.toJson(root, w);
             }
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось сохранить закладки: {}", e.toString());
+            RYSIndex.LOG.warn("Could not save the bookmarks: {}", e.toString());
         }
     }
 }

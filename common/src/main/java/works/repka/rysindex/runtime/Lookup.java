@@ -74,7 +74,7 @@ public final class Lookup {
                     groups.computeIfAbsent(g.category(), k -> new ArrayList<>()).addAll(g.recipes());
                 }
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Источник {} не ответил на запрос рецептов", foreign.name(), t);
+                RYSIndex.LOG.warn("Source {} did not answer the recipe request", foreign.name(), t);
             }
         }
         // сведения модов семьи (магазин и награды книги квестов): на лету, как источник JEI, в снимок не попадают
@@ -171,7 +171,7 @@ public final class Lookup {
                 for (Group g : foreign.categoryById(category.id)) groups.get(category).addAll(g.recipes());
                 return preferOriginals(groups);
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Источник {} не отдал категорию {}", foreign.name(), category.id, t);
+                RYSIndex.LOG.warn("Source {} gave no category {}", foreign.name(), category.id, t);
             }
         }
         if (!own.isEmpty()) return List.of(new Group(category, own));
@@ -179,7 +179,7 @@ public final class Lookup {
             try {
                 return foreign.category(category);
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Источник {} не отдал категорию {}", foreign.name(), category.id, t);
+                RYSIndex.LOG.warn("Source {} gave no category {}", foreign.name(), category.id, t);
             }
         }
         return List.of();
@@ -193,7 +193,7 @@ public final class Lookup {
             try {
                 out.addAll(foreign.categories(snap));
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Источник {} не отдал список категорий", foreign.name(), t);
+                RYSIndex.LOG.warn("Source {} gave no category list", foreign.name(), t);
             }
         }
         return out;

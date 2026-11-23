@@ -57,17 +57,17 @@ public final class RysIndexNeoForge {
         java.nio.file.Path config = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get();
         try {
             int files = works.repka.rysindex.runtime.LegacyMigration.migrateConfig(config);
-            if (files > 0) RYSIndex.LOG.info("Перенесено из config/ryscope в config/rysindex: {} файлов", files);
+            if (files > 0) RYSIndex.LOG.info("Moved from config/ryscope to config/rysindex: {} files", files);
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Перенос config/ryscope не удался: {}", e.toString());
+            RYSIndex.LOG.warn("Moving config/ryscope failed: {}", e.toString());
         }
         if (!client) return;
         try {
             java.nio.file.Path options = net.neoforged.fml.loading.FMLPaths.GAMEDIR.get().resolve("options.txt");
             int keys = works.repka.rysindex.runtime.LegacyMigration.migrateKeys(options, config);
-            if (keys > 0) RYSIndex.LOG.info("Перенесено клавиш key.ryscope.* в key.rysindex.*: {}", keys);
+            if (keys > 0) RYSIndex.LOG.info("Moved keys key.ryscope.* to key.rysindex.*: {}", keys);
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Перенос клавиш из options.txt не удался: {}", e.toString());
+            RYSIndex.LOG.warn("Moving keys from options.txt failed: {}", e.toString());
         }
     }
 
@@ -140,7 +140,7 @@ public final class RysIndexNeoForge {
             ores = new OrePayload(OreData.extract(server, features));
             oreBiomes = new works.repka.rysindex.neoforge.net.OreBiomesPayload(works.repka.rysindex.content.OreBiomeData.extract(server, features));
             oresFor = key;
-            RYSIndex.LOG.info("Генерация руд подготовлена: {} блоков, биомы у {}, за {} мс", ores.ores().size(), oreBiomes.biomes().size(),
+            RYSIndex.LOG.info("Ore generation prepared: {} blocks, biomes for {}, in {} ms", ores.ores().size(), oreBiomes.biomes().size(),
                 (System.nanoTime() - start) / 1_000_000);
         }
         return ores;
@@ -158,11 +158,11 @@ public final class RysIndexNeoForge {
             long start = System.nanoTime();
             List<LootData.Table> tables = LootData.extract(registries);
             works.repka.rysindex.content.LootWire.Packed packed = works.repka.rysindex.content.LootWire.pack(tables);
-            RYSIndex.LOG.info("Источники предметов подготовлены в фоне: {} таблиц, {} КБ сжатыми, за {} мс", tables.size(),
+            RYSIndex.LOG.info("Item sources prepared in the background: {} tables, {} KB compressed, in {} ms", tables.size(),
                 packed.data().length / 1024, (System.nanoTime() - start) / 1_000_000);
             return new LootReady(List.copyOf(tables), packed);
         }, net.minecraft.Util.backgroundExecutor()).exceptionally(t -> {
-            RYSIndex.LOG.warn("Источники предметов не подготовлены", t);
+            RYSIndex.LOG.warn("Item sources were not prepared", t);
             return null;
         });
         return loot;

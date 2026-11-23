@@ -94,7 +94,7 @@ public final class Ae2Terminal {
                     ok = true;
                 }
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Поддержка терминалов AE2 отключена: {}", t.toString());
+                RYSIndex.LOG.warn("AE2 terminal support is disabled: {}", t.toString());
             }
             OK = ok;
         }
@@ -123,7 +123,7 @@ public final class Ae2Terminal {
                     item = lookup.unreflect(Api.itemOf).asType(objToObj);
                     ok = true;
                 } catch (Throwable t) {
-                    RYSIndex.LOG.debug("Быстрый доступ к списку сети AE2 недоступен, остаётся рефлексия: {}", t.toString());
+                    RYSIndex.LOG.debug("Fast access to the AE2 network list is unavailable, reflection stays: {}", t.toString());
                 }
             }
             REPO = repo;
@@ -204,7 +204,7 @@ public final class Ae2Terminal {
             }
             }
         } catch (Throwable t) {
-            RYSIndex.LOG.debug("Содержимое сети AE2 не прочитано: {}", t.toString());
+            RYSIndex.LOG.debug("AE2 network contents could not be read: {}", t.toString());
         }
         network = have;
         if (!craft.equals(craftable)) liveVersion++;
@@ -314,7 +314,7 @@ public final class Ae2Terminal {
             if (Api.craftingMenu.isInstance(menu)) return toCraftingGrid(menu, holder, simulate);
             if (Api.patternMenu.isInstance(menu)) return toPattern(menu, holder, inputs, outputs, simulate);
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Перенос рецепта в терминал AE2 не удался: {}", t.toString());
+            RYSIndex.LOG.warn("Moving the recipe into the AE2 terminal failed: {}", t.toString());
             return Transfer.missing("rysindex.transfer.failed");
         }
         return null;
@@ -426,7 +426,7 @@ public final class Ae2Terminal {
             Api.encodeProcessing.invoke(null, menu, in, List.of(out));
             return Transfer.OK;
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Шаблон постройки не записан: {}", t.toString());
+            RYSIndex.LOG.warn("Build pattern was not written: {}", t.toString());
             return Transfer.missing("rysindex.transfer.failed");
         }
     }

@@ -57,13 +57,13 @@ public final class OreSource {
     /** Данные от сервера в сетевой игре. */
     public static void setSynced(Map<String, List<OreData.Range>> ores) {
         synced = ores;
-        Indexer.request("получена генерация руд от сервера");
+        Indexer.request("ore generation received from the server");
     }
 
     /** Биомы руд от сервера (пакет приходит отдельно от жил: старый клиент его не знает). */
     public static void setSyncedBiomes(Map<String, works.repka.rysindex.content.OreBiomes.Where> biomes) {
         syncedBiomes = biomes;
-        Indexer.request("получены биомы руд от сервера");
+        Indexer.request("ore biomes received from the server");
     }
 
     public static void clear() {
@@ -127,16 +127,16 @@ public final class OreSource {
             boolean fits = root.has("format") && root.get("format").getAsInt() == OreData.FORMAT
                 && root.has("key") && key().equals(root.get("key").getAsString()) && root.has("ores");
             if (!fits) {
-                RYSIndex.LOG.info("Кеш генерации руд от другого набора модов, не используется");
+                RYSIndex.LOG.info("The ore generation cache is from another mod set, not used");
                 return null;
             }
             file = OreData.fromJson(root.getAsJsonObject("ores"));
             // биомов нет в кеше до 0.2.15: тогда без подсветки на карте
             fileBiomes = root.has("biomes") && root.get("biomes").isJsonObject()
                 ? works.repka.rysindex.content.OreBiomeData.fromJson(root.getAsJsonObject("biomes")) : Map.of();
-            RYSIndex.LOG.info("Генерация руд взята из кеша одиночной игры: {} блоков", file.size());
+            RYSIndex.LOG.info("Ore generation taken from the singleplayer cache: {} blocks", file.size());
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Кеш генерации руд не прочитан: {}", e.toString());
+            RYSIndex.LOG.warn("Ore generation cache could not be read: {}", e.toString());
         }
         return file;
     }
@@ -161,9 +161,9 @@ public final class OreSource {
             }
             Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING);
             remember(ores, biomes);
-            RYSIndex.LOG.info("Кеш генерации руд записан: {} блоков", ores.size());
+            RYSIndex.LOG.info("Ore generation cache written: {} blocks", ores.size());
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Кеш генерации руд не записан: {}", e.toString());
+            RYSIndex.LOG.warn("Ore generation cache could not be written: {}", e.toString());
         }
     }
 

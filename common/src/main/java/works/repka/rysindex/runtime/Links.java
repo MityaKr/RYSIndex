@@ -75,7 +75,7 @@ public final class Links {
             T out = call.get();
             return out == null ? fallback : out;
         } catch (Throwable t) {
-            if (REPORTED.add(provider + "/" + what)) RYSIndex.LOG.warn("Поставщик сведений {} не ответил ({})", provider, what, t);
+            if (REPORTED.add(provider + "/" + what)) RYSIndex.LOG.warn("Info provider {} did not answer ({})", provider, what, t);
             return fallback;
         }
     }

@@ -164,6 +164,6 @@ public final class Foreign {
 
     public static void set(@Nullable Source s) {
         source = s;
-        Indexer.request(s == null ? "источник отключён" : "готов " + s.name());
+        Indexer.request(s == null ? "source disabled" : "ready " + s.name());
     }
 }

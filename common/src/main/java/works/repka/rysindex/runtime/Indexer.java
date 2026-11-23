@@ -114,11 +114,11 @@ public final class Indexer {
                 Board.invalidate();
                 state = State.READY;
                 progress = 1f;
-                RYSIndex.LOG.info("Индекс готов за {} мс ({}): ресурсов {}, рецептов {}, категорий {}",
+                RYSIndex.LOG.info("Index ready in {} ms ({}): resources {}, recipes {}, categories {}",
                     built.buildMillis, reason, built.stacks.size(), built.recipeCount, built.categories.size());
                 SearchService.onSnapshot();
             } catch (Throwable t) {
-                RYSIndex.LOG.error("Индексация не удалась ({} мс)", (System.nanoTime() - start) / 1_000_000, t);
+                RYSIndex.LOG.error("Indexing failed ({} ms)", (System.nanoTime() - start) / 1_000_000, t);
                 if (GENERATION.get() == gen) state = State.READY;
             }
         });
@@ -143,7 +143,7 @@ public final class Indexer {
             try {
                 stacks.addAll(foreign.stacks());
             } catch (Throwable t) {
-                RYSIndex.LOG.warn("Источник {} не отдал список ресурсов, используется свой", foreign.name(), t);
+                RYSIndex.LOG.warn("Source {} gave no resource list, own list is used", foreign.name(), t);
                 stacks.clear();
             }
         }
@@ -175,7 +175,7 @@ public final class Indexer {
             try {
                 b.addStack(s, entry(b.stackCount(), s, languages, platform, strings));
             } catch (Throwable t) {
-                RYSIndex.LOG.debug("Пропущен ресурс при индексации: {}", t.toString());
+                RYSIndex.LOG.debug("Resource skipped during indexing: {}", t.toString());
             }
         }
         works.repka.rysindex.core.search.Query.setModKeys(strings.allModKeys);
@@ -188,21 +188,21 @@ public final class Indexer {
                 java.util.Set<ResourceLocation> hidden = foreign.hiddenRecipeIds();
                 if (!hidden.isEmpty()) {
                     b.hide(hidden);
-                    RYSIndex.LOG.info("Скрытых рецептов по данным {}: {}", foreign.name(), hidden.size());
+                    RYSIndex.LOG.info("Hidden recipes by data {}: {}", foreign.name(), hidden.size());
                 }
             } catch (Throwable t) {
-                RYSIndex.LOG.debug("Скрытые рецепты не получены: {}", t.toString());
+                RYSIndex.LOG.debug("Hidden recipes were not obtained: {}", t.toString());
             }
         }
         try {
             VanillaContent.provide(b, level.getRecipeManager(), level.registryAccess());
         } catch (Throwable t) {
-            RYSIndex.LOG.error("Не удалось прочитать рецепты игры", t);
+            RYSIndex.LOG.error("Could not read the game recipes", t);
         }
         try {
             works.repka.rysindex.content.JsonLayout.provide(b, level.getRecipeManager(), level.registryAccess());
         } catch (Throwable t) {
-            RYSIndex.LOG.error("Не удалось применить раскладки категорий", t);
+            RYSIndex.LOG.error("Could not apply the category layouts", t);
         }
         if (stale(gen)) return null;
 
@@ -210,18 +210,18 @@ public final class Indexer {
         try {
             LootContent.provide(b, LootSource.tables());
         } catch (Throwable t) {
-            RYSIndex.LOG.error("Не удалось построить источники предметов", t);
+            RYSIndex.LOG.error("Could not build the item sources", t);
         }
         try {
             works.repka.rysindex.content.TradeContent.provide(b);
             works.repka.rysindex.content.OreContent.provide(b);
         } catch (Throwable t) {
-            RYSIndex.LOG.error("Не удалось построить торговлю и генерацию руд", t);
+            RYSIndex.LOG.error("Could not build trades and ore generation", t);
         }
         try {
             works.repka.rysindex.content.HelpContent.provide(b);
         } catch (Throwable t) {
-            RYSIndex.LOG.error("Не удалось построить страницы справки", t);
+            RYSIndex.LOG.error("Could not build the help pages", t);
         }
         if (stale(gen)) return null;
 
@@ -347,7 +347,7 @@ public final class Indexer {
             try {
                 out.add(ClientLanguage.loadFrom(mc.getResourceManager(), List.of(code), false));
             } catch (Throwable t) {
-                RYSIndex.LOG.debug("Язык {} не загружен для поиска: {}", code, t.toString());
+                RYSIndex.LOG.debug("Language {} was not loaded for search: {}", code, t.toString());
             }
         }
         extraLanguages = out;
@@ -368,7 +368,7 @@ public final class Indexer {
                 }
             }
         } catch (Throwable t) {
-            RYSIndex.LOG.warn("Не удалось прочитать креативные вкладки, список строится по реестру", t);
+            RYSIndex.LOG.warn("Could not read the creative tabs, the list is built from the registry", t);
         }
         List<ItemStack> out = new ArrayList<>(seen);
         for (Item item : BuiltInRegistries.ITEM) {

@@ -93,11 +93,11 @@ public final class DevReports {
             write(dir.resolve("conflicts.json"), conflicts);
             write(dir.resolve("duplicates.json"), duplicates);
             write(dir.resolve("no_known_source.json"), unobtainable);
-            RYSIndex.LOG.info("Отчёты: конфликтов {}, дублей {}, без известного источника {}, папка {}",
+            RYSIndex.LOG.info("Reports: conflicts {}, duplicates {}, without a known source {}, folder {}",
                 conflicts.size(), duplicates.size(), unobtainable.size(), dir);
             return new Result(dir, conflicts.size(), duplicates.size(), unobtainable.size());
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Отчёты не построены", e);
+            RYSIndex.LOG.warn("Reports were not built", e);
             return null;
         }
     }

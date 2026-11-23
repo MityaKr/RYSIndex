@@ -17,7 +17,7 @@ final class ServerGive {
 
     static void handle(ServerPlayer player, GivePayload payload) {
         if (!player.isCreative() && !player.hasPermissions(PERMISSION)) {
-            RYSIndex.LOG.debug("{} попросил выдать предмет без прав", player.getName().getString());
+            RYSIndex.LOG.debug("{} asked for an item without permission", player.getName().getString());
             return;
         }
         // клиентский класс выдачи на сервере не загружается: режимы числами из пакета

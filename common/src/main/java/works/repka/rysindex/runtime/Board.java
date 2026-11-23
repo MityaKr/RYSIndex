@@ -263,7 +263,7 @@ public final class Board {
             } catch (Throwable t) {
                 g.building = null;
                 g.failed = true;
-                RYSIndex.LOG.debug("Цель {} не пересчитана: {}", g.stack.id(), t.toString());
+                RYSIndex.LOG.debug("Goal {} was not recalculated: {}", g.stack.id(), t.toString());
             }
         }
         tickCombined(periodic, inputsChanged, deadline);
@@ -303,7 +303,7 @@ public final class Board {
         } catch (Throwable t) {
             combinedBuilding = null;
             combinedFailed = true;
-            RYSIndex.LOG.debug("Общая сумма целей не пересчитана: {}", t.toString());
+            RYSIndex.LOG.debug("Goal totals were not recalculated: {}", t.toString());
         }
     }
 
@@ -367,7 +367,7 @@ public final class Board {
             }
             goalsChanged();
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось прочитать доску целей: {}", e.toString());
+            RYSIndex.LOG.warn("Could not read the goals board: {}", e.toString());
         }
     }
 
@@ -391,7 +391,7 @@ public final class Board {
                 GSON.toJson(array, w);
             }
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось сохранить доску целей: {}", e.toString());
+            RYSIndex.LOG.warn("Could not save the goals board: {}", e.toString());
         }
     }
 }

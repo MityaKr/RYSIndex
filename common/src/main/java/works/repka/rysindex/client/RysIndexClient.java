@@ -142,11 +142,11 @@ public final class RysIndexClient {
         works.repka.rysindex.runtime.SearchService.warmTooltips();
         if (indexDelay >= 0 && --indexDelay < 0) {
             recipesSeen = tagsSeen = false;
-            Indexer.request("обновление данных");
+            Indexer.request("data refresh");
         }
         if (Indexer.state() == Indexer.State.IDLE && indexDelay < 0 && mc.player != null) {
             // на случай, если события пришли до входа в мир
-            Indexer.request("вход в мир");
+            Indexer.request("world join");
         }
     }
 

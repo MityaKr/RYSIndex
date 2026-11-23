@@ -30,7 +30,7 @@ final class ClientPayloads {
                 if (mc.getConnection() == null) return;
                 if (tables != null) {
                     LootSource.setSynced(tables);
-                    works.repka.rysindex.RYSIndex.LOG.info("Источники от сервера взяты из кеша: {} таблиц", tables.size());
+                    works.repka.rysindex.RYSIndex.LOG.info("Server sources taken from the cache: {} tables", tables.size());
                 } else {
                     net.neoforged.neoforge.network.PacketDistributor.sendToServer(new works.repka.rysindex.neoforge.net.LootNeedPayload(hash));
                 }
@@ -47,7 +47,7 @@ final class ClientPayloads {
             mc.execute(() -> {
                 if (mc.getConnection() == null) return;
                 LootSource.setSynced(tables);
-                works.repka.rysindex.RYSIndex.LOG.info("Источники от сервера получены: {} таблиц, {} КБ", tables.size(), payload.data().length / 1024);
+                works.repka.rysindex.RYSIndex.LOG.info("Server sources received: {} tables, {} KB", tables.size(), payload.data().length / 1024);
             });
         });
     }
@@ -57,7 +57,7 @@ final class ClientPayloads {
         try {
             return works.repka.rysindex.content.LootWire.unpack(data);
         } catch (Throwable t) {
-            works.repka.rysindex.RYSIndex.LOG.warn("Источники от сервера не разобраны: {}", t.toString());
+            works.repka.rysindex.RYSIndex.LOG.warn("Server sources could not be parsed: {}", t.toString());
             return null;
         }
     }

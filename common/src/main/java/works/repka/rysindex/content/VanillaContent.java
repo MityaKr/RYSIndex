@@ -55,7 +55,7 @@ public final class VanillaContent {
                 NativeRecipe r = crafting(holder, registries);
                 if (r != null) b.recipe(crafting, r);
             } catch (Exception e) {
-                RYSIndex.LOG.debug("Пропущен рецепт {}: {}", holder.id(), e.toString());
+                RYSIndex.LOG.debug("Recipe {} skipped: {}", holder.id(), e.toString());
             }
         }
         cooking(b, smelting, manager.getAllRecipesFor(RecipeType.SMELTING), registries);
@@ -90,7 +90,7 @@ public final class VanillaContent {
                 r.output(ItemRes.of(result), 71, 0, true);
                 b.recipe(smithing, r);
             } catch (ReflectiveOperationException e) {
-                RYSIndex.LOG.debug("Кузнечный рецепт {} недоступен: {}", holder.id(), e.toString());
+                RYSIndex.LOG.debug("Smithing recipe {} is unavailable: {}", holder.id(), e.toString());
             }
         }
     }

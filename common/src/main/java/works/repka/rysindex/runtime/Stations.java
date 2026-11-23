@@ -173,7 +173,7 @@ public final class Stations {
             try {
                 onMenuOpened(menu);
             } catch (Throwable t) {
-                RYSIndex.LOG.debug("Станции по открытому меню не определены: {}", t.toString());
+                RYSIndex.LOG.debug("Stations by the open menu were not determined: {}", t.toString());
             }
         }
         if (++age < 20) return;
@@ -245,7 +245,7 @@ public final class Stations {
             readIds(root, "missing", id -> MARKS.put(id, false));
             readIds(root, "opened", OPENED::add);
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось прочитать станции: {}", e.toString());
+            RYSIndex.LOG.warn("Could not read the stations: {}", e.toString());
         }
         // ответы до загрузки (без отметок) устарели; если их не было, версия не меняется и деревья не сбрасываются
         if (!CACHE.isEmpty()) changed();
@@ -274,7 +274,7 @@ public final class Stations {
                 GSON.toJson(root, w);
             }
         } catch (Exception e) {
-            RYSIndex.LOG.warn("Не удалось сохранить станции: {}", e.toString());
+            RYSIndex.LOG.warn("Could not save the stations: {}", e.toString());
         }
     }
 }

@@ -112,7 +112,7 @@ public final class SettingsScreen extends ScaledScreen {
                 c.searchLanguages = new ArrayList<>(List.of("*"));
             }
             Indexer.invalidateLanguages();
-            Indexer.request("языки поиска");
+            Indexer.request("search languages");
         }, "rysindex.settings.languages.note"));
         toggle("rysindex.settings.keep_search", () -> c.keepSearch, () -> c.keepSearch = !c.keepSearch, null);
         toggle("rysindex.settings.cheat", () -> c.cheatMode, () -> c.cheatMode = !c.cheatMode, "rysindex.settings.cheat.note");
