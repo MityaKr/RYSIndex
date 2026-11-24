@@ -2,8 +2,9 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
-// Проверка «как у игрока»: в папке модов только собранный jar RYSIndex (и моды из -PextraMods).
-// Отдельного JEI нет: он должен подняться из вложенного jar.
+// Проверка «как у игрока»: собранный jar RYSIndex (и моды из -PextraMods).
+// Берётся jar с классификатором autotest: в боевом jar кода автотеста нет (с 0.3.10).
+// JEI в jar не вложен (с 0.3.9): в папке run он подключается из maven, в -PrunDir=<папка> должен лежать в её mods.
 neoForge {
     version = neoforge_version
     runs {
@@ -31,7 +32,10 @@ neoForge {
 }
 
 dependencies {
-    runtimeOnly files(rootProject.file("neoforge/build/libs/${mod_id}-neoforge-${minecraft_version}-${mod_version}.jar"))
+    runtimeOnly files(rootProject.file("neoforge/build/libs/${mod_id}-neoforge-${minecraft_version}-${mod_version}-autotest.jar"))
+    if (project.findProperty('runDir') == null && project.findProperty('noJei') == null) {
+        runtimeOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_run_version}"
+    }
     if (project.findProperty('extraMods') != null) {
         runtimeOnly fileTree(dir: project.findProperty('extraMods'), include: '*.jar',
             excludes: ['jei-*.jar', 'mezz_config*.jar', 'rysindex-*.jar', 'ryscope-*.jar'])

@@ -108,7 +108,15 @@ public final class RysIndexNeoForgeClient {
         }
 
         if (System.getProperty("rysindex.autotest") != null) {
-            AutoTest.install(bus);
+            // Код автотеста есть только в jar с классификатором autotest (prodtest) и в dev-запуске, в боевом jar его нет.
+            try {
+                Class.forName("works.repka.rysindex.neoforge.AutoTest")
+                    .getDeclaredMethod("install", IEventBus.class).invoke(null, bus);
+            } catch (ClassNotFoundException e) {
+                RYSIndex.LOG.warn("rysindex.autotest is set, but this jar has no autotest code (use the -autotest jar)");
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Autotest failed to start", e);
+            }
         }
     }
 

@@ -86,6 +86,27 @@ processResources {
     }
 }
 
+// Код автотеста (AutoTest*, стенд CoreKitBench) в боевой jar не идёт (с 0.3.10): с ним CurseForge не пропускал файл
+// через автоматическую проверку. Полный jar с автотестом собирается рядом с классификатором autotest, его берёт prodtest.
+def autotestClasses = ['works/repka/rysindex/neoforge/AutoTest*', 'works/repka/rysindex/neoforge/CoreKitBench*']
+tasks.named('jar', Jar) {
+    exclude autotestClasses
+}
+def autotestJar = tasks.register('autotestJar', Jar) {
+    archiveClassifier = 'autotest'
+    // LICENSE и NOTICE.md уже лежат в боевом jar, общий блок ниже добавляет их ещё раз
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(zipTree(tasks.named('jar', Jar).flatMap { it.archiveFile })) {
+        exclude 'META-INF/MANIFEST.MF'
+    }
+    from(sourceSets.main.output) {
+        include autotestClasses
+    }
+}
+tasks.named('assemble') {
+    dependsOn autotestJar
+}
+
 // LICENSE and NOTICE.md go into every jar of the mod (MPL-2.0 for code, notice about graphics and third-party parts).
 tasks.withType(Jar).configureEach {
     from(rootProject.file('LICENSE'))
