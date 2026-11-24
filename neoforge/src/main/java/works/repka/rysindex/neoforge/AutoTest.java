@@ -694,6 +694,10 @@ final class AutoTest {
             buildSupply();
             return;
         }
+        if ("vanillarail".equals(System.getProperty("rysindex.autotest"))) {
+            buildVanillaRail();
+            return;
+        }
         if ("shapes".equals(System.getProperty("rysindex.autotest"))) {
             buildShapes();
             return;
@@ -2404,6 +2408,30 @@ final class AutoTest {
         }
         step("batch: done", () -> works.repka.ryscore.ui.Batch.immediate = false, 2);
         step("quit", () -> mc().stop(), 0);
+    }
+
+    /** Замечание автора 24.11 (ядро 1.18.0): рейка способов, шапка и вкладки окна рецептов в vanilla рядом со slate. */
+    private static void buildVanillaRail() {
+        step("vanillarail: window", () -> {
+            org.lwjgl.glfw.GLFW.glfwSetWindowSize(mc().getWindow().getWindow(), 1280, 800);
+            mc().options.guiScale().set(2);
+            mc().resizeDisplay();
+        }, 20);
+        for (String theme : new String[] {"vanilla", "slate"}) {
+            step("vanillarail: oak log uses, " + theme, () -> {
+                ThemeManager.select("ryscore:" + theme);
+                RecipeScreen.open(new ItemRes(new ItemStack(Items.OAK_LOG)), Lookup.Mode.USES);
+            }, 20);
+            shot("vanillarail_oak_uses_" + theme);
+            step("vanillarail: next method, " + theme, () -> mc().screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0), 8);
+            shot("vanillarail_oak_uses_next_" + theme);
+            step("vanillarail: piston recipes, " + theme, () -> RecipeScreen.open(new ItemRes(new ItemStack(Items.PISTON)), Lookup.Mode.RECIPES), 15);
+            shot("vanillarail_piston_" + theme);
+        }
+        step("vanillarail: done", () -> {
+            ThemeManager.select("ryscore:slate");
+            mc().setScreen(null);
+        }, 5);
     }
 
     private static void buildShapes() {
