@@ -580,3 +580,5 @@
 - 5.5, линза: `lensInWorld` по умолчанию false, `designVersion 4` однократно выключает, пояснение у переключателя.
 - 5.6: прогрев подсказок через 5 с после готовности индекса и по 1 мс за тик; доска целей раз в секунду только при смене `InventoryView`, `Storages` или `Ae2Terminal.networkVersion` (номера уже были).
 - Юнит-тесты `LootWireTest`, `AsyncPolicyTest`, `NetworkRefreshTest`, всего 57. Проверки в `_shared/_audit/UNTESTED.md`.
+
+Версия 0.3.9, 24.11. CurseForge отправил файл 0.3.8 на ручную проверку («failed processing… obfuscated code or corrupt files»): единственное отличие от прошедших модов семьи был вложенный целиком jar JEI. JEI убран из jarJar (`neoforge/build.gradle`), в `neoforge.mods.toml` зависимость `jei` стала `required` (диапазон `[19.42.0.379,)`, сторона CLIENT: серверу JEI не нужен, без него клиент не стартует и показывает экран недостающих зависимостей). Свойство `jei_embed_version` переименовано в `jei_run_version` (JEI только для dev-клиента). Копия лицензии JEI убрана из ресурсов (лежит в `_stale/jei-embed-2026-11-24`). В jar осталось только ядро RYSCore, размер 1,6 МБ. Юнит-тесты 81, зелёные; игра не запускалась.

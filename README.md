@@ -4,7 +4,7 @@
 
 ![A recipe card with the item list](docs/screenshot.png)
 
-**A recipe and item reference.** It shows how to make an item, where to get it and what it is used for. For long chains it builds a crafting tree and plans production. Mod recipes come through JEI, which is already bundled in the jar.
+**A recipe and item reference.** It shows how to make an item, where to get it and what it is used for. For long chains it builds a crafting tree and plans production. Mod recipes come through JEI.
 
 ## Features
 
@@ -22,7 +22,7 @@ R opens recipes, U opens uses.
 ## Requirements
 
 - Minecraft 1.21.1, NeoForge 21.1.x. The server only needs the mod for stages, drop sources and giving items.
-- JEI is bundled in the jar, no other mods required.
+- Requires JEI 19.42 or newer, no other mods needed.
 - Optional: AE2, Modular Machinery Reborn.
 - Languages: English and Russian.
 
@@ -65,7 +65,7 @@ The jar is in `neoforge/build/libs`.
 
 ## License
 
-The code is under [MPL-2.0](LICENSE). The graphics and the RYS name remain with the author, see [NOTICE.md](NOTICE.md). You can include the mod in any modpack without asking for permission. The bundled JEI is distributed under the MIT license, see [THIRD_PARTY.md](THIRD_PARTY.md).
+The code is under [MPL-2.0](LICENSE). The graphics and the RYS name remain with the author, see [NOTICE.md](NOTICE.md). You can include the mod in any modpack without asking for permission.
 
 Author: MityaYS, RepkaWorks.
 
@@ -73,7 +73,7 @@ Author: MityaYS, RepkaWorks.
 
 ## По-русски
 
-**Справочник рецептов и предметов.** Показывает, как сделать предмет, где его добыть и куда он идёт. Для длинных цепочек строит дерево крафта и считает производство. Рецепты модов берёт через JEI, он уже вложен в jar.
+**Справочник рецептов и предметов.** Показывает, как сделать предмет, где его добыть и куда он идёт. Для длинных цепочек строит дерево крафта и считает производство. Рецепты модов берёт через JEI.
 
 ### Возможности
 
@@ -91,7 +91,7 @@ R открывает рецепты, U использования.
 ### Требования
 
 - Minecraft 1.21.1, NeoForge 21.1.x. Серверу мод нужен только для стадий, источников добычи и выдачи предметов.
-- JEI вложен в jar, других модов не требует.
+- Нужен JEI 19.42 или новее, других модов не требует.
 - По желанию: AE2, Modular Machinery Reborn.
 - Языки: русский и английский.
 
@@ -123,6 +123,6 @@ RYSIndex входит в семью модов RYS: один стиль, общ�
 
 ### Лицензия
 
-Код под [MPL-2.0](LICENSE), графика и имя RYS остаются за автором, подробности в [NOTICE.md](NOTICE.md). Мод можно включать в любую сборку без отдельного разрешения. Вложенный JEI распространяется по лицензии MIT, подробности в [THIRD_PARTY.md](THIRD_PARTY.md).
+Код под [MPL-2.0](LICENSE), графика и имя RYS остаются за автором, подробности в [NOTICE.md](NOTICE.md). Мод можно включать в любую сборку без отдельного разрешения.
 
 Автор: MityaYS, RepkaWorks.

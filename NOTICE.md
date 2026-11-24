@@ -14,7 +14,6 @@ You may include RYSIndex in any modpack and distribute it there without asking f
 
 ## Third-party
 
-- Just Enough Items (JEI) by mezz, MIT license. The unmodified JEI jar is bundled in `META-INF/jarjar/`; the license text is in the jar at `META-INF/licenses/JEI-LICENSE.txt` (source copy: `neoforge/src/main/resources/META-INF/licenses/JEI-LICENSE.txt`).
 - RYSCore (MPL-2.0, same owner) is bundled in `META-INF/jarjar/`. It contains the Inter and Space Grotesk fonts under the SIL Open Font License 1.1; the license text is inside the bundled RYSCore jar at `assets/ryscore/fonts/OFL.txt`.
 
 See also [THIRD_PARTY.md](THIRD_PARTY.md).

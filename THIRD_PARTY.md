@@ -2,12 +2,7 @@
 
 ## Just Enough Items (JEI)
 
-- Автор: mezz. Репозиторий: https://github.com/mezz/JustEnoughItems
-- Лицензия: MIT. Текст: `neoforge/src/main/resources/META-INF/licenses/JEI-LICENSE.txt`, в jar мода лежит по пути `META-INF/licenses/JEI-LICENSE.txt`.
-- Как используется: неизменённый jar JEI вложен в jar RYSIndex (`META-INF/jarjar/`). Версия задаётся свойством `jei_embed_version` в `gradle.properties`.
-- Зачем: плагины модов написаны под API JEI. Вложенный JEI загружает их, а RYSIndex берёт у него категории, рецепты и ингредиенты. Интерфейс JEI при этом отключён его же штатным API.
-
-Если в папке mods есть свой JEI, загрузчик NeoForge берёт его, даже когда он старее вложенного. Минимальная версия, с которой работает мод: 19.42.0.379.
+С версии 0.3.9 JEI в jar RYSIndex не вкладывается: это обязательная зависимость, игрок ставит его отдельно (19.42.0.379 или новее). RYSIndex компилируется против API JEI (MIT, автор mezz, https://github.com/mezz/JustEnoughItems) и берёт у него категории, рецепты и ингредиенты плагинов модов.
 
 ## Inter и Space Grotesk
 

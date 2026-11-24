@@ -2,6 +2,11 @@
 
 Подробности разработки в `06-dev-log.md`. До версии 0.3.0 мод назывался RYScope.
 
+## 0.3.9 (24.11.2026)
+
+* JEI больше не вложен в jar: теперь это обычная обязательная зависимость, его нужно поставить отдельно (19.42 или новее). Без JEI загрузчик NeoForge при запуске клиента сообщает, что нужен JEI. Серверу JEI не нужен. Jar стал меньше: 1,6 МБ вместо 5,9.
+* EN: JEI is now a regular required dependency instead of being bundled (19.42 or newer). Without JEI the NeoForge loader tells the player it is missing when the client starts. The server does not need JEI.
+
 ## 0.3.8 (24.11.2026)
 
 * Ядро RYSCore 1.18.0: в теме Vanilla Refined подсказки светлые, в цвет окна, вместо почти чёрных с фиолетовой рамкой; у переключателей с вариантами («Тема», «Размер интерфейса») выбранный вариант стоит с равным отступом со всех сторон на любом масштабе.

@@ -59,17 +59,9 @@ dependencies {
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
     if (project.findProperty('noJei') == null) {
         // -PjeiRun=<версия>: проверить dev-клиент с другой версией JEI (например, с минимальной)
-        runtimeOnly "mezz.jei:jei-${minecraft_version}-neoforge:${project.findProperty('jeiRun') ?: jei_embed_version}"
+        runtimeOnly "mezz.jei:jei-${minecraft_version}-neoforge:${project.findProperty('jeiRun') ?: jei_run_version}"
     }
-    // JEI вкладывается в наш jar: игроку не нужно ставить его отдельно.
-    // Если в папке mods есть свой JEI, загрузчик берёт его, даже когда он старее вложенного
-    // (проверено на сборке RepYS: при JEI 19.51 в mods вложенный 19.70 не использовался).
-    jarJar("mezz.jei:jei-${minecraft_version}-neoforge:[${jei_version},)") {
-        version {
-            prefer jei_embed_version
-        }
-        transitive = false
-    }
+    // JEI в jar не вкладывается (с 0.3.9): это обычная обязательная зависимость, игрок ставит его отдельно.
     compileOnly 'org.jetbrains:annotations:26.0.1'
     // AE2 только для компиляции миксинов замещения в шаблонах обработки: в jar не попадает, в игре стоит отдельным модом
     compileOnly "org.appliedenergistics:appliedenergistics2:19.2.17"
