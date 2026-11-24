@@ -2,6 +2,11 @@
 
 Подробности разработки в `06-dev-log.md`. До версии 0.3.0 мод назывался RYScope.
 
+## 0.3.7 (24.11.2026)
+
+* Ядро RYSCore 1.17.3: поля ввода в теме Vanilla Refined рисуются в кегле подписей, а не крупным шрифтом игры; курсор виден на чёрном поле.
+* EN: RYSCore 1.17.3: text fields in the Vanilla Refined theme use the size of the labels instead of the game's large font; the caret shows on the black field.
+
 ## 0.3.6 (24.11.2026)
 
 * Страницы справки умеют целиться в предмет с данными: `{"id": ..., "components": {...}}`. Так у каждого контроллера Modular Machinery своя справка, а не одна на все машины сразу.
