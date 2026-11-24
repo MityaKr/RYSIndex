@@ -1,75 +1,128 @@
 # RYSIndex
 
-Самостоятельный мод-вьюер рецептов для Minecraft 1.21.x (NeoForge первым, Fabric позже).
-Конкурент JEI / EMI / REI: совместим с плагинами JEI, но с другим UX, темами, фоновой индексацией и своими фичами.
+*Русская версия ниже: [по-русски](#по-русски).*
 
-- Автор: Dumitru (MityaYS), RepkaWorks
-- modid: `rysindex`
-- Статус: рабочая версия 0.1.0 под NeoForge 1.21.1, не опубликована
+![A recipe card with the item list](docs/screenshot.png)
 
-## Состояние на 09.11.2026
+**A recipe and item reference.** It shows how to make an item, where to get it and what it is used for. For long chains it builds a crafting tree and plans production. Mod recipes come through JEI, which is already bundled in the jar.
 
-Рабочий мод под NeoForge 1.21.1: список предметов с поиском, карточка рецептов, мост к плагинам JEI, темы, линза, дерево крафта, источники (дроп и лут), доска целей, категории из JSON, группы предметов. Позже добавлены: вложенный JEI с фоновой загрузкой, планировщик производства, сравнение маршрутов, стадии, страницы справки, торговля жителей, генерация руд, отчёты для автора сборки. Что сделано, как проверено и чего нет: `docs/06-dev-log.md`.
+## Features
 
-Сборка и запуск:
+- an item list with search and filters
+- recipes, uses and sources: drops, chests, trading, ores
+- a crafting tree that counts what you already have
+- a production planner and route comparison
+- on-screen goals and bookmarks with folders
+- the lens: info about an item, block or mob while holding Alt
+- progression stages with locked recipes
+- recipe transfer to the crafting table and the AE2 terminal
+
+R opens recipes, U opens uses.
+
+## Requirements
+
+- Minecraft 1.21.1, NeoForge 21.1.x. The server only needs the mod for stages, drop sources and giving items.
+- JEI is bundled in the jar, no other mods required.
+- Optional: AE2, Modular Machinery Reborn.
+- Languages: English and Russian.
+
+## Download and help
+
+- Download: [CurseForge](https://www.curseforge.com/minecraft/mc-mods/rysindex).
+- Help, ideas and questions: [Discord](https://discord.gg/Tqgy7acmyd).
+- Bugs: [GitHub Issues](https://github.com/MityaKr/RYSIndex/issues).
+
+## Documentation
+
+- [docs/09-data-formats.md](docs/09-data-formats.md): help pages, stages, item groups, time and energy for the planner, reports.
+- [docs/07-layouts.md](docs/07-layouts.md): recipe category layouts in JSON.
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): version history.
+
+The documents are in Russian.
+
+## The RYS family
+
+RYSIndex is part of the RYS family of mods: one style, shared themes and settings. Each mod works on its own, and together they complement each other.
+
+- [RYSQuests](https://www.curseforge.com/minecraft/mc-mods/rysquests), a quest book with guides and a shop.
+- [RYSMap](https://www.curseforge.com/minecraft/mc-mods/rysmap), a world map and minimap.
+- [RYSClaims](https://www.curseforge.com/minecraft/mc-mods/rysclaims), chunk land claims.
+- [RYSTeams](https://www.curseforge.com/minecraft/mc-mods/rysteams), player teams with roles and alliances.
+- [RYSHelm](https://www.curseforge.com/minecraft/mc-mods/ryshelm), the Server window for admins.
+
+## Building from source
+
+You need Java 21. The build takes the family's shared code from the [RYSCore](https://github.com/MityaKr/RYSCore) repository, which must sit next to this one and be published to its local `repo/` folder first:
 
 ```
-gradlew build                      jar в neoforge/build/libs
-gradlew :neoforge:runClient        dev-клиент с JEI
-gradlew :neoforge:runAutotest      автотест со скриншотами в neoforge/run/screenshots
-gradlew :common:test               модульные тесты поиска
-gradlew :prodtest:runAutotest      тот же автотест на собранном jar, без отдельного JEI
+git clone https://github.com/MityaKr/RYSCore
+git clone https://github.com/MityaKr/RYSIndex
+cd RYSCore && ./gradlew publish
+cd ../RYSIndex && ./gradlew build
 ```
 
-Параметры автотеста: `-PnoJei` (без JEI), `-PextraMods=<папка>` (подключить моды из папки), `-Pcats=<regex>` (какие категории снимать).
+The jar is in `neoforge/build/libs`.
 
-## Структура папки
+## License
 
-```
-README.md                 этот файл
-START_PROMPT.md           стартовый промпт для новой сессии
-build.gradle, settings.gradle, gradle.properties, gradlew
-common/                   общий код: чистый Minecraft, без API загрузчика
-  src/main/java/works/repka/rysindex/
-    core/search/          поиск без зависимостей от игры
-    model/                ресурсы, ингредиенты, категории, рецепты
-    content/              ванильные рецепты, раскладки из JSON, источники, перенос в слоты
-    runtime/              индекс, поиск, закладки, дерево, доска, группы, настройки
-    ui/                   панели, экраны, линза, темы
-    jei/                  мост к JEI
-  src/main/resources/assets/rysindex/
-    lang/                 en_us, ru_ru (черновики)
-    ryscore_themes/       Slate, Vanilla Refined, Glass
-    rysindex_layouts/      раскладки Create, Mekanism, AE2
-    rysindex_groups/       группы предметов
-neoforge/                 привязка к NeoForge, сеть, автотест
-prodtest/                 проверка собранного jar «как у игрока»
-THIRD_PARTY.md            сторонний код в составе (JEI, MIT)
-docs/
-  01-concept.md           концепт, сравнение, дорожная карта
-  02-design.md            дизайн и токены тем
-  03-name.md              название
-  04-constraints.md       ограничения среды
-  05-competitors.md       что показала декомпиляция EMI и REI
-  06-dev-log.md           журнал разработки, решения, замеры, что не проверено
-  07-layouts.md           формат категорий из JSON
-  08-player-research.md   отзывы игроков и проход по интерфейсу
-  09-data-formats.md      справка, стадии, группы, время и энергия, отчёты
-design/                   макеты и черновики тем
-research/                 jar и декомпилированный код конкурентов, тестовые моды, журналы автотеста (не для репозитория)
-_stale/                   старые скриншоты прогонов
-```
+The code is under [MPL-2.0](LICENSE). The graphics and the RYS name remain with the author, see [NOTICE.md](NOTICE.md). You can include the mod in any modpack without asking for permission. The bundled JEI is distributed under the MIT license, see [THIRD_PARTY.md](THIRD_PARTY.md).
 
-Файлы `*.dc.html` это исходники холста Claude Design. В обычном браузере они откроются только частично (сетки слотов рендерит рантайм холста), смотреть макеты нужно на самом холсте, а исходники нужны, чтобы Claude мог их перенести на новый холст или доработать.
+Author: MityaYS, RepkaWorks.
 
-Ссылки (приватные, видны только автору):
-- Холст с дизайнами: https://claude.ai/artifact/L68NFzqraTYFnc6VMp3Hoo
-- Концепт-страница с вайрфреймами: https://claude.ai/artifact/GaxhgVbPjZsYqSieLyEcsQ (локальная копия: `design/concept-page.html`, открывается в браузере)
+---
 
-## Решения, уже принятые
+## По-русски
 
-1. Отдельный мод, не часть сборки RepYS. Должен ставиться в любую сборку.
-2. Название RYSIndex, modid `rysindex`.
-3. Визуальный язык по умолчанию: вариант A «Slate». Варианты B и C идут как встроенные темы. Темы описываются JSON + текстуры в ресурспаке.
-4. Слой совместимости с плагинами JEI обязателен с первой версии.
-5. Ничего тяжёлого в главном потоке: индекс, граф, поиск в фоне, кэш индекса на диске.
+**Справочник рецептов и предметов.** Показывает, как сделать предмет, где его добыть и куда он идёт. Для длинных цепочек строит дерево крафта и считает производство. Рецепты модов берёт через JEI, он уже вложен в jar.
+
+### Возможности
+
+- список предметов с поиском и фильтрами
+- рецепты, использования и источники: добыча, сундуки, торговля, руды
+- дерево крафта с учётом того, что уже есть
+- планировщик производства и сравнение маршрутов
+- цели на экране и закладки с папками
+- линза: сведения о предмете, блоке или мобе по Alt
+- стадии прогрессии с замком на рецептах
+- перенос рецепта в верстак и в терминал AE2
+
+R открывает рецепты, U использования.
+
+### Требования
+
+- Minecraft 1.21.1, NeoForge 21.1.x. Серверу мод нужен только для стадий, источников добычи и выдачи предметов.
+- JEI вложен в jar, других модов не требует.
+- По желанию: AE2, Modular Machinery Reborn.
+- Языки: русский и английский.
+
+### Скачать и спросить
+
+- Скачать: [CurseForge](https://www.curseforge.com/minecraft/mc-mods/rysindex).
+- Помощь, идеи и вопросы: [Discord](https://discord.gg/Tqgy7acmyd).
+- Баги: [GitHub Issues](https://github.com/MityaKr/RYSIndex/issues).
+
+### Документация
+
+- [docs/09-data-formats.md](docs/09-data-formats.md): страницы справки, стадии, группы предметов, время и энергия для планировщика, отчёты.
+- [docs/07-layouts.md](docs/07-layouts.md): раскладки категорий рецептов в JSON.
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): история версий.
+
+### Семья RYS
+
+RYSIndex входит в семью модов RYS: один стиль, общие темы и настройки. Каждый мод работает сам по себе, а вместе они дополняют друг друга.
+
+- [RYSQuests](https://www.curseforge.com/minecraft/mc-mods/rysquests), книга квестов с гайдами и магазином.
+- [RYSMap](https://www.curseforge.com/minecraft/mc-mods/rysmap), карта мира и миникарта.
+- [RYSClaims](https://www.curseforge.com/minecraft/mc-mods/rysclaims), приват земли по чанкам.
+- [RYSTeams](https://www.curseforge.com/minecraft/mc-mods/rysteams), команды игроков с ролями и союзами.
+- [RYSHelm](https://www.curseforge.com/minecraft/mc-mods/ryshelm), окно «Сервер» для администраторов.
+
+### Сборка из исходников
+
+Нужна Java 21. Общий код семьи сборка берёт из репозитория [RYSCore](https://github.com/MityaKr/RYSCore): он должен лежать рядом с этим и сначала выложиться в свою папку `repo/` командой `gradlew publish` (команды выше). Готовый jar лежит в `neoforge/build/libs`.
+
+### Лицензия
+
+Код под [MPL-2.0](LICENSE), графика и имя RYS остаются за автором, подробности в [NOTICE.md](NOTICE.md). Мод можно включать в любую сборку без отдельного разрешения. Вложенный JEI распространяется по лицензии MIT, подробности в [THIRD_PARTY.md](THIRD_PARTY.md).
+
+Автор: MityaYS, RepkaWorks.
