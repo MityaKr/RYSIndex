@@ -42,6 +42,8 @@ import works.repka.ryscore.ui.Type.Weight;
 public final class RecipeScreen extends ScaledScreen {
     private static final int CARD_W = 260;
     private static final int RAIL_W = 28, RAIL_SLOT = 20, RAIL_GAP = 2, RAIL_PAD = 5;
+    /** Левый край закладки рейки в теме с фаской: за фаской панели. */
+    private static final int RAIL_TAB_X = 3;
     private static final int PAD_X = 7;
     private static final int HEADER_H = 32;
     private static final int TABS_H = 16;
@@ -819,8 +821,10 @@ public final class RecipeScreen extends ScaledScreen {
             if (y + RAIL_SLOT < top || y > bottom) continue;
             int index = i;
             boolean active = i == nav.group, hot = over(mx, my, x, y, RAIL_SLOT, RAIL_SLOT) && my >= top && my < bottom;
+            // в теме с фаской способ это закладка у разделителя рейки, как вкладки шапки (Theme.tabLine), значок по её середине
+            int ix = t.beveled() ? cardX + RAIL_TAB_X + (RAIL_W - RAIL_TAB_X - 16) / 2 : x + 2;
             if (t.beveled()) {
-                t.tab(g, x, y, RAIL_SLOT, RAIL_SLOT, active, hot);
+                railTab(g, t, cardX + RAIL_TAB_X, y, RAIL_W - RAIL_TAB_X, RAIL_SLOT, active, hot);
             } else if (active) {
                 Draw.roundBox(g, x, y, RAIL_SLOT, RAIL_SLOT, 4f, t.c("button.bg"), t.c("button.border"));
                 Draw.round(g, cardX + 0.5f, y + 4, 1.5f, RAIL_SLOT - 8, 0.75f, t.c("accent"));
@@ -830,8 +834,8 @@ public final class RecipeScreen extends ScaledScreen {
             Category category = nav.groups.get(i).category();
             // способ показан своей главной станцией, предметом в полный размер, как в строке над рецептом; значок категории, если станций нет
             try {
-                if (!category.stations.isEmpty()) category.stations.get(0).render(g, x + 2, y + 2);
-                else category.renderIcon(g, x + 2, y + 2);
+                if (!category.stations.isEmpty()) category.stations.get(0).render(g, ix, y + 2);
+                else category.renderIcon(g, ix, y + 2);
             } catch (Throwable ignored) {
                 // значок чужой категории
             }
@@ -839,7 +843,8 @@ public final class RecipeScreen extends ScaledScreen {
                 // станции нет: значок приглушён, место в рейке то же (порядок под рукой не меняется)
                 g.pose().pushPose();
                 g.pose().translate(0, 0, 200);
-                Draw.round(g, x + 1, y + 1, RAIL_SLOT - 2, RAIL_SLOT - 2, 3.5f, t.c("slot.dim"));
+                if (t.beveled()) Draw.rect(g, ix, y + 2, 16, 16, Draw.alpha(active ? t.c("panel.bg") : t.c("tab.inactive.bg"), 0.6f));
+                else Draw.round(g, x + 1, y + 1, RAIL_SLOT - 2, RAIL_SLOT - 2, 3.5f, t.c("slot.dim"));
                 g.pose().popPose();
             }
             if (hot) hovered = category;
@@ -860,6 +865,17 @@ public final class RecipeScreen extends ScaledScreen {
         return hovered;
     }
 
+    /**
+     * Закладка рейки в теме с фаской: неактивная серая {@code tab.inactive.bg} со светлой кромкой сверху и слева, активная цвета
+     * панели и на единицу заходит за разделитель, сливаясь с карточкой. Без чёрного контура, как {@code Theme.tabLine}.
+     */
+    private static void railTab(GuiGraphics g, Theme t, int x, int y, int w, int h, boolean active, boolean hovered) {
+        int fill = active ? t.c("panel.bg") : t.c("tab.inactive.bg");
+        if (hovered && !active) fill = Draw.mix(fill, 0xFFFFFFFF, 0.12f);
+        int edge = active ? t.c("panel.bevel.light") : Draw.mix(fill, 0xFFFFFFFF, 0.3f);
+        Draw.bevel(g, (float) x, y, w + (active ? 1 : 0), h, fill, edge, fill, 1, false);
+    }
+
     private void revealRail() {
         int visible = cardH - RAIL_PAD * 2;
         int y = nav.group * (RAIL_SLOT + RAIL_GAP);
@@ -873,7 +889,8 @@ public final class RecipeScreen extends ScaledScreen {
     private void renderHeader(GuiGraphics g, Theme t, int mx, int my) {
         int left = cardX + railWidth() + PAD_X;
         int iconY = cardY + 7;
-        Draw.roundBox(g, left, iconY, 20, 20, 4.5f, t.c("slot.bg"), t.c("button.border"));
+        if (t.beveled()) t.slot(g, left, iconY, 20, false);
+        else Draw.roundBox(g, left, iconY, 20, 20, 4.5f, t.c("slot.bg"), t.c("button.border"));
         Stack shown = nav.focus;
         if (shown != null) shown.render(g, left + 2, iconY + 2);
         else group().category().renderIcon(g, left + 2, iconY + 2);
@@ -905,6 +922,10 @@ public final class RecipeScreen extends ScaledScreen {
     }
 
     private void iconButton(GuiGraphics g, Theme t, int x, int y, boolean hot) {
+        if (t.beveled()) {
+            t.button(g, x, y, 15, 15, hot, false);
+            return;
+        }
         Draw.roundBox(g, x, y, 15, 15, 4f, hot ? Draw.mix(t.c("button.bg"), t.c("text.primary"), 0.08f) : t.c("button.bg"), t.c("button.border"));
     }
 

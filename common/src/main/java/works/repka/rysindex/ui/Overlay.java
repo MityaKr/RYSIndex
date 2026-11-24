@@ -870,7 +870,7 @@ public final class Overlay {
         float cy = y + 5 + 4.5f;
         for (String[] parts : lines) {
             // приёмы языка поиска тем же цветом, что и их чипы в поле
-            Draw.label(g, parts[0], x + 6, cy, HELP_PX, Weight.MEDIUM, theme.c("chip.fn.fg"));
+            Draw.label(g, parts[0], x + 6, cy, HELP_PX, Weight.MEDIUM, theme.beveled() ? theme.c("link") : theme.c("chip.fn.fg"));
             Draw.label(g, parts[1], x + 12 + keyW, cy, HELP_PX, Weight.REGULAR, theme.c("tooltip.fg"));
             cy += 9;
         }

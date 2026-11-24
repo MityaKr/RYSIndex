@@ -2,6 +2,12 @@
 
 Подробности разработки в `06-dev-log.md`. До версии 0.3.0 мод назывался RYScope.
 
+## 0.3.8 (24.11.2026)
+
+* Ядро RYSCore 1.18.0: в теме Vanilla Refined подсказки светлые, в цвет окна, вместо почти чёрных с фиолетовой рамкой; у переключателей с вариантами («Тема», «Размер интерфейса») выбранный вариант стоит с равным отступом со всех сторон на любом масштабе.
+* Рейка способов слева в теме Vanilla Refined нарисована закладками у разделителя, как вкладки шапки книги: неактивная серая со светлой кромкой, активная цвета окна и сливается с карточкой; без чёрных рамок, станция, которой нет, бледнеет, а не темнеет до чёрного. Кнопки «звезда» и «закрыть» и плашка значка в шапке в ванильном виде. Недоступная вкладка («Источники» без источников) читается.
+* EN: RYSCore 1.18.0: tooltips in the Vanilla Refined theme are light, in the window's colours, instead of near-black with a purple border; the selected option of a segmented switch ("Theme", "Interface size") sits with an equal inset on all sides at any scale. The method rail on the left in Vanilla Refined is drawn as bookmarks at the divider, like the book's header tabs: the inactive grey with a light edge, the active in the window colour, merged with the card; no black outlines, and a missing station fades instead of going black. The star and close buttons and the icon plate in the header look vanilla. A disabled tab ("Sources" with no sources) is readable.
+
 ## 0.3.7 (24.11.2026)
 
 * Ядро RYSCore 1.17.3: поля ввода в теме Vanilla Refined рисуются в кегле подписей, а не крупным шрифтом игры; курсор виден на чёрном поле.
