@@ -98,7 +98,20 @@ public final class Keys {
         return InputConstants.isKeyDown(Minecraft.getInstance().getWindow().getWindow(), key.getValue());
     }
 
+    /**
+     * Подпись клавиши для подсказок: буквы и знаки по латинскому имени клавиши, как бы ни была переключена раскладка.
+     * Игра берёт имя у системы ({@code glfwGetKeyName}), и при русской раскладке R показывалась как «К», Ctrl+F как «Ctrl+А».
+     * Модификаторы и кнопки мыши остаются как у игры.
+     */
     public static String label(KeyMapping mapping) {
-        return mapping == null ? "?" : mapping.getTranslatedKeyMessage().getString();
+        if (mapping == null) return "?";
+        String full = mapping.getTranslatedKeyMessage().getString();
+        if (mapping.isUnbound()) return full;
+        InputConstants.Key key = InputConstants.getKey(mapping.saveString());
+        if (key.getType() != InputConstants.Type.KEYSYM) return full;
+        String layout = key.getDisplayName().getString();
+        String stable = KeyNames.stableName(key.getName(), name -> net.minecraft.client.resources.language.I18n.exists(name)
+            ? net.minecraft.client.resources.language.I18n.get(name) : null);
+        return KeyNames.replaceKeyPart(full, layout, stable);
     }
 }

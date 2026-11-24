@@ -2,7 +2,7 @@
 
 Собрана `_shared/tools/make-map.py` 2026-11-24. Руками не править: после структурных правок пересобрать.
 
-Java: 163 файлов, 32569 строк. Модули gradle: `common`. Переводы: `common/src/main/resources/assets/rysindex/lang/en_us.json`, `common/src/main/resources/assets/rysindex/lang/ru_ru.json`.
+Java: 165 файлов, 32704 строк. Модули gradle: `common`. Переводы: `common/src/main/resources/assets/rysindex/lang/en_us.json`, `common/src/main/resources/assets/rysindex/lang/ru_ru.json`.
 Читать сначала: `CLAUDE.md`, `README.md`.
 
 ## Точки входа
@@ -11,12 +11,12 @@ Java: 163 файлов, 32569 строк. Модули gradle: `common`. Пер�
 - миксины: `neoforge/src/main/resources/rysindex.mixins.json`
 
 ## Папки
-- `common/` — 628 файлов
+- `common/` — 644 файлов
 - `design/` — 12 файлов
-- `docs/` — 41 файлов
+- `docs/` — 39 файлов
 - `gradle/` — 2 файлов
-- `neoforge/` — 925 файлов
-- `prodtest/` — 9337 файлов
+- `neoforge/` — 938 файлов
+- `prodtest/` — 9886 файлов
 - `questscope/` — 16 файлов; RYSQuests
 - `ryspulse/` — 12 файлов; RYSPulse
 - `rysquests-companion/` — 10 файлов; RYSQuests Компаньон (вторая версия концепта)
@@ -27,9 +27,10 @@ Java: 163 файлов, 32569 строк. Модули gradle: `common`. Пер�
 **(корень)** (1)
 - `RYSIndex` 13
 
-**client** (5)
+**client** (6)
 - `FreezeWatch` 132 — Сторож зависаний: если кадр не заканчивается дольше FREEZE_MS, несколько раз снимает стек потока отрисовки и пишет в logs/rysindex-freeze-*.txt, где стоит игра, сколько занято памя…
-- `Keys` 105 — Горячие клавиши.
+- `KeyNames` 29 — Имена клавиш без раскладки для подписей label: чистые функции, без классов игры.
+- `Keys` 118 — Горячие клавиши.
 - `PressGuard` 26 — Пара «нажатие и отпускание» кнопки мыши.
 - `RysIndexClient` 282 — Точка входа клиента.
 - `Scissor` 47 — Состояние обрезки, как его видит GlStateManager: включена ли она и последний прямоугольник.
@@ -142,7 +143,7 @@ Java: 163 файлов, 32569 строк. Модули gradle: `common`. Пер�
 - `PlannerScreen` 276 — Планировщик производства: сколько машин нужно, чтобы делать N штук в час, и где узкое место.
 - `QuickCraft` 136 — Быстрый крафт (идея EMI): клавиша над предметом раскладывает его рецепт в сетку открытого окна, не открывая карточку.
 - `RecipeRestyle` 107 — Перекраска окон рецептов модов под тему.
-- `RecipeScreen` 2222 — Карточка предмета, размеры из design/CardV2.dc.html.
+- `RecipeScreen` 2243 — Карточка предмета, размеры из design/CardV2.dc.html.
 - `RecipeShot` 106 — Снимок рецепта в PNG (идея EMI): рецепт рисуется во внеэкранный буфер в масштабе интерфейса и ложится в screenshots/rysindex/.
 - `SearchHistory` 41 — Прошлые запросы поиска, как в JEI: запрос запоминается, когда поле получает или теряет фокус, стрелка вверх возвращает предыдущий, вниз следующий, после самого нового поле пустеет.
 - `SettingsScreen` 325 — Настройки мода.
@@ -153,7 +154,8 @@ Java: 163 файлов, 32569 строк. Модули gradle: `common`. Пер�
 
 ## `common/src/test/java` — пакет `works.repka.rysindex`
 
-**client** (1)
+**client** (2)
+- `KeyLabelTest` 36 — Подписи клавиш без раскладки: при русской раскладке R не превращается в «К», Ctrl+F в «Ctrl + А».
 - `PressGuardTest` 58
 
 **content** (4)
@@ -183,14 +185,14 @@ Java: 163 файлов, 32569 строк. Модули gradle: `common`. Пер�
 ## `neoforge/src/main/java` — пакет `works.repka.rysindex.neoforge`
 
 **(корень)** (10)
-- `AutoTest` 4581 — Автотест для разработки: включается свойством -Drysindex.autotest.
+- `AutoTest` 4609 — Автотест для разработки: включается свойством -Drysindex.autotest.
 - `AutoTestJei` 272 — Часть автотеста, которая разговаривает с JEI напрямую: сверка «что знает JEI и что показываем мы» и замеры родного интерфейса JEI.
 - `AutoTestLinks` 204 — Тестовый поставщик сведений для сценария links: вместо книги RYSQuests.
 - `ClientPayloads` 73 — Обработчики пакетов на клиенте.
 - `CoreKitBench` 241 — Стенд автотеста для нового в коре 1.9.0: линии, пунктир, ломаные, дуги, кольца, значки и виджеты Kit (выпадающий список, флажок, выбор «один из», панелька, окно-вопрос).
 - `NeoPlatform` 129
 - `RysIndexNeoForge` 184 — Общая точка входа.
-- `RysIndexNeoForgeClient` 186 — Клиентская часть: переводит события NeoForge в вызовы общего кода.
+- `RysIndexNeoForgeClient` 194 — Клиентская часть: переводит события NeoForge в вызовы общего кода.
 - `ServerGive` 71 — Сервер: выдача предметов из режима читов.
 - `ServerStages` 521 — Стадии на стороне сервера.
 
